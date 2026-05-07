@@ -9,7 +9,6 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 
 class OrderController extends CartController {
     private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
-
     private Order $orderService;
 
     public function __construct(Order $orderService)
@@ -19,7 +18,7 @@ class OrderController extends CartController {
 
     public function orderHistory(Request $request, Response $response, array $argv): Response
     {
-        $customerId = (int) $argv['customerId'];
+        $customerId = $argv['customerId'];
         $cartList = $this->orderService->getOrderListFromUserId($customerId);
         
         if(is_null($cartList)) {
@@ -32,7 +31,7 @@ class OrderController extends CartController {
 
     public function getOrder(Request $request, Response $response, array $argv): Response
     {
-        $orderId = (int) $argv['orderId'];
+        $orderId = $argv['orderId'];
         $cartList = $this->orderService->orderDetails($orderId);
         
         if(is_null($cartList)) {
@@ -46,10 +45,12 @@ class OrderController extends CartController {
     public function confirmOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
+        $customerId = $payload['id_customer'];
 
         if (!is_array($payload)) {
             return response([
                 'success' => false,
+                'status' => 'invalid_payload',
                 'error' => 'Invalid payload format'
             ], 400);
         }
@@ -58,16 +59,18 @@ class OrderController extends CartController {
         if ($cartId === false) {
             return response([
                 'success' => false,
+                'status' => 'invalid_cart_id',
                 'error' => 'Valid cart ID is required'
             ], 400);
         }
 
         try {
-            $order = $this->orderService->getOrderByCartId($cartId);
+            $order = $this->orderService->getOrderByCartId($cartId, $customerId);
             if ($order === null) {
                 return response([
                     'success' => false,
-                    'status' => 'pending'
+                    'status' => 'pending',
+                    'error' => 'Order not found'
                 ], 202);
             }
 
@@ -75,6 +78,7 @@ class OrderController extends CartController {
             if (!array_key_exists('current_state', $orderData)) {
                 return response([
                     'success' => false,
+                    'status' => 'invalid_order_data',
                     'error' => 'Invalid order state data'
                 ], 500);
             }
@@ -84,11 +88,13 @@ class OrderController extends CartController {
 
             return response([
                 'success' => $isPaymentAccepted,
+                'order_reference' => $orderData['reference'] ?? null,
                 'order' => $orderData
             ]);
         } catch (\Exception $e) {
             return response([
                 'success' => false,
+                'status' => 'error',
                 'error' => 'Failed to verify order: ' . $e->getMessage()
             ], 500);
         }
@@ -103,14 +109,14 @@ class OrderController extends CartController {
         }
 
         // Ownership check: require customer or guest identification — never trust anonymous cart access
-        $customerId = isset($payload['id_customer']) ? (int) $payload['id_customer'] : null;
-        $guestId = isset($payload['id_guest']) ? (int) $payload['id_guest'] : null;
+        $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
+        $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
 
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required'], 403);
         }
         
-        $cart = $this->orderService->getCartFromId((int) $payload['id_cart'], $customerId, $guestId);
+        $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if(is_null($cart)) {
             return response([], 404);
         }
@@ -186,8 +192,8 @@ class OrderController extends CartController {
         }
 
         // Ownership check: require customer or guest identification
-        $customerId = isset($payload['id_customer']) ? (int) $payload['id_customer'] : null;
-        $guestId = isset($payload['id_guest']) ? (int) $payload['id_guest'] : null;
+        $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
+        $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
 
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required'], 403);
@@ -197,7 +203,7 @@ class OrderController extends CartController {
             return response(['error' => 'Cart ID is required'], 400);
         }
 
-        $cart = $this->orderService->getCartFromId((int) $payload['id_cart'], $customerId, $guestId);
+        $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response(['error' => 'Cart not found or access denied'], 404);
         }

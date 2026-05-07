@@ -6,9 +6,12 @@ namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Traits\UuidGenerator;
 
 class CustomerEntity implements ObjectInterface
 {
+    use UuidGenerator;
+    
 	/** @var array<string, mixed> */
 	private array $data;
     private PrestashopServiceInterface $service;
@@ -59,9 +62,10 @@ class CustomerEntity implements ObjectInterface
             return;
         }
 
-        if (array_key_exists('id', $this->data)) {
-            $this->data['id'] = (int) $this->data['id'];
+        if (!array_key_exists('id', $this->data)) {
+            throw new \InvalidArgumentException('Customer data must contain an id field');
         }
+        $this->data['id'] = $this->encodeId($this->data['id'], 'customer');
 
         if (array_key_exists('newsletter', $this->data)) {
             $this->data['newsletter'] = (bool) $this->data['newsletter'];
@@ -111,5 +115,10 @@ class CustomerEntity implements ObjectInterface
             'id_country' => 10, //FIXME: Default country ID should be determined dynamically based on the delivery address details
             'phone_mobile' => (string) ($deliveryAddress['phone_mobile'] ?? ''),
         ];
+    }
+
+    public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
+    {
+        return new \PS\Webservice\Domain\Object\PayloadServiceData($this->data, ['id' => 'customer']);
     }
 }

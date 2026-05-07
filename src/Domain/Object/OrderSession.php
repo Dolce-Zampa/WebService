@@ -5,10 +5,11 @@ namespace PS\Webservice\Domain\Object;
 
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Traits\UuidGenerator;
 
 class OrderSession implements ObjectInterface
 {
-
+    use UuidGenerator;
     protected array $data;
 
     private function __construct(array $data) {
@@ -49,10 +50,10 @@ class OrderSession implements ObjectInterface
             // Only include IDs with positive integer values; null, empty strings, '0',
             // and negative values are excluded as all PrestaShop entity IDs must be > 0.
             'metadata' => array_filter([
-                'cart_id' => isset($data['cart_id']) ? (string) $data['cart_id'] : null,
-                'id_customer' => isset($data['id_customer']) ? (string) $data['id_customer'] : null,
-                'id_guest' => isset($data['id_guest']) ? (string) $data['id_guest'] : null,
-                'id_carrier' => isset($data['id_carrier']) ? (string) $data['id_carrier'] : null,
+                'cart_id' => $cartId,
+                'id_customer' => $data['id_customer'],
+                'id_guest' => $data['id_guest'],
+                'id_carrier' => $data['id_carrier'],
             ], fn($v) => $v !== null && (int) $v > 0),
         ];
     }
@@ -82,6 +83,11 @@ class OrderSession implements ObjectInterface
             ],
             'quantity' => $quantity
         ];
+    }
+
+    public function generatePayload(): PayloadServiceData
+    {
+        return new PayloadServiceData($this->data, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
     }
 
 }

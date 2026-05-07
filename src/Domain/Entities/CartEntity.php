@@ -6,6 +6,7 @@ namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Traits\UuidGenerator;
 
 /**
 * {
@@ -30,10 +31,12 @@ use PS\Webservice\Service\PS\PrestashopServiceInterface;
 
 class CartEntity implements ObjectInterface
 {
+	use UuidGenerator;
+
 	/** @var array<string, mixed> */
 	private array $data;
     private PrestashopServiceInterface $service;
-    
+
     private function __construct(array $data, PrestashopServiceInterface $service)
     {
         $this->service = $service;
@@ -73,8 +76,13 @@ class CartEntity implements ObjectInterface
 	public function normalizeData(): void
 	{
 		$this->data = [
-			'id' => (int) ($this->data['id'] ?? 0),
+			'id' => $this->encodeId($this->data['id'], 'cart'),
 			'products' => (array) ($this->data['products'] ?? []),
 		];
+	}
+
+	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
+	{
+		return new \PS\Webservice\Domain\Object\PayloadServiceData($this->data, ['id' => 'cart']);
 	}
 }

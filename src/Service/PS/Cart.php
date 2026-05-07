@@ -6,11 +6,17 @@ namespace PS\Webservice\Service\PS;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Service\HttpServiceInterface;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Traits\UuidGenerator;
 
 class Cart extends Carrier implements PrestashopServiceInterface {
 
-    public function getCartListFromUserId(?int $customerId = null, ?int $guestId = null): ?CartEntity
+    use UuidGenerator;
+
+    public function getCartListFromUserId(?string $customerId = null, ?string $guestId = null): ?CartEntity
     {
+        $customerId = $this->decodeId($customerId, 'customer');
+        $guestId = $this->decodeId($guestId, 'guest');
+
         $queryString = http_build_query([
             !is_null($customerId) ? 'id_customer' : 'id_guest' => !is_null($customerId) ? $customerId : $guestId
         ]);
@@ -27,12 +33,12 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return CartEntity::create($response->toArray(), $this);
     }
 
-    public function getCartFromId(int $cartId, ?int $customerId = null, ?int $guestId = null): ?CartEntity
+    public function getCartFromId(string $cartId, ?string $customerId = null, ?string $guestId = null): ?CartEntity
     {
         $queryString = http_build_query([
-            'id_cart' => $cartId,
-            'id_customer' => $customerId,
-            'id_guest' => $guestId,
+            'id_cart' => $this->decodeId($cartId, 'cart'),
+            'id_customer' => $this->decodeId($customerId, 'customer'),
+            'id_guest' => $this->decodeId($guestId, 'guest'),
             'ws_key' => $this->httpService->getConfig()->apikey
         ]);
         $this->httpService->setUrl("/carts?{$queryString}");
@@ -52,7 +58,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return CartEntity::create($cartresult['data']['cart'], $this);
     }
 
-    public function newCart(array $cartOptions, ?string $customerId = null): HttpServiceInterface
+    public function newCart(array $cartOptions): HttpServiceInterface
     {
         $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
 
@@ -67,7 +73,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
 
         try {
             $response = $this->httpService->invoke('POST', [
-                'cart' => $payload->toArray()
+                'cart' => $payload->generatePayload()->toArray()
             ]);
         } catch (\Exception $e) {
             Log::error("Exception occurred while retrieving cart for customer {$payload->getId()}" . $e->getMessage());
@@ -117,11 +123,13 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     /**
      * Update cart
      * @param array $product
-     * @param int $customerId
+     * @param string $customerId
      * @return HttpServiceInterface
      */
-    public function updateCart(array $product, int $customerId, bool $isGuest = false): HttpServiceInterface
+    public function updateCart(array $product, string $customerId, bool $isGuest = false): HttpServiceInterface
     {
+        $customerId = $this->decodeId($customerId, 'customer');
+
         $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
 
         //create a payload
@@ -145,7 +153,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
 
         try {
             $response = $this->httpService->invoke('POST', [
-                'cart' => $payload->toArray()
+                'cart' => $payload->generatePayload()->toArray()
             ]);
         } catch (\Exception $e) {
             Log::error("Exception occurred while updating cart for customer {$payload->getId()}" . $e->getMessage());

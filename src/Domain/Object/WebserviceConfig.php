@@ -84,4 +84,9 @@ final class WebserviceConfig implements ObjectInterface {
     {
         //
     }
+
+    public function generatePayload(): PayloadServiceData
+    {
+        return new PayloadServiceData($this->toArray(), []);
+    }
 }

@@ -6,9 +6,12 @@ namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Traits\UuidGenerator;
 
 class OrderEntity implements ObjectInterface
 {
+	use UuidGenerator;
+
 	/** @var array<string, mixed> */
 	private array $data;
     private PrestashopServiceInterface $service;
@@ -58,9 +61,9 @@ class OrderEntity implements ObjectInterface
 	{
 		$customer = CustomerEntity::create($this->data['order']['customer'], $this->service);
 		$this->data = [
-			'id' => (int) $this->data['id'],
+			'id' => $this->encodeId($this->data['id'], 'order'),
 			'reference' => (string) $this->data['reference'],
-			'id_cart' => (int) $this->data['id_cart'],
+			'id_cart' => $this->encodeId($this->data['id_cart'], 'cart'),
 			'current_state' => (int) $this->data['current_state'],
 			'date_add' => (string) $this->data['date_add'],
 			'total_paid_tax_incl' => (float) $this->data['total_paid_tax_incl'],
@@ -68,5 +71,10 @@ class OrderEntity implements ObjectInterface
 			'customer' => $customer->toArray(),
 			'id_lang' => (int) $this->data['id_lang'],
 		];
+	}
+
+	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
+	{
+		return new \PS\Webservice\Domain\Object\PayloadServiceData($this->data, ['id' => 'order', 'id_cart' => 'cart']);
 	}
 }

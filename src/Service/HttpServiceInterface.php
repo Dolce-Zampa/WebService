@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service;
 
+use PS\Webservice\Domain\Object\PayloadServiceData;
 use PS\Webservice\Domain\Object\WebserviceConfig;
-use PS\Webservice\Domain\ObjectInterface;
 use Slim\Http\Interfaces\ResponseInterface;
 
 interface HttpServiceInterface {
@@ -13,7 +13,7 @@ interface HttpServiceInterface {
 
     public function setUrl(string $url): void;
 
-    public function invoke(string $method, array|ObjectInterface $data = []): self;
+    public function invoke(string $method, array|PayloadServiceData $data = []): self;
 
     public function response(): ResponseInterface;
 

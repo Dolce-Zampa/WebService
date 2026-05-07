@@ -8,18 +8,22 @@ use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Object\ConfirmOrderSession;
 use PS\Webservice\Service\HttpServiceInterface;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Traits\UuidGenerator;
 
 class Order extends Cart implements PrestashopServiceInterface {
+
+    use UuidGenerator;
 
     public function __construct(HttpServiceInterface $httpService)
     {
         parent::__construct($httpService);
     }
 
-    public function getOrderByCartId(int $cartId): ?OrderEntity
+    public function getOrderByCartId(string $cartId, string $customerId): ?OrderEntity
     {
         $queryString = http_build_query([
-            'id_cart' => $cartId,
+            'id_customer' => $this->decodeId($customerId, 'customer'),
+            'id_cart' => $this->decodeId($cartId, 'cart'),
             'ws_key' => $this->httpService->getConfig()->apikey
         ]);
         $this->httpService->setUrl("/orders?{$queryString}");
@@ -37,10 +41,10 @@ class Order extends Cart implements PrestashopServiceInterface {
         }
     }
 
-    public function getOrderListFromUserId(?int $customerId = null): ?OrderEntity
+    public function getOrderListFromUserId(?string $customerId = null): ?OrderEntity
     {
         $queryString = http_build_query([
-            'id_customer' => $customerId
+            'id_customer' => $this->decodeId($customerId, 'customer'),
         ]);
 
         $this->httpService->setUrl("/api/orders?{$queryString}");
@@ -55,10 +59,10 @@ class Order extends Cart implements PrestashopServiceInterface {
         return OrderEntity::create($response->toArray(), $this);
     }
 
-    public function orderDetails(int $orderId): ?OrderEntity
+    public function orderDetails(string $orderId): ?OrderEntity
     {
         $queryString = http_build_query([
-            'id_order' => $orderId
+            'id_order' => $this->decodeId($orderId, 'order'),
         ]);
         $this->httpService->setUrl("/api/orders?{$queryString}");
 
@@ -77,7 +81,7 @@ class Order extends Cart implements PrestashopServiceInterface {
         $this->httpService->setUrl("/api/orders");
 
         try {
-            $response = $this->httpService->invoke('POST', $cart->toArray());
+            $response = $this->httpService->invoke('POST', $cart->generatePayload());
         } catch (\Exception $e) {
             Log::error("Exception occurred while creating order for cart {$cart->getId()}: " . $e->getMessage());
             throw new \RuntimeException("Failed to create order: " . $e->getMessage());

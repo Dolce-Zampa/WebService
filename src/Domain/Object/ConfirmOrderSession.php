@@ -6,9 +6,12 @@ namespace PS\Webservice\Domain\Object;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Traits\UuidGenerator;
 
 class ConfirmOrderSession implements ObjectInterface
 {
+    use UuidGenerator;
+
     protected array $data;
 
     const PAYMENT_METHOD_STRIPE = 'stripe';
@@ -79,9 +82,9 @@ class ConfirmOrderSession implements ObjectInterface
             'id_order_state' => (int) $data['order_state'],
             'payment_label' => $data['payment_label'] ?? 'Headless',
             'amount_paid' => (float) $data['amount_paid'],
-            'id_cart' => (int) $data['id_cart'],
-            'id_customer' => isset($data['id_customer']) ? (int)$data['id_customer'] : null,
-            'id_guest' => isset($data['id_guest']) ? (int)$data['id_guest'] : null,
+            'id_cart' => $data['id_cart'],
+            'id_customer' => $data['id_customer'],
+            'id_guest' => $data['id_guest'],
             'create_account' => (bool)($data['create_account'] ?? false),
             'id_carrier' => isset($data['id_carrier']) ? (int) $data['id_carrier'] : 14,
         ];
@@ -108,5 +111,10 @@ class ConfirmOrderSession implements ObjectInterface
         }
 
         return $errors;
+    }
+
+    public function generatePayload(): PayloadServiceData
+    {
+        return new PayloadServiceData($this->data, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
     }
 }

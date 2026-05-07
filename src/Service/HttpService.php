@@ -3,12 +3,11 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service;
 
+use PS\Webservice\Domain\Object\PayloadServiceData;
 use PS\Webservice\Domain\Object\WebserviceConfig;
-use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\HttpServiceInterface;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
-use Psr\Http\Client\ClientExceptionInterface;
 use Slim\Http\Interfaces\ResponseInterface;
 
 class HttpService implements HttpServiceInterface
@@ -33,16 +32,13 @@ class HttpService implements HttpServiceInterface
      * Invokes an HTTP request with the specified method and optional data.
      *
      * @param string $method The HTTP method to use for the request (e.g., 'GET', 'POST', 'PUT', 'DELETE').
-     * @param array $data Optional. An associative array of data to be sent with the request. Default is an empty array.
+     * @param array | PayloadServiceData $data Optional. An associative array of data to be sent with the request. Default is an empty array.
      *
      * @return self
      */
-    public function invoke(string $method, array|ObjectInterface $data = []): self
+    public function invoke(string $method, array | PayloadServiceData $data = []): self
     {
-        if ($data instanceof ObjectInterface) {
-            $data = $data->toArray();
-        }
-
+        $data = $data->toArray();
         try {
             $config = $this->config;
             $stream = new Client($config->toArray());

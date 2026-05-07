@@ -18,7 +18,7 @@ class CartController extends Controller {
 
     public function getCartList(Request $request, Response $response, array $argv): Response
     {
-        $customerId = (int) $argv['customerId'];
+        $customerId = $argv['customerId'];
         $cartList = $this->cartService->getCartListFromUserId($customerId);
         
         if(is_null($cartList)) {
@@ -31,10 +31,10 @@ class CartController extends Controller {
 
     public function getCart(Request $request, Response $response, array $argv): Response
     {
-        $cartId = (int) $argv['cartId'];
+        $cartId = $argv['cartId'];
         $queryParams = $request->getQueryParams();
-        $customerId = isset($queryParams['customer_id']) ? (int) $queryParams['customer_id'] : null;
-        $guestId = isset($queryParams['guest_id']) ? (int) $queryParams['guest_id'] : null;
+        $customerId = isset($queryParams['customer_id']) ? $queryParams['customer_id'] : null;
+        $guestId = isset($queryParams['guest_id']) ? $queryParams['guest_id'] : null;
 
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required to access cart'], 403);
@@ -53,7 +53,7 @@ class CartController extends Controller {
     public function addToCart(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
-        $customerId = (int) $argv['customerId'];
+        $customerId = $argv['customerId'];
         $isGuest = $request->getQueryParams()['is_guest'] ?? false;
 
         if (!is_array($payload)) {
@@ -82,7 +82,7 @@ class CartController extends Controller {
 
         //find customerId from cookie session
         $customerId = $request->getCookieParams()['customer_id'] ?? null;
-        $cart = $this->cartService->newCart($payload, $customerId);
+        $cart = $this->cartService->newCart($payload);
         
         if($cart->failed()) {
             return response([
