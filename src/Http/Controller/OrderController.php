@@ -158,6 +158,11 @@ class OrderController extends CartController {
                 'order' => $cart->toArray(),
                 'payment_url' => $checkoutUrl
             ], 201);
+        } catch (\InvalidArgumentException $e) {
+            return response([
+                'order' => $cart->toArray(),
+                'error' => $e->getMessage()
+            ], 400);
         } catch (\Exception $e) {
             return response([
                 'order' => $cart->toArray(),

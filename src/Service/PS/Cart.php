@@ -100,20 +100,18 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         try {
             $response = $this->httpService->invoke('GET');
             $products = $response->toArray()['products'] ?? [];
-
-            if (empty($products)) {
-                throw new \RuntimeException("Product #{$productId} not found in catalog");
-            }
-
-            $basePrice = (float) ($products[0]['price'] ?? 0.0);
-            // Apply 22% VAT — consistent with ProductManipulation::calculateFullPrice()
-            return round($basePrice * 1.22, 2);
-        } catch (\RuntimeException $e) {
-            throw $e;
         } catch (\Exception $e) {
             Log::error("Failed to fetch server-side price for product #{$productId}: " . $e->getMessage());
             throw new \RuntimeException("Failed to verify price for product #{$productId}");
         }
+
+        if (empty($products)) {
+            throw new \RuntimeException("Product #{$productId} not found in catalog");
+        }
+
+        $basePrice = (float) ($products[0]['price'] ?? 0.0);
+        // Apply 22% VAT — consistent with ProductManipulation::calculateFullPrice()
+        return round($basePrice * 1.22, 2);
     }
 
     /**
