@@ -3,12 +3,12 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
-use PS\Webservice\Domain\Object\ConfirmOrderSession;
 use PS\Webservice\Service\PS\Order;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class OrderController extends CartController {
+    private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
 
     private Order $orderService;
 
@@ -54,15 +54,16 @@ class OrderController extends CartController {
             ], 400);
         }
 
-        if (!isset($payload['id_cart']) || (int) $payload['id_cart'] <= 0) {
+        $cartId = filter_var($payload['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($cartId === false) {
             return response([
                 'success' => false,
-                'error' => 'Cart ID is required'
+                'error' => 'Valid cart ID is required'
             ], 400);
         }
 
         try {
-            $order = $this->orderService->getOrderByCartId((int) $payload['id_cart']);
+            $order = $this->orderService->getOrderByCartId($cartId);
             if ($order === null) {
                 return response([
                     'success' => false,
@@ -71,8 +72,15 @@ class OrderController extends CartController {
             }
 
             $orderData = $order->toArray();
-            $currentState = (int) ($orderData['current_state'] ?? 0);
-            $isPaymentAccepted = $currentState === ConfirmOrderSession::ORDER_STATE['confirm'];
+            if (!array_key_exists('current_state', $orderData)) {
+                return response([
+                    'success' => false,
+                    'error' => 'Invalid order state data'
+                ], 500);
+            }
+
+            $currentState = (int) $orderData['current_state'];
+            $isPaymentAccepted = $currentState === self::ORDER_STATE_PAYMENT_ACCEPTED;
 
             return response([
                 'success' => $isPaymentAccepted,

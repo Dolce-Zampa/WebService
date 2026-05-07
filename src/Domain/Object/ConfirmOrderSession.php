@@ -14,7 +14,7 @@ class ConfirmOrderSession implements ObjectInterface
     const PAYMENT_METHOD_STRIPE = 'stripe';
     const ORDER_STATE = [
         'failed' => 1, // This should ideally be determined based on the order/cart details
-        'confirm' => 2, // This should ideally be determined based on the order/cart details
+        'confirm' => 2, // Prestashop: Pagamento Accettato
         'payment_success' => 3, // This should ideally be determined based on the order/cart details
     ];
 

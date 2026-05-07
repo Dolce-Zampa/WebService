@@ -14,7 +14,7 @@ final class OrderSecurityTest extends TestCase
 {
     // -------------------------------------------------------- confirmOrder polling
 
-    public function test_confirm_order_returns_400_when_cart_id_is_missing(): void
+    public function test_confirm_order_returns_400_when_cart_id_is_invalid(): void
     {
         $orderService = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
@@ -120,6 +120,37 @@ final class OrderSecurityTest extends TestCase
         $result = $controller->confirmOrder($request, $response, []);
 
         $this->assertSame(200, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertFalse($body['success']);
+    }
+
+    public function test_confirm_order_returns_500_when_order_state_is_missing(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderByCartId'])
+            ->getMock();
+
+        $orderEntity = $this->createMock(OrderEntity::class);
+        $orderEntity->method('toArray')->willReturn([
+            'id' => 100,
+            'id_cart' => 42,
+        ]);
+
+        $orderService->expects($this->once())
+            ->method('getOrderByCartId')
+            ->with(42)
+            ->willReturn($orderEntity);
+
+        $controller = new OrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->confirmOrder($request, $response, []);
+
+        $this->assertSame(500, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
         $this->assertFalse($body['success']);
     }
