@@ -274,4 +274,36 @@ final class StripeWebhookControllerTest extends TestCase
         $body = json_decode((string) $result->getBody(), true);
         $this->assertArrayHasKey('error', $body);
     }
+
+    public function test_returns_500_when_currency_is_not_eur(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
+
+        $orderService = $this->createMock(Order::class);
+        $orderService->method('getOrderByCartId')->willReturn(null);
+        $orderService->expects($this->never())->method('confirmOrder');
+
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test_5',
+            'amount_total' => 5000,
+            'currency' => 'jpy',
+            'metadata' => ['cart_id' => '42', 'id_carrier' => '3'],
+            'customer_details' => ['email' => 'x@example.com', 'name' => 'X'],
+        ]);
+
+        $event = \Stripe\Event::constructFrom([
+            'id' => 'evt_5',
+            'type' => 'checkout.session.completed',
+            'data' => ['object' => $session->toArray()],
+        ]);
+
+        $controller = $this->buildControllerWithEvent($event, $orderService);
+        $request = $this->buildRequest('{}', 'sig');
+
+        $result = $controller->handleWebhook($request, $this->createMock(ResponseInterface::class), []);
+
+        $this->assertSame(500, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertArrayHasKey('error', $body);
+    }
 }
