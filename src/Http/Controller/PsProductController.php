@@ -5,11 +5,14 @@ namespace DolzeZampa\WS\Http\Controller;
 
 use DolzeZampa\WS\Http\Controller\Controller;
 use DolzeZampa\WS\Service\PS\Product;
+use DolzeZampa\WS\Traits\PaginationTrait;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class PsProductController extends Controller
 {
+    use PaginationTrait;
+
     private Product $productService;
 
     public function __construct(Product $productService)
@@ -19,12 +22,22 @@ class PsProductController extends Controller
 
     public function productList(Request $request, Response $response)
     {
-        $productList = $this->productService->productsList();
-        return response([
-            'success' => true,
-            'message' => 'Product list endpoint is working',
-            'data' => $productList->toArray()
+        $pagination = $this->getPaginationParams($request->getQueryParams());
+        $totalProducts = $this->productService->countProducts();
+
+        $productList = $this->productService->productsList([
+            'display' => 'full',
+            'sort' => 'id_DESC',
+            'limit' => $pagination['per_page'],
+            'page' => $pagination['page']
         ]);
+
+        return response($this->paginatedResponse(
+            $productList->toArray(),
+            $pagination['page'],
+            $pagination['per_page'],
+            $totalProducts
+        ));
     }
 
     public function featuredProducts(Request $request, Response $response)
@@ -41,6 +54,7 @@ class PsProductController extends Controller
     public function productByCategory(Request $request, Response $response)
     {
         $category = $request->getQueryParams()['category'] ?? null;
+
         if (!$category) {
             return response([
                 'success' => false,
@@ -48,12 +62,21 @@ class PsProductController extends Controller
             ], 400);
         }
 
+        $pagination = $this->getPaginationParams($request->getQueryParams());
         $categoryId = (int) $category;
-        $productsByCategory = $this->productService->getProductByCategory($categoryId);
-        return response([
-            'success' => true,
-            'data' => $productsByCategory->toArray()
+        
+        $totalProducts = $this->productService->countProducts(['filter[id_category_default]' => $categoryId]);
+        $productsByCategory = $this->productService->getProductByCategory($categoryId, [
+            'limit' => $pagination['per_page'],
+            'page' => $pagination['page']
         ]);
+        
+        return response($this->paginatedResponse(
+            $productsByCategory->toArray(),
+            $pagination['page'],
+            $pagination['per_page'],
+            $totalProducts
+        ));
     }
 
     public function productDetail(Request $request, Response $response, array $args)

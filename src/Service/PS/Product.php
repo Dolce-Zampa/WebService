@@ -6,8 +6,22 @@ namespace DolzeZampa\WS\Service\PS;
 use DolzeZampa\WS\Domain\Entities\ProductEntity;
 use DolzeZampa\WS\Domain\Models\ProductLangTable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class Product extends PrestashopService implements PrestashopServiceInterface {
+
+    public function countProducts(array $filter = []): int
+    {
+        $queryString = http_build_query(['display' => '[id]'] + $filter);
+        $this->httpService->setUrl("/products?{$queryString}");
+        $response = $this->httpService->invoke('GET');
+
+        if($response->failed()) {
+            throw new \RuntimeException("Failed to retrieve products: " . $response->getHttpCode());
+        }
+
+        return count($response->toArray()['products']);
+    }
 
     /**
      * Retrieves a list of products.
@@ -23,6 +37,8 @@ class Product extends PrestashopService implements PrestashopServiceInterface {
         } else {
             $this->httpService->setUrl("/products");
         }
+
+        Log::debug("Fetching product list with options: " . json_encode($displayOptions));
 
         $response = $this->httpService->invoke('GET');
 
@@ -54,9 +70,12 @@ class Product extends PrestashopService implements PrestashopServiceInterface {
          * @param int $categoryId The ID of the category to retrieve products from
          * @return Collection A collection of products that belong to the specified category
          */
-        public function getProductByCategory(int $categoryId): Collection {
+        public function getProductByCategory(int $categoryId, array $pagination = []): Collection {
+         $limit = $pagination['limit'] ?? 10;
+         $page = $pagination['page'] ?? 1;
+         $offset = ($page - 1) * $limit;
 
-        $products = $this->productsList(['display' => 'full','sort' => 'id_DESC', 'limit' => 12, 'filter[id_category_default]' => $categoryId, 'filter[active]' => 1]);
+        $products = $this->productsList(['display' => 'full','sort' => 'id_DESC', 'limit' => $limit, 'offset' => $offset, 'filter[id_category_default]' => $categoryId, 'filter[active]' => 1]);
         return $products;
     }
 

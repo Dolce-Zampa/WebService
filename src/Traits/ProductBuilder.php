@@ -3,6 +3,8 @@ declare(strict_types=1);
 namespace DolzeZampa\WS\Traits;
 
 use DolzeZampa\WS\Domain\Enums\ImageTail;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 
@@ -32,12 +34,23 @@ trait ProductBuilder {
                 if(!$tail instanceof ImageTail) {
                     throw new \InvalidArgumentException("Image tails must be an array of ImageTail enum values");
                 }
+                
+                // use caching for image retrieval to optimize performance, as images are often requested multiple times
+                $cacheKey = sha1("product_{$this->getId()}_image_{$image['id']}_tail_{$tail->value}");
+                $cachedImage = Cache::get($cacheKey);
+                if ($cachedImage) {
+                    $this->data['associations']['images'][$index][$tail->value] = $cachedImage;
+                    continue; // Skip retrieval if cached image is available
+                }
+
                 $image = $this->service->getSpecificationsImage($this->getId(), (int) $image['id'], $tail);
 
                 if($image === null) {
                     Log::warning("Image with for product {$this->getId()} could not be retrieved with tail {$tail->value}");
                     continue; // Skip this tail if the image retrieval fails, but keep processing other tails
                 }
+
+                Cache::put($cacheKey, $image->toArray(), Carbon::now()->addHours(24)); // Cache the image data for 24 hours
                 $this->data['associations']['images'][$index][$tail->value] = $image->toArray();
             }
         }
