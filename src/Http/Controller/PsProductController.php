@@ -119,4 +119,21 @@ class PsProductController extends Controller
             'data' => []
         ]);
     }
+
+    public function retriveProductFiltersList(Request $request, Response $response, array $args): Response
+    {
+        $id = $args['id'] ?? null;
+        if (!$id) {
+            return response([
+                'success' => false,
+                'message' => 'Product ID is required'
+            ], 400);
+        }
+
+        $filtersList = $this->productService->getProductFiltersList((int) $id);
+        return response([
+            'success' => true,
+            'data' => $filtersList->toArray()
+        ]);
+    }
 }
