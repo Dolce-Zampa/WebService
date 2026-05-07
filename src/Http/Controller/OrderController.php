@@ -116,14 +116,6 @@ class OrderController extends CartController {
         // Create payment session
         try {
             $paymentService = $this->initializePaymentService($payload['paymentMethod'] ?? 'stripe');
-            $orderSession = \DolzeZampa\WS\Domain\Object\OrderSession::create([
-                'success_url' => $_ENV['STRIPE_SUCCESS_URL'] ?? '',
-                'cancel_url' => $_ENV['STRIPE_CANCEL_URL'] ?? '',
-                'cart_id' => $payload['id_cart'],
-                'id_customer' => $payload['id_customer'] ?? null,
-                'id_guest' => $payload['id_guest'] ?? null,
-                'id_carrier' => $carrierId,
-            ], $this->orderService);
 
             //recuperiamo il corriere scelto dal cliente per aggiungerlo alla sessione di pagamento
             $carrierId = $payload['id_carrier'] ?? null;
@@ -135,6 +127,15 @@ class OrderController extends CartController {
             if(is_null($carrierDetails)) {
                 throw new \InvalidArgumentException('Invalid carrier ID: ' . $carrierId);
             }
+
+            $orderSession = \DolzeZampa\WS\Domain\Object\OrderSession::create([
+                'success_url' => $_ENV['STRIPE_SUCCESS_URL'] ?? '',
+                'cancel_url' => $_ENV['STRIPE_CANCEL_URL'] ?? '',
+                'cart_id' => $payload['id_cart'],
+                'id_customer' => $payload['id_customer'] ?? null,
+                'id_guest' => $payload['id_guest'] ?? null,
+                'id_carrier' => $carrierId,
+            ], $this->orderService);
 
             $orderSession->addLineItem(
                 name: $carrierDetails->name,
