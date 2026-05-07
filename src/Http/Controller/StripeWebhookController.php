@@ -31,11 +31,7 @@ class StripeWebhookController extends Controller
         }
 
         try {
-            $event = \Stripe\Webhook::constructEvent(
-                $payload,
-                $sigHeader,
-                $endpointSecret
-            );
+            $event = $this->constructStripeEvent($payload, $sigHeader, $endpointSecret);
         } catch (\UnexpectedValueException $e) {
             Log::warning('Stripe webhook: invalid payload received');
             return response(['error' => 'Invalid payload'], 400);
@@ -56,7 +52,22 @@ class StripeWebhookController extends Controller
         return response(['received' => true], 200);
     }
 
-    private function handleCheckoutSessionCompleted(\Stripe\Checkout\Session $session): void
+    /**
+     * Constructs and verifies a Stripe event from the raw request payload and signature.
+     * Extracted to allow overriding in tests.
+     *
+     * @throws \UnexpectedValueException if the payload is invalid
+     * @throws \Stripe\Exception\SignatureVerificationException if the signature is invalid
+     */
+    protected function constructStripeEvent(string $payload, string $sigHeader, string $secret): \Stripe\Event
+    {
+        return \Stripe\Webhook::constructEvent($payload, $sigHeader, $secret);
+    }
+
+    /**
+     * Processes a Stripe checkout.session.completed event and confirms the corresponding order.
+     */
+    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): void
     {
         $metadata = $session->metadata;
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
@@ -74,16 +85,38 @@ class StripeWebhookController extends Controller
         }
 
         $amountPaid = ($session->amount_total ?? 0) / 100;
+        if ($amountPaid <= 0) {
+            Log::error('Stripe webhook: missing or zero amount_total for session ' . $session->id);
+            throw new \RuntimeException('Invalid amount_total in Stripe session ' . $session->id);
+        }
+
         $idCustomer = isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
         $idGuest = isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
-        $idCarrier = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : 14;
+        $idCarrier = isset($metadata->id_carrier) && (int) $metadata->id_carrier > 0
+            ? (int) $metadata->id_carrier
+            : null;
+
+        if ($idCarrier === null) {
+            Log::error('Stripe webhook: missing id_carrier in metadata for session ' . $session->id . ', cart ' . $cartId);
+            throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
+        }
 
         $customerDetails = $session->customer_details;
         $email = $customerDetails->email ?? '';
-        $fullName = $customerDetails->name ?? '';
-        $nameParts = explode(' ', trim($fullName), 2);
-        $firstname = $nameParts[0] ?? '';
-        $lastname = $nameParts[1] ?? '';
+
+        // Note: Stripe provides customer_details.name as a single string.
+        // We split on the first space to derive firstname/lastname. For names that do
+        // not follow the Western "Firstname Lastname" format the full name is placed in
+        // firstname and lastname is left empty.
+        $fullName = trim($customerDetails->name ?? '');
+        if (str_contains($fullName, ' ')) {
+            $spacePos = strpos($fullName, ' ');
+            $firstname = substr($fullName, 0, $spacePos);
+            $lastname = trim(substr($fullName, $spacePos + 1));
+        } else {
+            $firstname = $fullName;
+            $lastname = '';
+        }
 
         $confirmSession = ConfirmOrderSession::create([
             'id_cart' => $cartId,

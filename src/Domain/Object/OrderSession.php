@@ -47,11 +47,11 @@ class OrderSession implements ObjectInterface
             'cancel_url' => ($data['cancel_url'] ?? '') . ($cartId !== null ? '?cart_id=' . $cartId : ''),
             'line_items' => $data['line_items'] ?? [],
             'metadata' => array_filter([
-                'cart_id' => $cartId !== null ? (string) $cartId : null,
+                'cart_id' => isset($data['cart_id']) ? (string) $data['cart_id'] : null,
                 'id_customer' => isset($data['id_customer']) ? (string) $data['id_customer'] : null,
                 'id_guest' => isset($data['id_guest']) ? (string) $data['id_guest'] : null,
                 'id_carrier' => isset($data['id_carrier']) ? (string) $data['id_carrier'] : null,
-            ], fn($v) => $v !== null),
+            ], fn($v) => $v !== null && $v !== ''),
         ];
     }
 
