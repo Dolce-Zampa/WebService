@@ -12,6 +12,118 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class OrderSecurityTest extends TestCase
 {
+    // -------------------------------------------------------- confirmOrder polling
+
+    public function test_confirm_order_returns_400_when_cart_id_is_missing(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderByCartId'])
+            ->getMock();
+
+        $orderService->expects($this->never())->method('getOrderByCartId');
+
+        $controller = new OrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->confirmOrder($request, $response, []);
+
+        $this->assertSame(400, $result->getStatusCode());
+    }
+
+    public function test_confirm_order_returns_202_while_waiting_for_order(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderByCartId'])
+            ->getMock();
+
+        $orderService->expects($this->once())
+            ->method('getOrderByCartId')
+            ->with(42)
+            ->willReturn(null);
+
+        $controller = new OrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->confirmOrder($request, $response, []);
+
+        $this->assertSame(202, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertFalse($body['success']);
+        $this->assertSame('pending', $body['status']);
+    }
+
+    public function test_confirm_order_returns_success_true_only_for_payment_accepted_state(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderByCartId'])
+            ->getMock();
+
+        $orderEntity = $this->createMock(OrderEntity::class);
+        $orderEntity->method('toArray')->willReturn([
+            'id' => 100,
+            'id_cart' => 42,
+            'current_state' => 2,
+        ]);
+
+        $orderService->expects($this->once())
+            ->method('getOrderByCartId')
+            ->with(42)
+            ->willReturn($orderEntity);
+
+        $controller = new OrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->confirmOrder($request, $response, []);
+
+        $this->assertSame(200, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertTrue($body['success']);
+    }
+
+    public function test_confirm_order_returns_success_false_for_non_accepted_state(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderByCartId'])
+            ->getMock();
+
+        $orderEntity = $this->createMock(OrderEntity::class);
+        $orderEntity->method('toArray')->willReturn([
+            'id' => 100,
+            'id_cart' => 42,
+            'current_state' => 3,
+        ]);
+
+        $orderService->expects($this->once())
+            ->method('getOrderByCartId')
+            ->with(42)
+            ->willReturn($orderEntity);
+
+        $controller = new OrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->confirmOrder($request, $response, []);
+
+        $this->assertSame(200, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertFalse($body['success']);
+    }
+
     // -------------------------------------------------------- createOrder ownership
 
     public function test_create_order_returns_403_when_no_owner_id_provided(): void
