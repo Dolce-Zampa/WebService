@@ -124,6 +124,7 @@ final class StripeWebhookControllerTest extends TestCase
         $session = \Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_test_1',
             'amount_total' => 5000,
+            'currency' => 'eur',
             'metadata' => ['cart_id' => '42', 'id_customer' => '7', 'id_carrier' => '3'],
             'customer_details' => ['email' => 'mario@example.com', 'name' => 'Mario Rossi'],
         ]);
@@ -158,6 +159,7 @@ final class StripeWebhookControllerTest extends TestCase
         $session = \Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_test_1',
             'amount_total' => 5000,
+            'currency' => 'eur',
             'metadata' => ['cart_id' => '42', 'id_customer' => '7', 'id_carrier' => '3'],
             'customer_details' => ['email' => 'mario@example.com', 'name' => 'Mario Rossi'],
         ]);
@@ -220,6 +222,7 @@ final class StripeWebhookControllerTest extends TestCase
         $session = \Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_test_3',
             'amount_total' => 5000,
+            'currency' => 'eur',
             'metadata' => ['cart_id' => '42'],
             'customer_details' => ['email' => 'x@example.com', 'name' => 'X'],
         ]);
@@ -251,6 +254,7 @@ final class StripeWebhookControllerTest extends TestCase
         $session = \Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_test_4',
             'amount_total' => 0,
+            'currency' => 'eur',
             'metadata' => ['cart_id' => '42', 'id_carrier' => '3'],
             'customer_details' => ['email' => 'x@example.com', 'name' => 'X'],
         ]);

@@ -46,14 +46,14 @@ class OrderSession implements ObjectInterface
             'success_url' => $this->appendQueryParam($data['success_url'] ?? '', 'cart_id', $cartId),
             'cancel_url' => $this->appendQueryParam($data['cancel_url'] ?? '', 'cart_id', $cartId),
             'line_items' => $data['line_items'] ?? [],
-            // Metadata values for IDs: only non-empty strings are included.
-            // '0' is intentionally excluded as a valid ID since all PS IDs must be > 0.
+            // Only include IDs with positive integer values; '0' and empty strings are excluded
+            // as all PrestaShop entity IDs must be greater than zero.
             'metadata' => array_filter([
                 'cart_id' => isset($data['cart_id']) ? (string) $data['cart_id'] : null,
                 'id_customer' => isset($data['id_customer']) ? (string) $data['id_customer'] : null,
                 'id_guest' => isset($data['id_guest']) ? (string) $data['id_guest'] : null,
                 'id_carrier' => isset($data['id_carrier']) ? (string) $data['id_carrier'] : null,
-            ], fn($v) => $v !== null && $v !== '' && $v !== '0'),
+            ], fn($v) => $v !== null && (int) $v > 0),
         ];
     }
 

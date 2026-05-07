@@ -84,9 +84,16 @@ class StripeWebhookController extends Controller
             return;
         }
 
+        // Convert from Stripe's smallest currency unit to the major unit.
+        // This implementation supports only two-decimal currencies (e.g. EUR).
+        // Zero-decimal currencies (e.g. JPY) must not be divided; validate the currency first.
+        $currency = strtolower($session->currency ?? '');
+        if ($currency !== 'eur') {
+            Log::error('Stripe webhook: unsupported currency "' . $currency . '" for session ' . $session->id);
+            throw new \RuntimeException('Unsupported currency "' . $currency . '" in Stripe session ' . $session->id);
+        }
+
         $amountPaid = ($session->amount_total ?? 0) / 100;
-        // Note: this assumes a two-decimal currency (EUR). Zero-decimal currencies (e.g. JPY)
-        // would not need the /100 conversion. The current implementation is hardcoded to EUR.
         if ($amountPaid <= 0) {
             Log::error('Stripe webhook: missing or zero amount_total for session ' . $session->id);
             throw new \RuntimeException('Invalid amount_total in Stripe session ' . $session->id);
