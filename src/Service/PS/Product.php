@@ -75,7 +75,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface {
          $page = $pagination['page'] ?? 1;
          $offset = ($page - 1) * $limit;
 
-        $products = $this->productsList(['display' => 'full','sort' => 'id_DESC', 'limit' => $limit, 'offset' => $offset, 'filter[id_category_default]' => $categoryId, 'filter[active]' => 1]);
+        $products = $this->productsList(['display' => 'full','sort' => 'id_DESC', 'limit' => "$offset,$limit", 'filter[id_category_default]' => $categoryId, 'filter[active]' => 1]);
         return $products;
     }
 

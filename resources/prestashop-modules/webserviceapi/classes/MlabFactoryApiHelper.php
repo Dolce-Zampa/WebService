@@ -481,7 +481,7 @@ class MlabFactoryApiHelper
         $address->address2 = (string) self::getValue($data, 'address2', '');
         $address->postcode = (string) $data['postcode'];
         $address->city = (string) $data['city'];
-        $address->id_country = (int) $data['id_country'];
+        $address->id_country = 10; //FIXME: (int) $data['id_country'];
         $address->id_state = (int) self::getValue($data, 'id_state', 0);
         $address->phone = (string) self::getValue($data, 'phone', '');
         $address->phone_mobile = (string) self::getValue($data, 'phone_mobile', '');
