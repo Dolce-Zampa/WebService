@@ -82,6 +82,41 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     }
 
     /**
+     * Retrieves the server-side price (with tax) for a product from the PrestaShop product catalog.
+     * Never use prices provided by the frontend; always fetch from the server to prevent price manipulation.
+     *
+     * @param int $productId The product ID
+     * @return float The product price including 22% VAT
+     * @throws \RuntimeException When the product is not found or the API call fails
+     */
+    public function getProductPriceById(int $productId): float
+    {
+        $queryString = http_build_query([
+            'display' => '[id,price]',
+            'filter[id]' => $productId,
+        ]);
+        $this->httpService->setUrl("/products?{$queryString}");
+
+        try {
+            $response = $this->httpService->invoke('GET');
+            $products = $response->toArray()['products'] ?? [];
+
+            if (empty($products)) {
+                throw new \RuntimeException("Product #{$productId} not found in catalog");
+            }
+
+            $basePrice = (float) ($products[0]['price'] ?? 0.0);
+            // Apply 22% VAT — consistent with ProductManipulation::calculateFullPrice()
+            return round($basePrice * 1.22, 2);
+        } catch (\RuntimeException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error("Failed to fetch server-side price for product #{$productId}: " . $e->getMessage());
+            throw new \RuntimeException("Failed to verify price for product #{$productId}");
+        }
+    }
+
+    /**
      * Update cart
      * @param array $product
      * @param int $customerId

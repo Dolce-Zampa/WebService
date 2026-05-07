@@ -32,8 +32,13 @@ class CartController extends Controller {
     public function getCart(Request $request, Response $response, array $argv): Response
     {
         $cartId = (int) $argv['cartId'];
-        $customerId = (int) $argv['customerId'] ?? null;
-        $guestId = (int) $request->getQueryParams()['guest_id'] ?? null;
+        $queryParams = $request->getQueryParams();
+        $customerId = isset($queryParams['customer_id']) ? (int) $queryParams['customer_id'] : null;
+        $guestId = isset($queryParams['guest_id']) ? (int) $queryParams['guest_id'] : null;
+
+        if ($customerId === null && $guestId === null) {
+            return response(['error' => 'Customer ID or guest ID is required to access cart'], 403);
+        }
 
         $cart = $this->cartService->getCartFromId($cartId, $customerId, $guestId);
         
