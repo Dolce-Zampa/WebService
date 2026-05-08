@@ -124,7 +124,7 @@ class CartController extends Controller {
         $guestId = isset($queryParams['guest_id']) ? (string) $queryParams['guest_id'] : null;
 
         if ($customerId === null && $guestId === null) {
-            return response(['error' => 'Either customer_id or guest_id query parameter is required to validate coupon'], 400);
+            return response(['error' => 'Either customer_id or guest_id is required'], 400);
         }
 
         $validation = $this->cartService->validateCoupon($code, $cartId, $customerId, $guestId);

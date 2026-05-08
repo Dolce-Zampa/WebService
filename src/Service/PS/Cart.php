@@ -174,7 +174,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             return [];
         }
 
-        $today = (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $today = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
         $featured = array_values(array_filter($rows, static function (array $row) use ($today): bool {
             $isActive = !isset($row['active']) || (bool) $row['active'] === true;
             $hasQuantity = !isset($row['quantity']) || (int) $row['quantity'] > 0;
