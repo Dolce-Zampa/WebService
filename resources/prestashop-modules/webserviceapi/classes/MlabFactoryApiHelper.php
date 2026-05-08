@@ -213,6 +213,18 @@ class MlabFactoryApiHelper
             );
         }
 
+        $cartRules = array();
+        foreach ($cart->getCartRules(CartRule::FILTER_ACTION_ALL, false) as $cartRule) {
+            $cartRules[] = array(
+                'id' => isset($cartRule['id_cart_rule']) ? (int) $cartRule['id_cart_rule'] : 0,
+                'code' => isset($cartRule['code']) ? (string) $cartRule['code'] : '',
+                'name' => isset($cartRule['name']) ? (string) $cartRule['name'] : '',
+                'description' => isset($cartRule['description']) ? (string) $cartRule['description'] : '',
+                'reduction_percent' => isset($cartRule['reduction_percent']) ? (float) $cartRule['reduction_percent'] : 0.0,
+                'reduction_amount' => isset($cartRule['reduction_amount']) ? (float) $cartRule['reduction_amount'] : 0.0,
+            );
+        }
+
         return array(
             'id' => (int) $cart->id,
             'id_customer' => (int) $cart->id_customer,
@@ -229,6 +241,7 @@ class MlabFactoryApiHelper
                 'grand_total_tax_incl' => (float) $cart->getOrderTotal(true, Cart::BOTH),
             ),
             'products' => $products,
+            'cart_rules' => $cartRules,
         );
     }
 

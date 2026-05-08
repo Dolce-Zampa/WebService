@@ -99,6 +99,12 @@ class webserviceapi extends Module
                 'controller' => 'order',
                 'params' => $params,
             ),
+            'module-webserviceapi-coupon' => array(
+                'rule' => 'api/cart_rules',
+                'keywords' => array(),
+                'controller' => 'coupon',
+                'params' => $params,
+            ),
         );
     }
 

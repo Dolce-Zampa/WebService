@@ -26,6 +26,9 @@ Sono registrate sia le route parlanti sia il fallback nativo modulo `index.php?f
 - `GET /api/carts?id_customer=12`
 - `GET /api/carts?id_guest=34`
 - `POST /api/carts`
+- `GET /api/cart_rules`
+- `GET /api/cart_rules?code=ESTATE2026&id_cart=55&id_customer=12`
+- `POST /api/cart_rules`
 - `GET /api/orders?id_order=99`
 - `GET /api/orders?reference=ABCDEF`
 - `POST /api/orders`
@@ -96,6 +99,27 @@ GET /api/carts?id_customer=12&id_cart=55
 
 Se passi `id_cart`, l'API verifica che il carrello appartenga davvero al cliente o al guest indicato.
 Senza `id_cart`, viene restituito il carrello aperto piu recente non ancora convertito in ordine.
+Nel payload del carrello viene incluso anche `cart_rules` con i coupon gia applicati.
+
+### Coupon / Regole carrello
+
+```text
+GET /api/cart_rules
+GET /api/cart_rules?code=ESTATE2026&id_cart=55&id_customer=12
+```
+
+- `GET /api/cart_rules` restituisce l'elenco coupon esistenti (code, name, date_to, quantity, reduction_*).
+- Se passi `code` + `id_cart` (+ `id_customer` oppure `id_guest`) l'API verifica la validita reale del coupon sul carrello.
+
+```json
+{
+  "id_cart": 55,
+  "id_customer": 12,
+  "code": "ESTATE2026"
+}
+```
+
+`POST /api/cart_rules` applica il coupon al carrello e restituisce il carrello aggiornato.
 
 ### Finalizzazione ordine
 
