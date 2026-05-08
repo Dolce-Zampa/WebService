@@ -187,7 +187,8 @@ class Cart extends Carrier implements PrestashopServiceInterface {
                     $dateTo = new \DateTimeImmutable($dateToRaw);
                     $isDateValid = $dateTo >= $now;
                 } catch (\Exception) {
-                    $isDateValid = true;
+                    Log::warning("Invalid cart rule date_to value encountered: {$dateToRaw}");
+                    $isDateValid = false;
                 }
             }
 

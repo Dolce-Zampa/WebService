@@ -8,6 +8,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use PS\Webservice\Service\PS\Cart;
 
 class CartController extends Controller {
+    private const DEFAULT_FEATURED_COUPON_LIMIT = 6;
 
     private Cart $cartService;
 
@@ -95,9 +96,9 @@ class CartController extends Controller {
 
     public function getFeaturedCoupons(Request $request, Response $response, array $argv): Response
     {
-        $limit = (int) ($request->getQueryParams()['limit'] ?? 6);
+        $limit = (int) ($request->getQueryParams()['limit'] ?? self::DEFAULT_FEATURED_COUPON_LIMIT);
         if ($limit <= 0) {
-            $limit = 6;
+            $limit = self::DEFAULT_FEATURED_COUPON_LIMIT;
         }
 
         return response($this->cartService->getFeaturedCoupons($limit));
