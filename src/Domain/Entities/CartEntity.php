@@ -75,11 +75,12 @@ class CartEntity implements ObjectInterface
 
 	public function normalizeData(): void
 	{
-		$this->data = [
-			'id' => $this->encodeId($this->data['id'], 'cart'),
-			'products' => (array) ($this->data['products'] ?? []),
-		];
+		$this->data['id'] = $this->data['id'] ?? null ? $this->encodeId($this->data['id'], 'cart') : null;
+		$this->data['products'] = (array) ($this->data['products'] ?? []);
+		$this->data['id_customer'] = empty($this->data['id_customer'] ?? null) ? null : $this->encodeId($this->data['id_customer'], 'customer');
+		$this->data['id_guest'] = empty($this->data['id_guest'] ?? null) ? null : $this->encodeId($this->data['id_guest'], 'guest');
 	}
+
 
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
 	{

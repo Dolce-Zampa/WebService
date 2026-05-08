@@ -55,8 +55,8 @@ class OrderController extends CartController {
             ], 400);
         }
 
-        $cartId = filter_var($payload['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if ($cartId === false) {
+        $cartId = $payload['id_cart'] ?? null;
+        if ($cartId === null) {
             return response([
                 'success' => false,
                 'status' => 'invalid_cart_id',

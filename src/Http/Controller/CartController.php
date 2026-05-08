@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use PS\Webservice\Domain\Entities\CartEntity;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PS\Webservice\Service\PS\Cart;
@@ -80,16 +81,19 @@ class CartController extends Controller {
         }
 
         //find customerId from cookie session
-        $customerId = $request->getCookieParams()['customer_id'] ?? null;
         $cart = $this->cartService->newCart($payload);
-        
+
         if($cart->failed()) {
             return response([
                 "error" => "Failed to create cart",
             ], 500);
         }
 
-        return response($cart->toArray(), 201);
+        $cartEntity = CartEntity::create($cart->toArray()['data']['cart'], $this->cartService);
+        return response([
+            'success' => true,
+            'data' => ['cart' => $cartEntity->toArray()]
+        ], 201);
     }
 
     public function getFeaturedCoupons(Request $request, Response $response, array $argv): Response
