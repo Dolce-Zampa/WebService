@@ -158,7 +158,7 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
 
         return array(
             'valid' => $check === true,
-            'message' => $check === true ? 'Coupon valido.' : (string) $check,
+            'message' => $check === true ? 'Coupon is valid.' : (string) $check,
             'coupon' => array(
                 'id' => (int) $cartRule->id,
                 'code' => (string) $cartRule->code,
