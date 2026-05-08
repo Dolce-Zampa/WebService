@@ -37,7 +37,7 @@ class CouponEntity implements ObjectInterface
         return $this->data;
     }
 
-    public function toJson(int $options = 0): string
+    public function toJson($options = 0)
     {
         return json_encode($this->toArray(), $options);
     }
