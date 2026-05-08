@@ -110,7 +110,7 @@ class CartController extends Controller {
         $coupon = $this->cartService->getCouponDetail($code);
 
         if ($coupon === null) {
-            return response([], 404);
+            return response(['error' => 'Coupon not found'], 404);
         }
 
         return response($coupon);
@@ -130,7 +130,7 @@ class CartController extends Controller {
 
         $validation = $this->cartService->validateCoupon($code, $cartId, $customerId, $guestId);
         if ($validation === null) {
-            return response([], 404);
+            return response(['error' => 'Coupon validation failed or coupon not found'], 404);
         }
 
         return response($validation);
