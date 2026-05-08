@@ -190,7 +190,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
                     $dateFrom = new \DateTimeImmutable($dateFromRaw);
                     $isStartDateValid = $dateFrom <= $now;
                 } catch (\Exception) {
-                    Log::warning("Invalid cart rule date_from value encountered: {$dateFromRaw}");
+                    Log::warning("Invalid cart rule valid_from value encountered: {$dateFromRaw}");
                     $isStartDateValid = false;
                 }
             }
@@ -202,7 +202,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
                     $dateTo = new \DateTimeImmutable($dateToRaw);
                     $isEndDateValid = $dateTo >= $now;
                 } catch (\Exception) {
-                    Log::warning("Invalid cart rule date_to value encountered: {$dateToRaw}");
+                    Log::warning("Invalid cart rule valid_to value encountered: {$dateToRaw}");
                     $isEndDateValid = false;
                 }
             }
