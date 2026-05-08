@@ -26,7 +26,7 @@ class CouponEntity implements ObjectInterface
     public function __get(string $name): mixed
     {
         if (!array_key_exists($name, $this->data)) {
-            throw new \InvalidArgumentException('No argument found with ' . $name);
+            throw new \InvalidArgumentException('Property not found: ' . $name);
         }
 
         return $this->data[$name];
@@ -63,6 +63,10 @@ class CouponEntity implements ObjectInterface
 
     private function extractLanguageValue(array $languageArray): string
     {
+        if (empty($languageArray)) {
+            return '';
+        }
+
         if (isset($languageArray['language'])) {
             if (is_array($languageArray['language'])) {
                 $firstLang = reset($languageArray['language']);

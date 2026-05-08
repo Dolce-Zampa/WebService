@@ -264,7 +264,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             $data = $data['data'];
         }
 
-        $rows = array();
+        $rows = [];
         if (isset($data['cart_rules']) && is_array($data['cart_rules'])) {
             $rows = array_values(array_filter($data['cart_rules'], 'is_array'));
         } elseif (array_is_list($data)) {
