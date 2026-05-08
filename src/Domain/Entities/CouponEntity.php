@@ -5,9 +5,12 @@ namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Traits\UuidGenerator;
 
 class CouponEntity implements ObjectInterface
 {
+    use UuidGenerator;
+
     private array $data;
     private PrestashopServiceInterface $service;
 
@@ -55,7 +58,7 @@ class CouponEntity implements ObjectInterface
         $validTo = (string) ($this->data['valid_to'] ?? $this->data['date_to'] ?? '');
 
         $this->data = [
-            'id' => isset($this->data['id']) ? (int) $this->data['id'] : 0,
+            'id' => isset($this->data['id']) ?  $this->encodeId($this->data['id'], 'coupon') : null,
             'code' => isset($this->data['code']) ? (string) $this->data['code'] : '',
             'name' => (string) $name,
             'valid_from' => $validFrom,
@@ -92,6 +95,6 @@ class CouponEntity implements ObjectInterface
 
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
     {
-        return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray());
+        return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray(), ['id', 'coupon']);
     }
 }

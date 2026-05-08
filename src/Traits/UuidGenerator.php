@@ -14,7 +14,7 @@ trait UuidGenerator
         return new Hashids($salt, $minLenght); // 12 è la lunghezza minima della stringa
     }
 
-    public function encodeId(?int $id, string $type = 'generic'): ?string
+    public function encodeId(?int $id, string $type): ?string
     {
         if ($id === null) {
             return null;
@@ -22,7 +22,7 @@ trait UuidGenerator
         return $this->getHasher($type)->encode($id);
     }
 
-    public function decodeId(?string $hash, string $type = 'generic'): ?int
+    public function decodeId(?string $hash, string $type): ?int
     {
         if ($hash === null) {
             return null;
