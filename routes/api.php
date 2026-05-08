@@ -15,6 +15,9 @@ $app->get('/api/cart/list/{customerId}', PS\Webservice\Http\Controller\CartContr
 $app->get('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':getCart');
 $app->post('/api/cart', PS\Webservice\Http\Controller\CartController::class . ':createCart');
 $app->post('/api/cart/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':addToCart');
+$app->get('/api/coupons/featured', PS\Webservice\Http\Controller\CartController::class . ':getFeaturedCoupons');
+$app->get('/api/coupon/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');
+$app->get('/api/coupon/{code}/validate/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':validateCoupon');
 /** Customer api */
 $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');
 $app->post('/api/login', PS\Webservice\Http\Controller\CustomerController::class . ':login');
@@ -33,4 +36,3 @@ $app->post('/api/webhooks/stripe', PS\Webservice\Http\Controller\StripeWebhookCo
 $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList');//->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware(3600));
 $app->get('/api/carriers/available', PS\Webservice\Http\Controller\CarrierController::class . ':availableCarriers');
 $app->get('/api/carriers/{id}', PS\Webservice\Http\Controller\CarrierController::class . ':getCarrier')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware(3600));
-

@@ -167,4 +167,120 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return $response;
     }
 
+    public function getFeaturedCoupons(int $limit = 6): array
+    {
+        $rows = $this->getCartRules();
+        if (empty($rows)) {
+            return [];
+        }
+
+        $today = date('Y-m-d H:i:s');
+        $featured = array_values(array_filter($rows, static function (array $row) use ($today): bool {
+            $isActive = !isset($row['active']) || (bool) $row['active'] === true;
+            $hasQuantity = !isset($row['quantity']) || (int) $row['quantity'] > 0;
+            $isDateValid = empty($row['date_to']) || (string) $row['date_to'] >= $today;
+            return $isActive && $hasQuantity && $isDateValid;
+        }));
+
+        return array_slice($featured, 0, max(1, $limit));
+    }
+
+    public function getCouponDetail(string $code): ?array
+    {
+        $rows = $this->getCartRules([
+            'code' => $code,
+        ]);
+
+        if (empty($rows)) {
+            return null;
+        }
+
+        foreach ($rows as $row) {
+            if (isset($row['code']) && strcasecmp((string) $row['code'], $code) === 0) {
+                return $row;
+            }
+        }
+
+        return $rows[0];
+    }
+
+    public function validateCoupon(string $code, string $cartId, ?string $customerId = null, ?string $guestId = null): ?array
+    {
+        $query = [
+            'code' => $code,
+            'id_cart' => $this->decodeId($cartId, 'cart'),
+        ];
+
+        if ($customerId !== null) {
+            $query['id_customer'] = $this->decodeId($customerId, 'customer');
+        }
+
+        if ($guestId !== null) {
+            $query['id_guest'] = $this->decodeId($guestId, 'guest');
+        }
+
+        $data = $this->invokeCartRules($query);
+        if ($data === null) {
+            return null;
+        }
+
+        if (isset($data['data']) && is_array($data['data'])) {
+            $data = $data['data'];
+        }
+
+        return is_array($data) ? $data : null;
+    }
+
+    /**
+     * @param array<string, mixed> $queryParams
+     * @return array<int, array<string, mixed>>
+     */
+    private function getCartRules(array $queryParams = []): array
+    {
+        $data = $this->invokeCartRules($queryParams);
+        if ($data === null) {
+            return [];
+        }
+
+        if (isset($data['data']) && is_array($data['data'])) {
+            $data = $data['data'];
+        }
+
+        if (isset($data['cart_rules']) && is_array($data['cart_rules'])) {
+            return array_values(array_filter($data['cart_rules'], 'is_array'));
+        }
+
+        if (array_is_list($data)) {
+            return array_values(array_filter($data, 'is_array'));
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $queryParams
+     * @return array<string, mixed>|null
+     */
+    private function invokeCartRules(array $queryParams): ?array
+    {
+        $queryParams['ws_key'] = $this->httpService->getConfig()->apikey;
+        $queryString = http_build_query($queryParams);
+        $this->httpService->setUrl("/cart_rules?{$queryString}");
+
+        try {
+            $response = $this->httpService->invoke('GET');
+        } catch (\Exception $e) {
+            Log::error("Exception occurred while retrieving cart rules: " . $e->getMessage());
+            return null;
+        }
+
+        if ($response->failed()) {
+            Log::error("Failed to retrieve cart rules, code:" . $response->getHttpCode() . ", body: " . $response->getBody());
+            return null;
+        }
+
+        $data = $response->toArray();
+        return is_array($data) ? $data : null;
+    }
+
 }
