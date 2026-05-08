@@ -49,6 +49,7 @@ class CouponEntity implements ObjectInterface
             $name = $this->extractLanguageValue($name);
         }
 
+        // Canonical internal fields are valid_from/valid_to; date_from/date_to are accepted as input aliases.
         $validFrom = (string) ($this->data['valid_from'] ?? $this->data['date_from'] ?? '');
         $validTo = (string) ($this->data['valid_to'] ?? $this->data['date_to'] ?? '');
 

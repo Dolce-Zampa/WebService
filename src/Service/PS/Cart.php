@@ -180,21 +180,34 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return $coupons->filter(static function (CouponEntity $coupon) use ($now): bool {
             $isActive = (bool) $coupon->active === true;
             $hasQuantity = (int) $coupon->quantity > 0;
+            $dateFromRaw = trim((string) $coupon->valid_from);
             $dateToRaw = trim((string) $coupon->valid_to);
 
-            if ($dateToRaw === '') {
-                $isDateValid = true;
+            if ($dateFromRaw === '') {
+                $isStartDateValid = true;
             } else {
                 try {
-                    $dateTo = new \DateTimeImmutable($dateToRaw);
-                    $isDateValid = $dateTo >= $now;
+                    $dateFrom = new \DateTimeImmutable($dateFromRaw);
+                    $isStartDateValid = $dateFrom <= $now;
                 } catch (\Exception) {
-                    Log::warning("Invalid cart rule date_to value encountered: {$dateToRaw}");
-                    $isDateValid = false;
+                    Log::warning("Invalid cart rule date_from value encountered: {$dateFromRaw}");
+                    $isStartDateValid = false;
                 }
             }
 
-            return $isActive && $hasQuantity && $isDateValid;
+            if ($dateToRaw === '') {
+                $isEndDateValid = true;
+            } else {
+                try {
+                    $dateTo = new \DateTimeImmutable($dateToRaw);
+                    $isEndDateValid = $dateTo >= $now;
+                } catch (\Exception) {
+                    Log::warning("Invalid cart rule date_to value encountered: {$dateToRaw}");
+                    $isEndDateValid = false;
+                }
+            }
+
+            return $isActive && $hasQuantity && $isStartDateValid && $isEndDateValid;
         })->values();
     }
 
