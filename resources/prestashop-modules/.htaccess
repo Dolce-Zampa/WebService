@@ -20,7 +20,7 @@ RewriteRule . - [E=REWRITEBASE:/]
 RewriteRule ^api/carts(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=cart&ws_key=$1 [QSA,L]
 RewriteRule ^api/orders(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=order&ws_key=$1 [QSA,L]
 RewriteRule ^api/filters(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=filters&ws_key=$1 [QSA,L]
-RewriteRule ^api/cart_rule(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=filters&ws_key=$1 [QSA,L]
+RewriteRule ^api/cart_rules(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=coupon&ws_key=$1 [QSA,L]
 
 RewriteRule ^api(?:/(.*))?$ %{ENV:REWRITEBASE}webservice/dispatcher.php?url=$1 [QSA,L]
 RewriteRule ^upload/.+$ %{ENV:REWRITEBASE}index.php [QSA,L]

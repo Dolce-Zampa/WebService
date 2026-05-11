@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 
-trait ProductBuilder {
+trait ProductBuilder
+{
 
     /**
      * Builds association links for the product entity using image service and image tails.
@@ -20,7 +21,7 @@ trait ProductBuilder {
     protected function buildImageLink(array $imageTails = []): void
     {
         $associations = $this->data['associations'];
-        
+
         if (!isset($associations['images']) || !is_array($associations['images'])) {
             return; // No images to process
         }
@@ -30,16 +31,16 @@ trait ProductBuilder {
                 throw new \InvalidArgumentException("Each image association must have an 'id' field");
             }
 
-            if(empty($imageTails)) {
+            if (empty($imageTails)) {
                 $imageTails = ImageTail::cases(); // Use all available tails if none are specified
             }
 
             /** @var ImageTail $tail */
             foreach ($imageTails as $tail) {
-                if(!$tail instanceof ImageTail) {
+                if (!$tail instanceof ImageTail) {
                     throw new \InvalidArgumentException("Image tails must be an array of ImageTail enum values");
                 }
-                
+
                 // use caching for image retrieval to optimize performance, as images are often requested multiple times
                 $cacheKey = sha1("product_{$this->getId()}_image_{$image['id']}_tail_{$tail->value}");
                 $cachedImage = Cache::get($cacheKey);
@@ -50,7 +51,7 @@ trait ProductBuilder {
 
                 $image = $this->service->getSpecificationsImage($this->getId(), (int) $image['id'], $tail);
 
-                if($image === null) {
+                if ($image === null) {
                     Log::warning("Image with for product {$this->getId()} could not be retrieved with tail {$tail->value}");
                     continue; // Skip this tail if the image retrieval fails, but keep processing other tails
                 }
@@ -61,23 +62,23 @@ trait ProductBuilder {
         }
 
     }
-    
+
     /**
-	 * Builds full option payloads starting from the option ids in associations.
-	 *
-	 * Each value in associations.product_option_values is expected to contain an id,
-	 * and the corresponding option details are fetched through the Option service.
-	 *
-	 * @param Option $option Service used to fetch option value details
-	 *
-	 * @throws \RuntimeException When option retrieval fails
-	 */
-	protected function buildOptionValues(): void
-	{
-		foreach ($this->getProductOptionValues() as $i => $value) {
-			$optionValue = $this->service->getSpecificationsOption(id: $value['id']);
-			$this->data['associations'][] = $optionValue->toArray();
-		}
+     * Builds full option payloads starting from the option ids in associations.
+     *
+     * Each value in associations.product_option_values is expected to contain an id,
+     * and the corresponding option details are fetched through the Option service.
+     *
+     * @param Option $option Service used to fetch option value details
+     *
+     * @throws \RuntimeException When option retrieval fails
+     */
+    protected function buildOptionValues(): void
+    {
+        foreach ($this->getProductOptionValues() as $i => $value) {
+            $optionValue = $this->service->getSpecificationsOption(id: $value['id']);
+            $this->data['associations'][] = $optionValue->toArray();
+        }
 
         unset($this->data['associations']['product_option_values']); // Remove the id-only entry to avoid confusion
     }
@@ -93,13 +94,15 @@ trait ProductBuilder {
     protected function buildCombinations(): void
     {
         $associations = $this->data['associations'];
-        foreach($associations['combinations'] as $i => $combination) {
-            if (!isset($combination['id'])) {
-                throw new \InvalidArgumentException("Each combination association must have an 'id' field");
-            }
+        if (isset($associations['combinations']) && is_array($associations['combinations'])) {
+            foreach ($associations['combinations'] as $i => $combination) {
+                if (!isset($combination['id'])) {
+                    throw new \InvalidArgumentException("Each combination association must have an 'id' field");
+                }
 
-            $combination = $this->service->getSpecificationsCombination((int) $combination['id']);
-            $this->data['associations']['combinations'][$i] = $combination->toArray();
+                $combination = $this->service->getSpecificationsCombination((int) $combination['id']);
+                $this->data['associations']['combinations'][$i] = $combination->toArray();
+            }
         }
 
     }
@@ -118,7 +121,7 @@ trait ProductBuilder {
             return;
         }
 
-        foreach($associations['product_features'] as $i => $feature) {
+        foreach ($associations['product_features'] as $i => $feature) {
             if (!isset($feature['id']) || !isset($feature['id_feature_value'])) {
                 throw new \InvalidArgumentException("Each product_feature association must have 'id' and 'id_feature_value' fields");
             }
@@ -142,7 +145,7 @@ trait ProductBuilder {
             return;
         }
 
-        foreach($associations['accessories'] as $i => $accessory) {
+        foreach ($associations['accessories'] as $i => $accessory) {
             if (!isset($accessory['id'])) {
                 throw new \InvalidArgumentException("Each accessory association must have an 'id' field");
             }
@@ -167,7 +170,7 @@ trait ProductBuilder {
             return;
         }
 
-        foreach($associations['categories'] as $i => $category) {
+        foreach ($associations['categories'] as $i => $category) {
             if (!isset($category['id'])) {
                 throw new \InvalidArgumentException("Each category association must have an 'id' field");
             }
@@ -188,7 +191,7 @@ trait ProductBuilder {
     protected function buildStockAvailables(): void
     {
         $stockAvailables = $this->service->getSpecificationsStockAvailables($this->getId());
-        
+
         $this->data['associations']['stock_availables'] = [];
         foreach ($stockAvailables as $stockEntity) {
             $this->data['associations']['stock_availables'][] = $stockEntity->toArray();

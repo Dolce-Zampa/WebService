@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use PS\Webservice\Domain\Entities\CartEntity;
+use PS\Webservice\Domain\Entities\CartRuleEntity;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PS\Webservice\Service\PS\Cart;
@@ -127,6 +128,12 @@ class CartController extends Controller {
 
         $isValid = $this->cartService->validateCoupon($code, $cartId, $customerId, $guestId);
         return response(['valid' => $isValid]);
+    }
+
+    public function getCartRules(Request $request, Response $response, array $argv): Response
+    {
+        $cartRules = CartRuleEntity::create([], $this->cartService);
+        return response($cartRules->toArray());
     }
 
     protected function validateCartPayload(array $payload): bool

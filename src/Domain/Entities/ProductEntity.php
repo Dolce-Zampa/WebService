@@ -77,6 +77,7 @@ class ProductEntity implements ObjectInterface
     public function normalizeData(): void
     {
         unset($this->data['associations']['product_option_values']);
+        $this->data['url'] = str_replace('https://www.dolcezampa.com', '', $this->data['url']); //FIXME: remove these on production
         $this->buildImageLink([ImageTail::ORIGINAL]);
         $this->buildCombinations();
         $this->buildProductFeatures();

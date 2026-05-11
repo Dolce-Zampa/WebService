@@ -15,9 +15,10 @@ $app->get('/api/cart/list/{customerId}', PS\Webservice\Http\Controller\CartContr
 $app->get('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':getCart');
 $app->post('/api/cart', PS\Webservice\Http\Controller\CartController::class . ':createCart');
 $app->post('/api/cart/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':addToCart');
-$app->get('/api/coupons/featured', PS\Webservice\Http\Controller\CartController::class . ':getFeaturedCoupons');
-$app->get('/api/coupons/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');
-$app->get('/api/coupons/{code}/validate/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':validateCoupon');
+$app->get('/api/cart-rules', PS\Webservice\Http\Controller\CartController::class . ':getCartRules');
+$app->get('/api/cart-rules/coupon/featured', PS\Webservice\Http\Controller\CartController::class . ':getFeaturedCoupons');
+$app->get('/api/cart-rules/coupon/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');
+$app->get('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':validateCoupon');
 
 /** Customer api */
 $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');

@@ -233,7 +233,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     public function validateCoupon(string $code, string $cartId, ?string $customerId = null, ?string $guestId = null): bool
     {
         $query = [
-            'code' => $this->decodeId($code, 'coupon'),
+            'code' => $code,
             'id_cart' => $this->decodeId($cartId, 'cart'),
         ];
 
