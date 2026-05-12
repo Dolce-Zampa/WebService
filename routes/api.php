@@ -8,13 +8,13 @@ $app->get('/api/product-list', PS\Webservice\Http\Controller\ProductController::
 $app->get('/api/product-featured', PS\Webservice\Http\Controller\ProductController::class . ':featuredProducts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware());
 $app->get('/api/products', PS\Webservice\Http\Controller\ProductController::class . ':productByCategory')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware());
 $app->get('/api/products/{id}/related', PS\Webservice\Http\Controller\ProductController::class . ':productsRelated')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware());
-$app->get('/api/product/{slug}', PS\Webservice\Http\Controller\ProductController::class . ':productDetail');//->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware());
+$app->get('/api/product/{slug}', PS\Webservice\Http\Controller\ProductController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware());
 
 /** Carts api */
 $app->get('/api/cart/list/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':cartList');
 $app->get('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':getCart');
 $app->post('/api/cart', PS\Webservice\Http\Controller\CartController::class . ':createCart');
-$app->post('/api/cart/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':addToCart');
+$app->post('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':addToCart');
 $app->get('/api/cart-rules', PS\Webservice\Http\Controller\CartController::class . ':getCartRules');
 $app->get('/api/cart-rules/coupon/featured', PS\Webservice\Http\Controller\CartController::class . ':getFeaturedCoupons');
 $app->get('/api/cart-rules/coupon/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');

@@ -7,11 +7,11 @@ use PS\Webservice\Service\HttpServiceInterface;
 
 class PrestashopConnectorException extends \Exception {
 
-    public function __construct(HttpServiceInterface  $service, \Throwable $previous = null) {
+    public function __construct(HttpServiceInterface  $service, ?\Throwable $previous = null) {
 
     $message = "An error occurrend while connecting to prestashop server ---- ";
     $details = [
-        'error' => is_null($previous->getMessage()) ? $service->getBody() : $previous->getMessage(),
+        'error' => is_null($previous) ? $service->getBody() : $previous->getMessage(),
         'config' => $service->getConfig()->toArray()
     ];
 

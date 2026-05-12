@@ -18,7 +18,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface {
         $response = $this->httpService->invoke('GET');
 
         if($response->failed()) {
-            throw new \RuntimeException("Failed to retrieve products: " . $response->getHttpCode());
+            throw new PrestashopConnectorException($this->httpService);
         }
 
         return count($response->toArray()['products']);
@@ -44,7 +44,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface {
         $response = $this->httpService->invoke('GET');
 
         if($response->failed()) {
-            throw new \RuntimeException("Failed to retrieve products: " . $response->getHttpCode());
+            throw new PrestashopConnectorException($this->httpService);
         }
 
         $collection = new Collection();
@@ -91,7 +91,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface {
     public function getProductDetail(string $slug): ?ProductEntity {
 
         //first we nee to get the product id from the slug, then we can get the product detail with the id
-        $productId = ProductLangTable::where('link_rewrite', $slug)->value('id_product');
+        $productId = $this->findProductIdBySlug($slug);
         if (!$productId) {
             return null; // Product not found
         }
@@ -128,5 +128,22 @@ class Product extends PrestashopService implements PrestashopServiceInterface {
         $filtersData = $response->toArray()['filters'];
         return FilterEntity::create($filtersData, $this);
 
+    }
+
+    public function findProductIdBySlug(string $slug): ?int
+    {
+        $this->httpService->setUrl("/catalog?by_slug={$slug}");
+        $response = $this->httpService->invoke('GET');
+
+        if($response->failed()) {
+            throw new PrestashopConnectorException($this->httpService);
+        }
+
+        $products = $response->toArray()['data'] ?? [];
+        if (empty($products)) {
+            return null; // No product found with the given slug
+        }
+
+        return (int) $products['id_product'];
     }
 }

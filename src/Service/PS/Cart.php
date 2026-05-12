@@ -62,7 +62,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
 
     public function newCart(array $cartOptions): HttpServiceInterface
     {
-        $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
+        $this->httpService->setUrl("/carts?ok=1");
 
         //create a payload
         $products = [
@@ -129,9 +129,11 @@ class Cart extends Carrier implements PrestashopServiceInterface {
      * @param string $customerId
      * @return HttpServiceInterface
      */
-    public function updateCart(array $product, string $customerId, bool $isGuest = false): HttpServiceInterface
+    public function updateCart(array $product, string $cartId, string $customerId, bool $isGuest = false): HttpServiceInterface
     {
-        $customerId = $this->decodeId($customerId, 'customer');
+        $type = $isGuest ? 'guest' : 'customer';
+        $customerId = $this->decodeId($customerId, $type);
+        $cartId = $this->decodeId($cartId, 'cart');
 
         $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
 
@@ -144,11 +146,13 @@ class Cart extends Carrier implements PrestashopServiceInterface {
 
         if($isGuest) {
             $payload = CartEntity::create([
+                'id' => $cartId,
                 'products' => [$products],
                 'id_guest' => $customerId
             ], $this);
         } else {
             $payload = CartEntity::create([
+                'id' => $cartId,
                 'products' => [$products],
                 'id_customer' => $customerId
             ], $this);

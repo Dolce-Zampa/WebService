@@ -55,15 +55,16 @@ class CartController extends Controller {
     public function addToCart(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
-        $customerId = $argv['customerId'];
-        $isGuest = $request->getQueryParams()['is_guest'] ?? false;
+        $cartId = $argv['cartId'];
+        $isGuest = (bool) $payload['isGuest'] ?? false;
+        $customerId = $payload['customerId'];
 
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
         }
 
         //find customerId from cookie session
-        $cart = $this->cartService->updateCart($payload, $customerId, $isGuest);
+        $cart = $this->cartService->updateCart($payload, $cartId, $customerId, $isGuest);
         
         if($cart->failed()) {
             return response([
@@ -92,10 +93,7 @@ class CartController extends Controller {
         }
 
         $cartEntity = CartEntity::create($cart->toArray()['data']['cart'], $this->cartService);
-        return response([
-            'success' => true,
-            'data' => ['cart' => $cartEntity->toArray()]
-        ], 201);
+        return response($cartEntity->toArray(), 201);
     }
 
     public function getFeaturedCoupons(Request $request, Response $response, array $argv): Response

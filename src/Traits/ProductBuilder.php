@@ -3,13 +3,12 @@ declare(strict_types=1);
 namespace PS\Webservice\Traits;
 
 use PS\Webservice\Domain\Enums\ImageTail;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 
 trait ProductBuilder
 {
+    use UseCache;
 
     /**
      * Builds association links for the product entity using image service and image tails.
@@ -42,8 +41,8 @@ trait ProductBuilder
                 }
 
                 // use caching for image retrieval to optimize performance, as images are often requested multiple times
-                $cacheKey = sha1("product_{$this->getId()}_image_{$image['id']}_tail_{$tail->value}");
-                $cachedImage = Cache::get($cacheKey);
+                $cacheKey = "product_{$this->getId()}_image_{$image['id']}_tail_{$tail->value}";
+                $cachedImage = $this->getFromCache($cacheKey);
                 if ($cachedImage) {
                     $this->data['associations']['images'][$index][$tail->value] = $cachedImage;
                     continue; // Skip retrieval if cached image is available
@@ -56,7 +55,7 @@ trait ProductBuilder
                     continue; // Skip this tail if the image retrieval fails, but keep processing other tails
                 }
 
-                Cache::put($cacheKey, $image->toArray(), Carbon::now()->addHours(24)); // Cache the image data for 24 hours
+                $this->setToCache($cacheKey, $image->toArray(), (1440 * 364)); // Cache the image data for 24 hours
                 $this->data['associations']['images'][$index][$tail->value] = $image->toArray();
             }
         }
@@ -75,10 +74,24 @@ trait ProductBuilder
      */
     protected function buildOptionValues(): void
     {
-        foreach ($this->getProductOptionValues() as $i => $value) {
-            $optionValue = $this->service->getSpecificationsOption(id: $value['id']);
-            $this->data['associations'][] = $optionValue->toArray();
+        $cacheKey = "product_{$this->getId()}_option_values";
+        $cachedOptions = $this->getFromCache($cacheKey);
+        if ($cachedOptions !== null) {
+            $this->data['associations'] = $cachedOptions;
+            return; // Use cached option values if available
         }
+
+        foreach ($this->getProductOptionValues() as $i => $value) {
+            try {
+                $optionValue = $this->service->getSpecificationsOption(id: $value['id']);
+                $this->data['associations'][] = $optionValue->toArray();
+            } catch (\Exception $e) {
+                Log::error("Failed to retrieve option value with id {$value['id']} for product {$this->getId()}: " . $e->getMessage());
+                continue; // Skip this option value but continue processing others
+            }
+        }
+
+        $this->setToCache($cacheKey, $this->data['associations'], (1440 * 364)); // Cache the full option values for 1 year
 
         unset($this->data['associations']['product_option_values']); // Remove the id-only entry to avoid confusion
     }

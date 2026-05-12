@@ -56,7 +56,7 @@ class CachingMiddleware implements MiddlewareInterface
         $response = $handler->handle($request);
 
         // Cache only successful responses
-        if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+        if ($response->getStatusCode() >= 200 && $response->getStatusCode() <= 300) {
             $body = $response->getBody()->__toString();
             Cache::put($cacheKey, $body, $this->ttl);
             

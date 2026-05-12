@@ -105,6 +105,12 @@ class webserviceapi extends Module
                 'controller' => 'coupon',
                 'params' => $params,
             ),
+            'module-webserviceapi-product' => array(
+                'rule' => 'api/catalog',
+                'keywords' => array(),
+                'controller' => 'product',
+                'params' => $params,
+            ),
         );
     }
 

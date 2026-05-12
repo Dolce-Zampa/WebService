@@ -44,21 +44,21 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
                 throw new MlabFactoryApiException('Cart does not belong to the customer.', 422, array('id_cart' => (int) $cart->id));
             }
             if ($idGuest > 0 && (int) $cart->id_guest !== $idGuest) {
-                throw new MlabFactoryApiException('Cart does not belong to the guest.', 422, array('id_cart' => (int) $cart->id));
+                throw new MlabFactoryApiException('Cart does not belong to the guest.', 422, array('id_cart' => (int) $cart->id, 'id_guest' => (int) $idGuest, 'correct_id_guest' => (int) $cart->id_guest));
             }
         }
 
         $deliveryAddress = null;
         if ($customer && !empty($payload['delivery_address']) && is_array($payload['delivery_address'])) {
             $deliveryAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['delivery_address'], 'API delivery');
-        } elseif ($customer && !empty($payload['id_address_delivery'])) {
+        } elseif ($customer && !isset($payload['id_address_delivery'])) {
             $deliveryAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, array('id_address' => (int) $payload['id_address_delivery']), 'API delivery');
         }
 
         $invoiceAddress = null;
         if ($customer && !empty($payload['invoice_address']) && is_array($payload['invoice_address'])) {
             $invoiceAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['invoice_address'], 'API invoice');
-        } elseif ($customer && !empty($payload['id_address_invoice'])) {
+        } elseif ($customer && !isset($payload['id_address_invoice'])) {
             $invoiceAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, array('id_address' => (int) $payload['id_address_invoice']), 'API invoice');
         }
 
@@ -84,13 +84,13 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             throw new MlabFactoryApiException('Unable to update cart.', 500);
         }
 
-        if (MlabFactoryApiHelper::toBool(MlabFactoryApiHelper::getValue($payload, 'replace_products', true), true)) {
+        if (MlabFactoryApiHelper::toBool(MlabFactoryApiHelper::getValue($payload, 'replace_products', false), true)) {
             foreach ($cart->getProducts() as $existingProduct) {
                 $cart->deleteProduct(
                     (int) $existingProduct['id_product'],
                     (int) $existingProduct['id_product_attribute'],
                     (int) $existingProduct['id_customization'],
-                    (int) $existingProduct['id_address_delivery']
+                    (int) isset($existingProduct['id_address_delivery']) ? $existingProduct['id_address_delivery'] : 0
                 );
             }
         }

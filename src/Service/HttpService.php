@@ -8,15 +8,17 @@ use PS\Webservice\Domain\Object\WebserviceConfig;
 use PS\Webservice\Service\HttpServiceInterface;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Traits\UseCache;
 use Slim\Http\Interfaces\ResponseInterface;
 
 class HttpService implements HttpServiceInterface
 {
-
     private WebserviceConfig $config;
     private string $api;
     private \GuzzleHttp\Psr7\Response $response;
     private int $httpCode;
+
+    private string $body;
 
     public function __construct(WebserviceConfig $config)
     {
@@ -25,7 +27,7 @@ class HttpService implements HttpServiceInterface
 
     public function setUrl(string $url): void
     {
-        $this->api = $this->config->api($url);
+        $this->api = $this->config->api($url . "&ws_key={$this->config->apikey}");
     }
 
     /**
@@ -60,12 +62,14 @@ class HttpService implements HttpServiceInterface
             $response = $stream->request($method, $this->api, $options);
 
             $this->response = $response;
-            $this->httpCode = $response->getStatusCode();            
+            $this->body = $response->getBody()->getContents();
+            $this->httpCode = $response->getStatusCode();   
 
         } catch (\GuzzleHttp\Exception\RequestException $e) {
             // Gestisci l'errore (log, alert, ecc.)
             $this->httpCode = $e->hasResponse() ? $e->getResponse()->getStatusCode() : 500;
             $this->response = $e->getResponse();
+            $this->body = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : '';
         }
 
         return $this;
@@ -88,7 +92,7 @@ class HttpService implements HttpServiceInterface
      */
     public function getBody(): string
     {
-        return $this->response->getBody()->getContents();
+        return $this->body;
     }
 
     public function getHttpCode(): int

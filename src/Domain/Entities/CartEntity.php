@@ -84,6 +84,11 @@ class CartEntity implements ObjectInterface
 
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
 	{
-		return new \PS\Webservice\Domain\Object\PayloadServiceData($this->data, ['id' => 'cart']);
+		$dataPayLoad = $this->data;
+		$dataPayLoad['id_cart'] = $this->data['id'];
+		$dataPayLoad['replace_products'] = false; //FIXME: on prestashop web service module /controllers/front/cart.php:59 this is set to true by default, but it cause issue when updating cart with new products, because it delete all existing products before adding new ones, so we set it to false by default and let the caller decide if they want to replace products or not
+		$dataPayLoad['id_address_delivery'] = $this->data['id_address_delivery'] ?? null; // Is not required at these point FIXME: on prestashop web service module /controllers/front/cart.php:59
+		$dataPayLoad['id_address_invoice'] = $this->data['id_address_invoice'] ?? null; // Is not required at these point FIXME: on prestashop web service module /controllers/front/cart.php:60
+		return new \PS\Webservice\Domain\Object\PayloadServiceData($dataPayLoad, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
 	}
 }
