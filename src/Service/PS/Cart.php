@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
+use Exception;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\CouponEntity;
 use PS\Webservice\Service\HttpServiceInterface;
@@ -79,6 +80,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             ]);
         } catch (\Exception $e) {
             Log::error("Exception occurred while retrieving cart for customer {$payload->getId()}" . $e->getMessage());
+            throw new PrestashopConnectorException($this->httpService, $e);
         }
 
         if($response->failed()) {

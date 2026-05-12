@@ -80,7 +80,10 @@ class ProductController extends Controller
 
         // build filers
         $response['filters'] = $this->productService->buildFiltersProducts($categoryId);
-        return response($response);
+        return response([
+            'products' => $response['data'],
+            'pagination' => $response['pagination'],
+        ]);
     }
 
     public function productDetail(Request $request, Response $response, array $args)
@@ -101,10 +104,7 @@ class ProductController extends Controller
             ], 404);
         }
 
-        return response([
-            'success' => true,
-            'data' => $productDetail->toArray()
-        ]);
+        return response($productDetail->toArray());
     }
 
     public function productsRelated(Request $request, Response $response, array $args)

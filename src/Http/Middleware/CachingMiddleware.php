@@ -39,7 +39,7 @@ class CachingMiddleware implements MiddlewareInterface
             if (is_string($cachedData)) {
                 $decoded = json_decode($cachedData, true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                    $response = response($decoded);
+                    $response = response($decoded['data']);
                     return $response->withHeader('X-Cache', 'HIT')
                                    ->withHeader('X-Cache-Key', substr($cacheKey, 0, 16) . '...');
                 }

@@ -19,18 +19,14 @@ if(!function_exists('response')) {
             $dataResponse = $dataResponse->toArray();
         }
 
-        $jsonData = json_encode($dataResponse);
-        if ($jsonData === false) {
-            $errorResponse = new \Slim\Psr7\Response();
-            $errorResponse->getBody()->write('Errore nella codifica JSON dei dati');
-            return $errorResponse->withStatus(500);
-        }
+        $dataResponse = [
+            "success" => $statusCode >= 200 && $statusCode < 300,
+            "data" => $dataResponse
+        ];
+
         
         $response->getBody()->write(
-            json_encode([
-            "success" => $statusCode >= 200 && $statusCode < 300,
-            "data" => $jsonData
-        ],true)
+            json_encode($dataResponse)
         );
 
         foreach ($headers as $key => $value) {

@@ -70,7 +70,6 @@ trait PaginationTrait
         array $additionalData = []
     ): array {
         return array_merge([
-            'success' => true,
             'data' => $data,
             'pagination' => $this->buildPaginationMeta($currentPage, $perPage, $totalItems)
         ], $additionalData);

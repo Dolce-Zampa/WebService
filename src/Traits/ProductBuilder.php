@@ -103,7 +103,7 @@ trait ProductBuilder
                 $combination = $this->service->getSpecificationsCombination((int) $combination['id']);
                 $this->data['associations']['combinations'][$i] = $combination->toArray();
             }
-        }
+        }   
 
     }
 

@@ -51,7 +51,7 @@ class CartRuleEntity implements ObjectInterface
     public function normalizeData(): void
     {
         foreach ($this->data as $key => $value) {
-                $this->data['rule'][] = new Rule($key);
+                $this->data[$key] = (new Rule($value['rule']))->toArray();
         }
     }
 
