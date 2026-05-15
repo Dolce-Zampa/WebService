@@ -12,12 +12,12 @@ class Customer extends PrestashopService implements PrestashopServiceInterface
 {
     public function register(CustomerEntity $customer): HttpServiceInterface
     {
-        return $this->post('/register', $customer, 'register', $customer->toArray()['customer']['email'] ?? null);
+        return $this->post('/register?noc_cache=1', $customer, 'register', $customer->toArray()['customer']['email'] ?? null);
     }
 
     public function createCustomer(CustomerEntity $customer): HttpServiceInterface
     {
-        return $this->post('/customers', $customer, 'create', $customer->toArray()['customer']['email'] ?? null);
+        return $this->post('/customers?noc_cache=1', $customer, 'create', $customer->toArray()['customer']['email'] ?? null);
     }
 
     /**
@@ -25,7 +25,7 @@ class Customer extends PrestashopService implements PrestashopServiceInterface
      */
     public function login(array $credentials): HttpServiceInterface
     {
-        return $this->post('/login', $credentials, 'login', $credentials['email'] ?? null);
+        return $this->post('/login?noc_cache=1', $credentials, 'login', $credentials['email'] ?? null);
     }
 
     /**
@@ -33,7 +33,7 @@ class Customer extends PrestashopService implements PrestashopServiceInterface
      */
     public function contact(array $payload): HttpServiceInterface
     {
-        return $this->post('/contact', $payload, 'send contact request', $payload['email'] ?? null);
+        return $this->post('/contact?noc_cache=1', $payload, 'send contact request', $payload['email'] ?? null);
     }
 
     /**
