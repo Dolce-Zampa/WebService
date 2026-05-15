@@ -3,9 +3,7 @@ version: '2.2'
 services:
     bemodule:
       container_name: dolcezampa_webservice
-      image: mlabfactory/php8-apache:v1.4.2-xdebug
-      volumes:
-        - ./:/var/www/workdir
+      image: ghcr.io/dolce-zampa/webservice:v1-alpha
       networks:
         - dolcezampa
       restart: unless-stopped

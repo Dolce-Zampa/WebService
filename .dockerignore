@@ -1,5 +1,4 @@
 *.log
-*.json
 resources/*
 docs/*
 Test/*

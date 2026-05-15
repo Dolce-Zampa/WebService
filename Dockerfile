@@ -1,4 +1,4 @@
-FROM mlabfactory/php8-apache:v1.4.2
+FROM mlabfactory/php8-apache:v1.4.1
 
 # Imposta working directory (verifica sia quella corretta nell'immagine)
 WORKDIR /var/www/html
