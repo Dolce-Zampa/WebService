@@ -27,23 +27,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-  webservice:
-    container_name: dolcezampa_webservice
-    image: ghcr.io/dolce-zampa/webservice:v1-alpha
-    networks:
-      dolcezampa_default:
-        aliases:
-          - demo.dolcezampa.com
-    restart: unless-stopped
-    ports:
-      - "8787:80"
-  
-  cache:
-    image: redis:alpine
-    container_name: dolcezampa_rediscache
-    restart: unless-stopped
-    networks:
-      - dolcezampa_default
 
 networks:
   dolcezampa_default:

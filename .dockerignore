@@ -1,6 +1,6 @@
-*.log
 resources/*
-docs/*
+storage/logs/*
+docs/*  
 Test/*
 php/*
 docker-compose.*
