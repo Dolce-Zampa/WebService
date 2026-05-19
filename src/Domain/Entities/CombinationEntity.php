@@ -86,7 +86,7 @@ class CombinationEntity implements ObjectInterface
 	public function normalizeData(): void
 	{
         $this->buildOptionValues();
-        $this->buildImageLink([ImageTail::ORIGINAL]);
+        // $this->buildImageLink([ImageTail::ORIGINAL]);
 	}
 
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
