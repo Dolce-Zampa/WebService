@@ -61,7 +61,7 @@ class Order extends Cart implements PrestashopServiceInterface {
             'id_customer' => $this->decodeId($customerId, 'customer'),
         ]);
 
-        $this->httpService->setUrl("/api/orders?{$queryString}");
+        $this->httpService->setUrl("/orders?{$queryString}");
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -78,7 +78,7 @@ class Order extends Cart implements PrestashopServiceInterface {
         $queryString = http_build_query([
             'id_order' => $this->decodeId($orderId, 'order'),
         ]);
-        $this->httpService->setUrl("/api/orders?{$queryString}");
+        $this->httpService->setUrl("/orders?{$queryString}");
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -92,7 +92,7 @@ class Order extends Cart implements PrestashopServiceInterface {
 
     public function newOrder(CartEntity $cart): CartEntity
     {
-        $this->httpService->setUrl("/api/orders");
+        $this->httpService->setUrl("/orders");
 
         try {
             $response = $this->httpService->invoke('POST', $cart->generatePayload());
