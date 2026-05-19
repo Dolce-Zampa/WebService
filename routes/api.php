@@ -55,3 +55,6 @@ $app->get('/api/search', PS\Webservice\Http\Controller\ProductController::class 
 /** CMS */
 $app->get('/api/cms', PS\Webservice\Http\Controller\CmsController::class . ':cmsList');
 $app->get('/api/cms/{id}', PS\Webservice\Http\Controller\CmsController::class . ':cmsDetail');
+
+/** tutte le url le mandiamo su prestashop */
+$app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');

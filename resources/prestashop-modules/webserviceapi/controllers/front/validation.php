@@ -22,22 +22,22 @@ class webserviceapivalidationModuleFrontController extends ModuleFrontController
 
         $orderId = (int) Order::getOrderByCartId((int) $cart->id);
         if ($orderId <= 0) {
-            // $orderStateId = (int) $this->module->getDefaultOrderStateId();
-            // if ($orderStateId <= 0) {
-            //     Tools::redirect('index.php?controller=order&step=1');
-            // }
+            $orderStateId = (int) $this->module->getDefaultOrderStateId();
+            if ($orderStateId <= 0) {
+                Tools::redirect('index.php?controller=order&step=1');
+            }
 
-            // $this->module->validateOrder(
-            //     (int) $cart->id,
-            //     $orderStateId,
-            //     (float) $cart->getOrderTotal(true, Cart::BOTH),
-            //     $this->module->displayName,
-            //     null,
-            //     array(),
-            //     (int) $cart->id_currency,
-            //     false,
-            //     $customer->secure_key
-            // );
+            $this->module->validateOrder(
+                (int) $cart->id,
+                $orderStateId,
+                (float) $cart->getOrderTotal(true, Cart::BOTH),
+                $this->module->displayName,
+                null,
+                array(),
+                (int) $cart->id_currency,
+                false,
+                $customer->secure_key
+            );
 
             $orderId = (int) $this->module->currentOrder;
         }

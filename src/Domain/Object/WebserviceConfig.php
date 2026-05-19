@@ -36,7 +36,7 @@ final class WebserviceConfig implements ObjectInterface {
     {
         $this->apikey = $apiKey;
         $this->base_uri = $domain;
-        $this->api = 'https://' . $apiKey . '@' . $domain . '/api';
+        $this->api = 'https://' . $apiKey . '@' . $domain . '/psapi';
         $this->header = array_merge($this->header, $headers);
     }
 

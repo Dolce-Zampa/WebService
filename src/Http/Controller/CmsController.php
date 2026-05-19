@@ -30,4 +30,15 @@ class CmsController extends Controller
 
         return response($cms->toArray());
     }
+
+    public function redirectToPrestashop(Request $request, Response $response, array $args): Response
+    {
+        $uri = $request->getUri()->getPath();
+        $queryString = $request->getUri()->getQuery();
+        $fullUrl = $uri . ($queryString ? '?' . $queryString : '');
+        
+        // Costruisci l'URL completo per il reindirizzamento
+        $response = $this->cmsService->toPrestashop($fullUrl);
+        echo $response->getBody();die;
+    }
 }
