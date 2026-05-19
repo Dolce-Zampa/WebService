@@ -6,10 +6,14 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
     protected function handleRequest()
     {
         $method = strtoupper((string) $_SERVER['REQUEST_METHOD']);
-        $this->assertRequestMethod(array('GET', 'POST', 'PUT'));
+        $this->assertRequestMethod(array('GET', 'POST', 'PUT', 'DELETE'));
 
         if ($method === 'GET') {
             return $this->handleGetRequest();
+        }
+
+        if ($method === 'DELETE') {
+            return $this->handleDeleteRequest();
         }
 
         return $this->handleWriteRequest();
@@ -131,6 +135,69 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
         );
     }
 
+    protected function handleDeleteRequest()
+    {
+        $payload = $this->getJsonPayload();
+
+        $idCart = (int) MlabFactoryApiHelper::getValue($payload, 'id_cart', 0);
+        $idCustomer = (int) MlabFactoryApiHelper::getValue($payload, 'id_customer', 0);
+
+        if ($idCart <= 0) {
+            throw new MlabFactoryApiException('You must provide id_cart.', 422);
+        }
+
+        if ($idCustomer <= 0) {
+            throw new MlabFactoryApiException('You must provide id_customer.', 422);
+        }
+
+        // Carica il carrello
+        $cart = new Cart($idCart);
+        if (!Validate::isLoadedObject($cart)) {
+            throw new MlabFactoryApiException('Cart not found.', 404, array('id_cart' => $idCart));
+        }
+
+        // Verifica che il carrello appartenga al customer
+        if ((int) $cart->id_customer !== $idCustomer) {
+            throw new MlabFactoryApiException(
+                'Cart does not belong to the customer.',
+                422,
+                array('id_cart' => $idCart, 'id_customer' => $idCustomer)
+            );
+        }
+
+        // Blocca se esiste già un ordine collegato
+        $linkedOrder = (int) Db::getInstance()->getValue(
+            'SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders`
+         WHERE `id_cart` = ' . $idCart . ' LIMIT 1'
+        );
+        if ($linkedOrder > 0) {
+            throw new MlabFactoryApiException(
+                'Cart is linked to an existing order and cannot be deleted.',
+                422,
+                array('id_cart' => $idCart, 'id_order' => $linkedOrder)
+            );
+        }
+
+        // Rimuovi i prodotti prima di eliminare il carrello
+        foreach ($cart->getProducts() as $product) {
+            $cart->deleteProduct(
+                (int) $product['id_product'],
+                (int) $product['id_product_attribute'],
+                (int) $product['id_customization'],
+                (int) (isset($product['id_address_delivery']) ? $product['id_address_delivery'] : 0)
+            );
+        }
+
+        if (!$cart->delete()) {
+            throw new MlabFactoryApiException('Unable to delete cart.', 500, array('id_cart' => $idCart));
+        }
+
+        return array(
+            'message' => 'Cart deleted successfully.',
+            'id_cart' => $idCart,
+        );
+    }
+
     protected function handleGetRequest()
     {
         $idCustomer = (int) Tools::getValue('id_customer');
@@ -210,7 +277,7 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
         $guest->id_web_browser = 0;
         $guest->accept_language = '';
         $guest->mobile_theme = false;
-        
+
         if (!$guest->add()) {
             throw new MlabFactoryApiException('Unable to create guest.', 500);
         }

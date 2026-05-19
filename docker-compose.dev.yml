@@ -1,7 +1,9 @@
 services:
   webservice:
     container_name: dolcezampa_webservice
-    image: ghcr.io/dolce-zampa/webservice:v1-alpha
+    image: mlabfactory/php8-apache:v1.4.1-xdebug
+    volumes:
+      - ./:/var/www/workdir
     networks:
       dolcezampa_default:
         aliases:
@@ -19,6 +21,6 @@ services:
 
 networks:
   dolcezampa_default:
-    external: true
+    external: false
     name: dolcezampa_default
     

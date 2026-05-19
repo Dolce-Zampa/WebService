@@ -147,6 +147,9 @@ Redirect 301 /content/pettorine-in-pelle-guida-alla-scelta-migliore https://www.
 Redirect 301 /content/pettorine-in-biothane-per-cani-di-piccola-e-media-taglia-cosa-le-rende-cosi-speciali https://www.dolcezampa.com/blog/2025/12/01/pettorine-in-biothane-per-cani/
 Redirect 301 /category/abbigliamento https://www.dolcezampa.com/category/abbigliamento-per-cani
 Redirect 301 /category/borse https://www.dolcezampa.com/category/borse-per-cani
+Redirect 301 /category/guinzagli-pettorine https://www.dolcezampa.com/category/pettorine-per-cani
+
+
 
 php_value upload_max_filesize 16M
 php_value post_max_size 16M

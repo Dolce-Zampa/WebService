@@ -114,7 +114,7 @@ class ProductController extends Controller
         string $sort = 'id_DESC',
         Filter $filter
     ): array {
-        if ($category !== null) {
+        if ($manufacturer === null) {
             return [
                 $this->productService->getProductByCategory($category, $paginationOptions, $sort, $filter),
                 ['filter[id_category_default]' => "[$category]"],
@@ -122,8 +122,8 @@ class ProductController extends Controller
         }
 
         return [
-            $this->productService->getProductByManufacture($manufacturer, $paginationOptions, $sort, $filter),
-            ['filter[id_manufacturer]' => "[$manufacturer]"],
+            $this->productService->getProductByManufacture($manufacturer, $category, $paginationOptions, $sort, $filter),
+            ['filter[id_manufacturer]' => "[$manufacturer]"]
         ];
     }
 

@@ -55,7 +55,7 @@ class CarrierEntity implements ObjectInterface
             $this->data['delay'] = $this->extractLanguageValue($this->data['delay']);
         }
 
-        $this->data['price_with_tax'] = '6.00'; //FIXME: this is a temporary value, as the price is not provided by the API response. You may want to calculate it based on other data or fetch it from a different endpoint.
+        $this->data['price_with_tax'] = '6.10'; //FIXME: this is a temporary value, as the price is not provided by the API response. You may want to calculate it based on other data or fetch it from a different endpoint.
     }
 
     private function extractLanguageValue(array $languageArray): string

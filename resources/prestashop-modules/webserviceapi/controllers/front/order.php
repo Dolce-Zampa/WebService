@@ -96,17 +96,17 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             );
         }
 
-        // $paymentModule->validateOrder(
-        //     (int) $cart->id,
-        //     $orderStateId,
-        //     $amountPaid,
-        //     $paymentLabel,
-        //     null,
-        //     array(),
-        //     (int) $cart->id_currency,
-        //     false,
-        //     $customer->secure_key
-        // );
+        $paymentModule->validateOrder(
+            (int) $cart->id,
+            $orderStateId,
+            $amountPaid,
+            $paymentLabel,
+            null,
+            array(),
+            (int) $cart->id_currency,
+            false,
+            $customer->secure_key
+        );
 
         $orderId = (int) $paymentModule->currentOrder;
         $order = new Order($orderId);
