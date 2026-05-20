@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CouponEntity;
 use PS\Webservice\Domain\Models\CouponStorage;
 use PS\Webservice\Facades\JsonDataStorage;
@@ -61,6 +62,13 @@ class ConfigController extends CartController
         ];
 
         $this->removeFromCache($params['key']);
+
+        // invoke key for generate the cache with the new value
+        if($params['key']) {
+            Log::debug("Clearing cache for key: " . $params['key']);
+            $client = new \GuzzleHttp\Client();
+            $client->get($params['key']);
+        }
 
         return response(['message' => 'Cache cleared successfully'], 200);
     }
