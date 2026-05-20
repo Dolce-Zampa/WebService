@@ -63,7 +63,8 @@ class ConfigController extends CartController
                 "key" => $value['key'] ?? null
             ];
 
-            $this->removeFromCache($params['key']);
+            $cacheLey = 'api_cache:' . sha1($params['key']);
+            $this->removeFromCache($cacheLey);
 
             // invoke key for generate the cache with the new value
             if ($params['key']) {
