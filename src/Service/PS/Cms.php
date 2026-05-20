@@ -7,7 +7,7 @@ class Cms extends PrestashopService implements PrestashopServiceInterface {
 
 public function cmsList(array $params = []): \PS\Webservice\Service\HttpServiceInterface
     {
-        $this->httpService->setUrl('/content_management_system?display=[id,meta_title]');
+        $this->httpService->setUrl('/content_management_system?display=[id,meta_title,link_rewrite]');
 
         return $this->httpService->invoke('GET');
     }

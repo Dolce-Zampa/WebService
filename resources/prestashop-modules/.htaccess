@@ -149,8 +149,6 @@ Redirect 301 /category/abbigliamento https://www.dolcezampa.com/category/abbigli
 Redirect 301 /category/borse https://www.dolcezampa.com/category/borse-per-cani
 Redirect 301 /category/guinzagli-pettorine https://www.dolcezampa.com/category/pettorine-per-cani
 
-
-
 php_value upload_max_filesize 16M
 php_value post_max_size 16M
 php_value memory_limit 128M
