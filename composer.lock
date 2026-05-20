@@ -2335,16 +2335,16 @@
         },
         {
             "name": "mdf/json-database-storage",
-            "version": "v1.0.1",
+            "version": "v1.0.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/marcodefelice/JsonDatabase-storage.git",
-                "reference": "9b319b704ea82e4be9e8537485a0871c5f6cdc84"
+                "reference": "7a0622b05282a20dfd8a78c7694dd78e665f9f33"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/marcodefelice/JsonDatabase-storage/zipball/9b319b704ea82e4be9e8537485a0871c5f6cdc84",
-                "reference": "9b319b704ea82e4be9e8537485a0871c5f6cdc84",
+                "url": "https://api.github.com/repos/marcodefelice/JsonDatabase-storage/zipball/7a0622b05282a20dfd8a78c7694dd78e665f9f33",
+                "reference": "7a0622b05282a20dfd8a78c7694dd78e665f9f33",
                 "shasum": ""
             },
             "require": {
@@ -2366,10 +2366,10 @@
             ],
             "description": "Json database storage with PHP",
             "support": {
-                "source": "https://github.com/marcodefelice/JsonDatabase-storage/tree/v1.0.1",
+                "source": "https://github.com/marcodefelice/JsonDatabase-storage/tree/v1.0.2",
                 "issues": "https://github.com/marcodefelice/JsonDatabase-storage/issues"
             },
-            "time": "2026-05-18T15:11:28+00:00"
+            "time": "2026-05-20T13:17:16+00:00"
         },
         {
             "name": "monolog/monolog",
