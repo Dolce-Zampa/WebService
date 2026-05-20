@@ -116,4 +116,14 @@ class OrderSession implements ObjectInterface
         return new PayloadServiceData($this->data, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
     }
 
+    public function total(): float
+    {
+        $calculatedTotal = 0;
+        foreach ($this->data['line_items'] as $item) {
+            $calculatedTotal += $item['price_data']['unit_amount'] * $item['quantity'];
+        }
+
+        return $calculatedTotal / 100; // Convert back to euros
+
+    }
 }

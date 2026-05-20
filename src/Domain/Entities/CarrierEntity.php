@@ -54,6 +54,7 @@ class CarrierEntity implements ObjectInterface
         if (isset($this->data['delay']) && is_array($this->data['delay'])) {
             $this->data['delay'] = $this->extractLanguageValue($this->data['delay']);
         }
+        
 
         $this->data['price_with_tax'] = "6.10"; //FIXME: this is a temporary value, as the price is not provided by the API response. You may want to calculate it based on other data or fetch it from a different endpoint.
     }

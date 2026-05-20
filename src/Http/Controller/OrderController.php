@@ -5,12 +5,14 @@ namespace PS\Webservice\Http\Controller;
 
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
+use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\Order;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
-class OrderController extends CartController {
+class OrderController extends CartController
+{
     private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
     private Order $orderService;
 
@@ -23,8 +25,8 @@ class OrderController extends CartController {
     {
         $customerId = $argv['customerId'];
         $cartList = $this->orderService->getOrderListFromUserId($customerId);
-        
-        if(is_null($cartList)) {
+
+        if (is_null($cartList)) {
             return response([], 404);
         }
 
@@ -36,15 +38,15 @@ class OrderController extends CartController {
     {
         $orderId = $argv['orderId'];
         $cartList = $this->orderService->orderDetails($orderId);
-        
-        if(is_null($cartList)) {
+
+        if (is_null($cartList)) {
             return response([], 404);
         }
 
         return response($cartList);
 
     }
-    
+
     public function confirmOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
@@ -69,7 +71,7 @@ class OrderController extends CartController {
         }
 
         try {
-            $order = $this->orderService->getOrderByCartId( $cartId, $customerId, $guestId);
+            $order = $this->orderService->getOrderByCartId($cartId, $customerId, $guestId);
             if ($order === null) {
                 return response([
                     'success' => false,
@@ -104,6 +106,13 @@ class OrderController extends CartController {
         }
     }
 
+    private function currentCartRule(): array
+    {
+        $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
+        $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->orderService);
+        return $cartRules->toArray() ?? [];
+    }
+
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
@@ -115,14 +124,16 @@ class OrderController extends CartController {
         // Ownership check: require customer or guest identification — never trust anonymous cart access
         $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
         $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
-        $cartRules = CartRuleEntity::create($payload['cart_rules'], $this->orderService) ?? [];
+
+        $currentCartRule = $this->currentCartRule();
+        $cartRules = CartRuleEntity::create(array_merge($payload['cart_rules'], $currentCartRule), $this->orderService) ?? [];
 
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required'], 403);
         }
-        
+
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
-        if(is_null($cart)) {
+        if (is_null($cart)) {
             return response([], 404);
         }
 
@@ -132,12 +143,12 @@ class OrderController extends CartController {
 
             //recuperiamo il corriere scelto dal cliente per aggiungerlo alla sessione di pagamento
             $carrierId = $payload['id_carrier'] ?? null;
-            if(is_null($carrierId)) {
+            if (is_null($carrierId)) {
                 throw new \InvalidArgumentException('Carrier ID is required for payment session');
             }
 
             $carrierDetails = $this->orderService->getCarrierDetail($carrierId);
-            if(is_null($carrierDetails)) {
+            if (is_null($carrierDetails)) {
                 throw new \InvalidArgumentException('Invalid carrier ID: ' . $carrierId);
             }
 
@@ -160,13 +171,7 @@ class OrderController extends CartController {
                 ], $this->orderService)
             ], $this->orderService);
 
-            $orderSession->addLineItem(
-                name: $carrierDetails->name,
-                quantity: 1,
-                price: (float) $carrierDetails->price_with_tax,
-                type: 'carrier'
-            );
-            
+
             // Server-side price validation: fetch each product price directly from the catalog.
             // Never use prices from the cart payload or any frontend-supplied value.
             foreach ($cart->toArray()['products'] ?? [] as $product) {
@@ -175,18 +180,30 @@ class OrderController extends CartController {
                 $serverPrice = $product['price_wt'];
                 $orderSession->addLineItem(
                     name: $product['name'] ?? "Product #{$productId}",
-                    quantity: (int)$product['quantity'],
+                    quantity: (int) $product['quantity'],
                     price: $serverPrice
                 );
             }
 
-            foreach($cartRules->toArray() as $cartRule) {
+            //check for free shipping cart rule
+            if ($this->checkForFreeShippingCartRule($cartRules, $orderSession) === false) {
+                $orderSession->addLineItem(
+                    name: $carrierDetails->name,
+                    quantity: 1,
+                    price: (float) $carrierDetails->price_with_tax,
+                    type: 'carrier'
+                );
+            }
+
+            foreach ($cartRules->toArray() as $cartRule) {
                 $rule = JsonDataStorage::coupon()->createQuery()->where('id', (string) $cartRule['id'])->fetchAll();
-                $orderSession->addCartRule(reset($rule));
+                if(!empty($rule)) {
+                    $orderSession->addCartRule($cartRule);
+                }
             }
 
             $checkoutUrl = $paymentService->createPaymentSession($orderSession);
-            
+
             return response([
                 'order' => $cart->toArray(),
                 'payment_url' => $checkoutUrl
@@ -202,6 +219,17 @@ class OrderController extends CartController {
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function checkForFreeShippingCartRule(CartRuleEntity $cartRules, OrderSession $totalToPay): bool
+    {
+        foreach ($cartRules->toArray() as $cartRule) {
+            if ($cartRule['rule']['rule'] == "free-shipping" && $cartRule['rule']['conditions']['minimum-spend'] <= $totalToPay->total()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function initiatePayment(Request $request, Response $response, array $argv): Response
@@ -249,9 +277,9 @@ class OrderController extends CartController {
                     price: $serverPrice
                 );
             }
-            
+
             $checkoutUrl = $paymentService->createPaymentSession($orderSession);
-            
+
             return response(['url' => $checkoutUrl], 200);
         } catch (\Exception $e) {
             return response(['error' => $e->getMessage()], 500);
