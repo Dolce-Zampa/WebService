@@ -71,8 +71,9 @@ class ConfigController extends CartController
                 'Authorization' => 'Basic ' . base64_encode(env('API_AUTH_TOKEN') . ':'),
                 'Accept' => 'application/json',
             ];
-            $client->setDefaultOption('headers', $headers);
-            $client->get(env('PS_BASE_URL') . $params['key']);
+            $client->get(env('PS_BASE_URL') . $params['key'], [
+                'headers' => $headers,
+            ]);
         }
 
         return response(['message' => 'Cache cleared successfully'], 200);
