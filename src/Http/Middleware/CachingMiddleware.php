@@ -41,6 +41,7 @@ class CachingMiddleware implements MiddlewareInterface
 
         // Try to get from cache
         if ($this->existsInCache($cacheKey) && $skipCache === false) {
+            Log::debug("Cache hit for key: " . $cacheKey);
             $cachedData = $this->getFromCache($cacheKey);
             
             if (is_string($cachedData)) {

@@ -24,6 +24,9 @@ RewriteRule ^api/cart_rules(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&mod
 RewriteRule ^api/catalog(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=product&ws_key=$1 [QSA,L]
 RewriteRule ^api/wishlists(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=wishlists&ws_key=$1 [QSA,L]
 RewriteRule ^api/contact(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=contact&ws_key=$1 [QSA,L]
+RewriteRule ^api/login(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=login&ws_key=$1 [QSA,L]
+RewriteRule ^api/register(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=register&ws_key=$1 [QSA,L]
+RewriteRule ^api/password-reset(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=passwordreset&ws_key=$1 [QSA,L]
 
 RewriteRule ^api(?:/(.*))?$ %{ENV:REWRITEBASE}webservice/dispatcher.php?url=$1 [QSA,L]
 RewriteRule ^upload/.+$ %{ENV:REWRITEBASE}index.php [QSA,L]

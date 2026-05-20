@@ -25,7 +25,7 @@ class Customer extends PrestashopService implements PrestashopServiceInterface
      */
     public function login(array $credentials): HttpServiceInterface
     {
-        return $this->post('/login?noc_cache=1', $credentials, 'login', $credentials['email'] ?? null);
+        return $this->post('/login?no_cache=1', $credentials, 'login', $credentials['email'] ?? null);
     }
 
     /**

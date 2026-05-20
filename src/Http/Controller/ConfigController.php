@@ -56,23 +56,27 @@ class ConfigController extends CartController
     public function clearCache(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
-        $params = [
-            "tags" => $payload['tags'] ?? null,
-            "key" => $payload['key'] ?? null
-        ];
 
-        $this->removeFromCache($params['key']);
+        foreach ($payload['cache'] as $key => $value) {
+            $params = [
+                "tags" => $value['tags'] ?? null,
+                "key" => $value['key'] ?? null
+            ];
 
-        // invoke key for generate the cache with the new value
-        if($params['key']) {
-            Log::debug("Clearing cache for key: " . $params['key']);
-            $client = new \GuzzleHttp\Client();
-            $client->request('GET', env('PS_BASE_URL') . $params['key'], [
-                'headers' => [
-                    'Authorization' => 'Bearer ' .env('API_AUTH_TOKEN'),
-                    'Accept' => 'application/json',
-                ],
-            ]);
+            $this->removeFromCache($params['key']);
+
+            // invoke key for generate the cache with the new value
+            if ($params['key']) {
+                Log::debug("Clearing cache for key: " . $params['key']);
+                $client = new \GuzzleHttp\Client();
+                $client->request('GET', env('PS_BASE_URL') . $params['key'], [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . env('API_AUTH_TOKEN'),
+                        'Accept' => 'application/json',
+                    ],
+                ]);
+            }
+
         }
 
         return response(['message' => 'Cache cleared successfully'], 200);
