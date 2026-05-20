@@ -60,12 +60,12 @@ $app->group('/api', function () use ($app) {
 
     /** Configuration service API */
     $app->post('/api/config/cart-rules', PS\Webservice\Http\Controller\ConfigController::class . ':makeCartRulesConfig');    
-    $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
-
 
 })
-->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware())
-->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware());
+->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware())
+->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+
+$app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
 
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');

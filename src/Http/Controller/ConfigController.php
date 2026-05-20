@@ -67,7 +67,7 @@ class ConfigController extends CartController
         if($params['key']) {
             Log::debug("Clearing cache for key: " . $params['key']);
             $client = new \GuzzleHttp\Client();
-            $client->get($params['key']);
+            $client->get(env('PS_BASE_URL') . $params['key']);
         }
 
         return response(['message' => 'Cache cleared successfully'], 200);
