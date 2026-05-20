@@ -22,16 +22,7 @@ class AuthenticationMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        // check if exist the auth header
-        // at the moment the token is a static token getting from env variable, in future we can implement a more complex authentication system
-        //FIXME: implement a more complex authentication system
-        $authHeader = $request->getHeaderLine('Authorization');
-        $token = str_replace('Bearer ', '', $authHeader);
-        $expectedToken = env('API_AUTH_TOKEN', 'secret-token');
-        if ($token !== $expectedToken) {
-            return response(['error' => 'Unauthorized'], 401);
-        }
-
+    
         return $handler->handle($request);
 
     }

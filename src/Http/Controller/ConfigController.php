@@ -67,12 +67,11 @@ class ConfigController extends CartController
         if($params['key']) {
             Log::debug("Clearing cache for key: " . $params['key']);
             $client = new \GuzzleHttp\Client();
-            $headers = [
-                'Authorization' => 'Basic ' . base64_encode(env('API_AUTH_TOKEN') . ':'),
-                'Accept' => 'application/json',
-            ];
-            $client->get(env('PS_BASE_URL') . $params['key'], [
-                'headers' => $headers,
+            $client->request('GET', env('PS_BASE_URL') . $params['key'], [
+                'headers' => [
+                    'Authorization' => 'Bearer ' .env('API_AUTH_TOKEN'),
+                    'Accept' => 'application/json',
+                ],
             ]);
         }
 

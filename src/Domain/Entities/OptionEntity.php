@@ -90,7 +90,7 @@ class OptionEntity implements ObjectInterface
 			$type = 'color';
 		}
 
-		if($this->data['id_attribute_group'] == 2) {
+		if($this->data['id_attribute_group'] == 9) {
 			$type = 'material';
 		}
 
