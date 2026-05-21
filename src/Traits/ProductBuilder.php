@@ -42,7 +42,7 @@ trait ProductBuilder
 
                 // use caching for image retrieval to optimize performance, as images are often requested multiple times
                 $cacheKey = "product_{$this->getId()}_image_{$image['id']}_tail_{$tail->value}";
-                $cachedImage = $this->getFromCache($cacheKey);
+                $cachedImage = $this->tags(['product-builder'])->getFromCache($cacheKey);
                 if ($cachedImage) {
                     $this->data['associations']['images'][$index][$tail->value] = $cachedImage;
                     continue; // Skip retrieval if cached image is available
@@ -55,7 +55,7 @@ trait ProductBuilder
                     continue; // Skip this tail if the image retrieval fails, but keep processing other tails
                 }
 
-                $this->setToCache($cacheKey, $image->toArray(), (1440 * 364)); // Cache the image data for 24 hours
+                $this->tags(['product-builder'])->setToCache($cacheKey, $image->toArray(), (1440 * 364)); // Cache the image data for 24 hours
                 $this->data['associations']['images'][$index][$tail->value] = $image->toArray();
             }
         }
@@ -75,7 +75,7 @@ trait ProductBuilder
     protected function buildOptionValues(): void
     {
         $cacheKey = "product_{$this->getId()}_option_values";
-        $cachedOptions = $this->getFromCache($cacheKey);
+        $cachedOptions = $this->tags(['options'])->getFromCache($cacheKey);
         if ($cachedOptions !== null) {
             $this->data['associations'] = $cachedOptions;
             return; // Use cached option values if available
@@ -91,7 +91,7 @@ trait ProductBuilder
             }
         }
 
-        $this->setToCache($cacheKey, $this->data['associations'], (1440 * 364)); // Cache the full option values for 1 year
+        $this->tags(['options'])->setToCache($cacheKey, $this->data['associations'], (1440 * 364)); // Cache the full option values for 1 year
 
         unset($this->data['associations']['product_option_values']); // Remove the id-only entry to avoid confusion
     }
