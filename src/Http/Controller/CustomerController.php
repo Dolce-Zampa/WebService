@@ -20,7 +20,6 @@ class CustomerController extends Controller
     public function register(Request $request, Response $response, array $argv): Response
     {
         $payload = $this->requireArrayPayload($request->getParsedBody());
-        $this->validateCustomerPayload($payload);
 
         $customer = $this->customerService->register(CustomerEntity::create($payload, $this->customerService));
 
@@ -59,9 +58,6 @@ class CustomerController extends Controller
 
     protected function validateCustomerPayload(array $payload): bool
     {
-        if (!isset($payload['customer']) || !is_array($payload['customer'])) {
-            throw new \InvalidArgumentException('Missing required field: customer', 400);
-        }
 
         $customer = $payload['customer'];
         $requiredCustomerFields = ['email', 'password', 'firstname', 'lastname', 'delivery_address'];
