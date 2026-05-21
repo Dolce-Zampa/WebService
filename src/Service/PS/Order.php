@@ -75,7 +75,7 @@ class Order extends Cart implements PrestashopServiceInterface {
             return null;
         }
 
-        $orders = array();
+        $orders = [];
         foreach ($data['data']['orders'] as $row) {
             if (is_array($row)) {
                 $orders[] = OrderEntity::create($row, $this)->toArray();

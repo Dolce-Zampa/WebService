@@ -111,7 +111,7 @@ class webserviceapiaccountModuleFrontController extends MlabFactoryApiBaseModule
         );
     }
 
-    protected function upsertAddress(Customer $customer, array $data, $defaultAlias)
+    protected function upsertAddress(Customer $customer, array $data, string $defaultAlias)
     {
         if (!empty($data['id_address'])) {
             $address = new Address((int) $data['id_address']);
