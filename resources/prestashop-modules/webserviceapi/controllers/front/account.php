@@ -137,7 +137,7 @@ class webserviceapiaccountModuleFrontController extends MlabFactoryApiBaseModule
         $address->address2 = (string) MlabFactoryApiHelper::getValue($data, 'address2', (string) $address->address2);
         $address->postcode = (string) MlabFactoryApiHelper::getValue($data, 'postcode', (string) $address->postcode);
         $address->city = (string) MlabFactoryApiHelper::getValue($data, 'city', (string) $address->city);
-        $address->id_country = (int) MlabFactoryApiHelper::getValue($data, 'id_country', (int) $address->id_country ?: 10);
+        $address->id_country = (int) MlabFactoryApiHelper::getValue($data, 'id_country', (int) $address->id_country ?: MlabFactoryApiHelper::DEFAULT_COUNTRY_ID);
         $address->id_state = (int) MlabFactoryApiHelper::getValue($data, 'id_state', (int) $address->id_state);
         $address->phone = (string) MlabFactoryApiHelper::getValue($data, 'phone', (string) $address->phone);
         $address->phone_mobile = (string) MlabFactoryApiHelper::getValue($data, 'phone_mobile', (string) $address->phone_mobile);

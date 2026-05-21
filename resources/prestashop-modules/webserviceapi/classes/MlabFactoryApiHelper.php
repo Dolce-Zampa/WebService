@@ -528,7 +528,7 @@ class MlabFactoryApiHelper
             if (!Validate::isLoadedObject($address) || (int) $address->id_customer !== (int) $customer->id) {
                 throw new MlabFactoryApiException('Address does not belong to the customer.', 422, array('id_address' => (int) $data['id_address']));
             }
-            if (count($data) === 1) {
+            if (count($data) === 1 && isset($data['id_address'])) {
                 return $address;
             }
         } else {
