@@ -168,22 +168,21 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
 
     protected function getOrderHistory(int $idCustomer, int $idGuest)
     {
-        $where = '';
+        $query = new DbQuery();
+        $query->select('o.`id_order`');
+        $query->from('orders', 'o');
+        $query->leftJoin('cart', 'c', 'c.`id_cart` = o.`id_cart`');
+
         if ($idCustomer > 0) {
-            $where = 'o.`id_customer` = ' . (int) $idCustomer;
+            $query->where('o.`id_customer` = ' . (int) $idCustomer);
         } elseif ($idGuest > 0) {
-            $where = 'c.`id_guest` = ' . (int) $idGuest;
+            $query->where('c.`id_guest` = ' . (int) $idGuest);
         } else {
             throw new MlabFactoryApiException('You must provide id_customer or id_guest.', 422);
         }
+        $query->orderBy('o.`date_add` DESC');
 
-        $rows = Db::getInstance()->executeS(
-            'SELECT o.`id_order`
-            FROM `' . _DB_PREFIX_ . 'orders` o
-            LEFT JOIN `' . _DB_PREFIX_ . 'cart` c ON (c.`id_cart` = o.`id_cart`)
-            WHERE ' . $where . '
-            ORDER BY o.`date_add` DESC'
-        );
+        $rows = Db::getInstance()->executeS($query);
 
         $orders = [];
         foreach ($rows as $row) {

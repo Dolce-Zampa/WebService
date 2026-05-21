@@ -551,10 +551,7 @@ class MlabFactoryApiHelper
         $address->postcode = (string) self::getValue($data, 'postcode', (string) $address->postcode);
         $address->city = (string) self::getValue($data, 'city', (string) $address->city);
         $currentCountryId = (int) $address->id_country;
-        $fallbackCountryId = self::DEFAULT_COUNTRY_ID;
-        if ($currentCountryId > 0) {
-            $fallbackCountryId = $currentCountryId;
-        }
+        $fallbackCountryId = $currentCountryId > 0 ? $currentCountryId : self::DEFAULT_COUNTRY_ID;
         $address->id_country = (int) self::getValue($data, 'id_country', $fallbackCountryId);
         $address->id_state = (int) self::getValue($data, 'id_state', (int) $address->id_state);
         $address->phone = (string) self::getValue($data, 'phone', (string) $address->phone);
