@@ -236,7 +236,7 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             ORDER BY o.`date_add` DESC'
         );
 
-        $orders = array();
+        $orders = [];
         foreach ($rows as $row) {
             $order = new Order((int) $row['id_order']);
             if (Validate::isLoadedObject($order)) {

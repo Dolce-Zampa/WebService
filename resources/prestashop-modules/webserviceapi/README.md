@@ -21,6 +21,7 @@ Ogni endpoint richiede una chiave Webservice PrestaShop attiva, inviata in uno d
 ## Endpoint
 
 Sono registrate sia le route parlanti sia il fallback nativo modulo `index.php?fc=module&module=mlabfactoryapi&controller=...`.
+L'elenco seguente descrive **gli endpoint del modulo PrestaShop** (non le route del microservizio Slim).
 
 - `POST /api/register`
 - `POST /api/login`
