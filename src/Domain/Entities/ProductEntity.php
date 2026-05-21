@@ -92,7 +92,6 @@ class ProductEntity implements ObjectInterface
             unset($this->data['associations']['product_option_values']);
             $this->data['url'] = isset($this->data['url']) ? str_replace('https://www.dolcezampa.com', '', $this->data['url']) : null; //FIXME: remove these on production
             // $this->buildImageLink([ImageTail::ORIGINAL]); //FIXME: possiamo rimuovere l'immagine verrà creata tramite FRONTEND
-
         }
     }
 
