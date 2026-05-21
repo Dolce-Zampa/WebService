@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
-use PS\Webservice\Domain\Enums\ImageTail;
-use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Domain\ObjectInterface;
+use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Traits\ProductBuilder;
 use PS\Webservice\Traits\ProductManipulation;
 
@@ -16,7 +16,7 @@ class ProductEntity implements ObjectInterface
     
     /** @var array<string, mixed> */
     private array $data;
-    private PrestashopServiceInterface $service;
+    private Product $service;
 
     private static $filters = [];
 
@@ -91,13 +91,33 @@ class ProductEntity implements ObjectInterface
             unset($this->data['associations']['product_option_values']);
             $this->data['url'] = isset($this->data['url']) ? str_replace('https://www.dolcezampa.com', '', $this->data['url']) : null; //FIXME: remove these on production
             // $this->buildImageLink([ImageTail::ORIGINAL]); //FIXME: possiamo rimuovere l'immagine verrà creata tramite FRONTEND
-            $this->buildCombinations();
-            $this->buildProductFeatures();
-            $this->buildAccessories();
-            $this->buildCategories();
-            $this->buildStockAvailables();
+            
         }
+    }
 
+    public function withFeatures(): self
+    {
+        $this->buildCombinations();
+        $this->buildProductFeatures();
+        $this->buildAccessories();
+        $this->buildCategories();
+        $this->buildStockAvailables();
+        $this->buildBundles();
+
+        return $this;
+    }
+
+    private function buildBundles(): void
+    {
+        $bundles = JsonDataStorage::productBundles()->createQuery()->where('product_id', (string) $this->getId())->fetch();
+        if (!empty($bundles)) {
+            foreach ($bundles as $bundle) {
+                foreach($bundle['bundle'] as $item) {
+                    $bundleFound = $this->service->getProductById((int) $item['product_id']);
+                    $this->data['bundles'][] = $bundleFound ? $bundleFound->toArray() : null;
+                }
+            }
+        }
     }
 
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
