@@ -14,43 +14,44 @@ trait UseCache
     protected function getFromCache(string $key): mixed
     {
         $key = sha1($key);
-        if(Cache::has($key)) {
-            return Cache::get($key);
+        if (Cache::tags($this->tag)->has($key)) {
+            return Cache::tags($this->tag)->tags($this->tags)->get($key);
         }
 
         return null;
     }
 
-    protected function tags(string|array $tags): self
+    protected function setToCache(string $key, mixed $value, ?int $ttl = 1440): void
     {
-        if (is_string($tags)) {
-            $tags = [$tags];
+        $key = sha1($key);
+        if ($ttl === null) {
+            Cache::tags($this->tag)->forever($key, $value);
+        } else {
+            $expiresAt = Carbon::now()->addMinutes($ttl);
+            Cache::tags($this->tag)->put($key, $value, $expiresAt);
         }
+    }
 
+    protected function tags(array $tags): self
+    {
         $this->tags = array_merge($this->tags, $tags);
         return $this;
     }
 
-    protected function setToCache(string $key, mixed $value, ?int $ttl = 1440): void
+    protected function flush(): void
     {
-        $key = sha1($key);
-        if($ttl === null) {
-            Cache::forever($key, $value);
-        } else {
-            $expiresAt = Carbon::now()->addMinutes($ttl);
-            Cache::put($key, $value, $expiresAt);
-        }
+        Cache::flush();
     }
 
     protected function removeFromCache(string $key): void
     {
         $key = sha1($key);
-        Cache::forget($key);
+        Cache::tags($this->tags)->forget($key);
     }
 
     protected function existsInCache(string $key): bool
     {
         $key = sha1($key);
-        return Cache::has($key);
+        return Cache::tags($this->tags)->has($key);
     }
 }

@@ -56,6 +56,12 @@ class ConfigController extends CartController
     public function clearCache(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
+        $queryParams = $request->getQueryParams();
+
+        if(isset($queryParams['clear_all']) && $queryParams['clear_all'] == true) {
+            $this->flush();
+            return response(['message' => 'All cache cleared successfully'], 200);
+        }
 
         foreach ($payload['cache'] as $key => $value) {
             $params = [
@@ -64,7 +70,12 @@ class ConfigController extends CartController
             ];
 
             $cacheLey = 'api_cache:' . sha1($params['key']);
-            $this->removeFromCache($cacheLey);
+            
+            if(!empty($params['tags'])) {
+                $this->tags($params['tags'])->removeFromCache($cacheLey);
+            } else {
+                $this->removeFromCache($cacheLey);
+            }
 
             // invoke key for generate the cache with the new value
             if ($params['key']) {
