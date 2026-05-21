@@ -122,7 +122,7 @@ class webserviceapifiltersModuleFrontController extends MlabFactoryApiBaseModule
         $idLang = (int) $this->context->language->id;
         
         $sql = 'SELECT DISTINCT ag.id_attribute_group, agl.name as attribute_group_name,
-                a.id_attribute, al.name as attribute_name, ag.group_type, al.value as attribute_color
+                a.id_attribute, al.name as attribute_name, ag.group_type, a.color as attribute_color
                 FROM ' . _DB_PREFIX_ . 'attribute_group ag
                 INNER JOIN ' . _DB_PREFIX_ . 'attribute_group_lang agl ON (ag.id_attribute_group = agl.id_attribute_group AND agl.id_lang = ' . $idLang . ')
                 INNER JOIN ' . _DB_PREFIX_ . 'attribute a ON ag.id_attribute_group = a.id_attribute_group
