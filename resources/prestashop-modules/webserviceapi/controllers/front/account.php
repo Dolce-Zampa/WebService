@@ -96,7 +96,7 @@ class webserviceapiaccountModuleFrontController extends MlabFactoryApiBaseModule
         );
     }
 
-    protected function getCustomerAddresses(Customer $customer)
+    protected function getCustomerAddresses(Customer $customer): array
     {
         $serialized = array();
         foreach ($customer->getAddresses((int) $this->context->language->id) as $addressData) {
@@ -111,7 +111,7 @@ class webserviceapiaccountModuleFrontController extends MlabFactoryApiBaseModule
         );
     }
 
-    protected function upsertAddress(Customer $customer, array $data, string $defaultAlias)
+    protected function upsertAddress(Customer $customer, array $data, string $defaultAlias): Address
     {
         if (!empty($data['id_address'])) {
             $address = new Address((int) $data['id_address']);

@@ -15,7 +15,7 @@ class webserviceapiaddressesModuleFrontController extends MlabFactoryApiBaseModu
         return $this->updateAddresses();
     }
 
-    protected function getAddresses()
+    protected function getAddresses(): array
     {
         $idCustomer = (int) Tools::getValue('id_customer');
         if ($idCustomer <= 0) {
@@ -37,7 +37,7 @@ class webserviceapiaddressesModuleFrontController extends MlabFactoryApiBaseModu
         );
     }
 
-    protected function updateAddresses()
+    protected function updateAddresses(): array
     {
         $payload = MlabFactoryApiHelper::getCustomerPayload($this->getJsonPayload());
         $idCustomer = (int) MlabFactoryApiHelper::getValue($payload, 'id_customer');
