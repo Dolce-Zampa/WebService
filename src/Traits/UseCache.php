@@ -14,8 +14,8 @@ trait UseCache
     protected function getFromCache(string $key): mixed
     {
         $key = sha1($key);
-        if (Cache::tags($this->tags)->has($key)) {
-            return Cache::tags($this->tags)->tags($this->tags)->get($key);
+        if (Cache::tags($this->tag)->has($key)) {
+            return Cache::tags($this->tag)->tags($this->tags)->get($key);
         }
 
         return null;
@@ -25,10 +25,10 @@ trait UseCache
     {
         $key = sha1($key);
         if ($ttl === null) {
-            Cache::tags($this->tags)->forever($key, $value);
+            Cache::tags($this->tag)->forever($key, $value);
         } else {
             $expiresAt = Carbon::now()->addMinutes($ttl);
-            Cache::tags($this->tags)->put($key, $value, $expiresAt);
+            Cache::tags($this->tag)->put($key, $value, $expiresAt);
         }
     }
 
@@ -41,11 +41,6 @@ trait UseCache
     protected function flush(): void
     {
         Cache::flush();
-    }
-
-    protected function flushTag(): void
-    {
-        Cache::tags($this->tags)->flush();
     }
 
     protected function removeFromCache(string $key): void
