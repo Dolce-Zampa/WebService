@@ -37,8 +37,13 @@ $app->group('/api', function () use ($app) {
     /** Customer api */
     $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');
     $app->post('/api/login', PS\Webservice\Http\Controller\CustomerController::class . ':login');
+    $app->post('/api/logout', PS\Webservice\Http\Controller\CustomerController::class . ':logout');
     $app->post('/api/contact', PS\Webservice\Http\Controller\CustomerController::class . ':contact');
     $app->post('/api/customers', PS\Webservice\Http\Controller\CustomerController::class . ':createCustomer');
+    $app->get('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':getAccount');
+    $app->put('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':updateAccount');
+    $app->get('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':getAddresses');
+    $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses');
 
     /** Order api */
     $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder');
