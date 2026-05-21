@@ -217,7 +217,7 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         );
     }
 
-    protected function getOrderHistory($idCustomer, $idGuest)
+    protected function getOrderHistory(int $idCustomer, int $idGuest)
     {
         $where = '';
         if ($idCustomer > 0) {
