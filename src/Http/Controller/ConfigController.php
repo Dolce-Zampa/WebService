@@ -69,12 +69,13 @@ class ConfigController extends CartController
                 "key" => $value['key'] ?? null
             ];
 
-            $cacheLey = 'api_cache:' . sha1($params['key']);
+            $cacheLey = 'api_cache:' . $params['key'];
+            if(empty($params['tags'])) {
+                throw new \InvalidArgumentException("The 'tags' parameter is mandatory for each cache entry to clear.");
+            }
             
-            if(!empty($params['tags'])) {
-                $this->tags($params['tags'])->removeFromCache($cacheLey);
-            } else {
-                $this->removeFromCache($cacheLey);
+            if(empty($params['key'])) {
+                $this->tags($params['tags'])->flushTag();
             }
 
             // invoke key for generate the cache with the new value
