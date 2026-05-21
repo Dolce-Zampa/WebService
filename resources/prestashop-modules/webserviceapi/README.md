@@ -26,6 +26,11 @@ Sono registrate sia le route parlanti sia il fallback nativo modulo `index.php?f
 - `POST /api/login`
 - `POST /api/contact`
 - `POST /api/customers`
+- `GET /api/account?id_customer=12`
+- `PUT /api/account`
+- `GET /api/addresses?id_customer=12`
+- `PUT /api/addresses`
+- `POST /api/logout`
 - `GET /api/carts?id_customer=12`
 - `GET /api/carts?id_guest=34`
 - `POST /api/carts`
@@ -38,6 +43,8 @@ Sono registrate sia le route parlanti sia il fallback nativo modulo `index.php?f
 - `DELETE /api/wishlists`
 - `GET /api/orders?id_order=99`
 - `GET /api/orders?reference=ABCDEF`
+- `GET /api/orders?id_customer=12`
+- `GET /api/orders?id_guest=34`
 - `POST /api/orders`
 
 ## Esempi payload
@@ -232,6 +239,98 @@ GET /api/orders?reference=ABCDEF&id_guest=34
 
 Il riepilogo include dati ordine, stato, totali, valuta, cliente, indirizzi e righe prodotto.
 Se passi `id_customer` o `id_guest`, l'API verifica che l'ordine appartenga davvero al soggetto richiesto.
+
+### Area riservata: profilo, indirizzi, logout, storico ordini
+
+#### Recupero profilo utente
+
+```text
+GET /api/account?id_customer=12
+```
+
+Risposta: dati anagrafici cliente + elenco indirizzi.
+
+#### Modifica informazioni utente
+
+```json
+{
+  "id_customer": 12,
+  "firstname": "Mario",
+  "lastname": "Rossi",
+  "email": "mario@example.com",
+  "birthday": "1988-04-01",
+  "newsletter": true,
+  "optin": false,
+  "password": "NuovaPassword123!"
+}
+```
+
+```text
+PUT /api/account
+```
+
+Puoi includere anche `delivery_address` e/o `invoice_address` nel payload per aggiornarli insieme al profilo.
+
+#### Recupero indirizzi spedizione/fatturazione
+
+```text
+GET /api/addresses?id_customer=12
+```
+
+#### Modifica indirizzi spedizione/fatturazione
+
+```json
+{
+  "id_customer": 12,
+  "delivery_address": {
+    "id_address": 45,
+    "address1": "Via Roma 12",
+    "city": "Milano",
+    "postcode": "20100",
+    "id_country": 10
+  },
+  "invoice_address": {
+    "address1": "Via Torino 8",
+    "city": "Milano",
+    "postcode": "20121",
+    "id_country": 10
+  }
+}
+```
+
+```text
+PUT /api/addresses
+```
+
+Se passi `id_address` aggiorna un indirizzo esistente del cliente, altrimenti ne crea uno nuovo.
+
+#### Logout
+
+```text
+POST /api/logout
+```
+
+Rimuove il contesto cliente dalla sessione/cookie PrestaShop.
+
+#### Storico ordini area riservata
+
+```text
+GET /api/orders?id_customer=12
+GET /api/orders?id_guest=34
+```
+
+Se non passi `id_order` o `reference`, l'endpoint restituisce lo storico ordini del cliente/guest.
+
+## Chiamate esposte nel webservice (`routes/api.php`)
+
+Le nuove API sono richiamabili anche dal webservice tramite:
+
+- `POST /api/logout`
+- `GET /api/customers/{customerId}`
+- `PUT /api/customers/{customerId}`
+- `GET /api/customers/{customerId}/addresses`
+- `PUT /api/customers/{customerId}/addresses`
+- `GET /api/order/history/{customerId}`
 
 ## Configurazione modulo
 

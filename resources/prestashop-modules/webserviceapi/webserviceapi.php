@@ -89,6 +89,24 @@ class webserviceapi extends PaymentModule
                 'controller' => 'customer',
                 'params' => $params,
             ),
+            'module-webserviceapi-account' => array(
+                'rule' => 'api/account',
+                'keywords' => array(),
+                'controller' => 'account',
+                'params' => $params,
+            ),
+            'module-webserviceapi-addresses' => array(
+                'rule' => 'api/addresses',
+                'keywords' => array(),
+                'controller' => 'addresses',
+                'params' => $params,
+            ),
+            'module-webserviceapi-logout' => array(
+                'rule' => 'api/logout',
+                'keywords' => array(),
+                'controller' => 'logout',
+                'params' => $params,
+            ),
             'module-webserviceapi-cart' => array(
                 'rule' => 'api/carts',
                 'keywords' => array(),
