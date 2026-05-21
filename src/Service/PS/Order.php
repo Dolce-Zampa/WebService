@@ -70,11 +70,8 @@ class Order extends Cart implements PrestashopServiceInterface {
             return null;
         }
 
-        if ($response->failed()) {
-            return null;
-        }
         $data = $response->toArray();
-        if (!isset($data['data']['orders']) || !is_array($data['data']['orders'])) {
+        if ($response->getHttpCode() >= 400 || !isset($data['data']['orders']) || !is_array($data['data']['orders'])) {
             return null;
         }
 
