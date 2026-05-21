@@ -85,7 +85,11 @@ class Customer extends PrestashopService implements PrestashopServiceInterface
         $this->httpService->setUrl($url);
 
         try {
-            $response = $this->httpService->invoke($method, $payload);
+            $requestPayload = $payload;
+            if (strtoupper($method) === 'GET') {
+                $requestPayload = [];
+            }
+            $response = $this->httpService->invoke($method, $requestPayload);
         } catch (\Exception $e) {
             Log::error("Exception occurred while attempting to {$action} customer {$email}: " . $e->getMessage());
             throw new \RuntimeException("Unable to {$action}", 500, $e);
