@@ -50,6 +50,11 @@ class StripeWebhookController extends Controller
             }
         }
 
+        // if session expired or payment failed, we can handle other event types here (e.g. "checkout.session.expired", "payment_intent.payment_failed") to update the order status in PrestaShop accordingly.
+        if ($event->type === 'checkout.session.expired' || $event->type === 'payment_intent.payment_failed') {
+            Log::info('Stripe webhook: checkout session expired or failed for session ' . $event->data->object->id);
+        }
+
         return response(['received' => true], 200);
     }
 

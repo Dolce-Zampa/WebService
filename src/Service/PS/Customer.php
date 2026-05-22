@@ -7,25 +7,56 @@ namespace PS\Webservice\Service\PS;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Service\HttpServiceInterface;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Traits\UuidGenerator;
 
 class Customer extends PrestashopService implements PrestashopServiceInterface
 {
-    public function register(CustomerEntity $customer): HttpServiceInterface
+    use UuidGenerator;
+
+    public function register(CustomerEntity $customer): CustomerEntity
     {
-        return $this->post('/register?noc_cache=1', $customer, 'register', $customer->toArray()['customer']['email'] ?? null);
+        $loginData = $this->post('/register?noc_cache=1', $customer, 'register', $customer->toArray()['customer']['email'] ?? null);
+        $data = $loginData->toArray();
+
+        if(empty($data['data']['customer'])) {
+            return null;
+        }
+
+        $customerData = $data['data']['customer'];
+        $customerData['delivery_address'] = $data['data']['addresses'][0];
+        return CustomerEntity::create($customerData, $this);
     }
 
-    public function createCustomer(CustomerEntity $customer): HttpServiceInterface
+    public function createCustomer(CustomerEntity $customer): CustomerEntity
     {
-        return $this->post('/customers?noc_cache=1', $customer, 'create', $customer->toArray()['customer']['email'] ?? null);
+        $loginData =  $this->post('/customers?noc_cache=1', $customer, 'create', $customer->toArray()['customer']['email'] ?? null);
+        $data = $loginData->toArray();
+
+        if(empty($data['data']['customer'])) {
+            return null;
+        }
+
+        $customerData = $data['data']['customer'];
+        $customerData['delivery_address'] = $data['data']['addresses'][0];
+        return CustomerEntity::create($customerData, $this);
     }
 
     /**
      * @param array<string, mixed> $credentials
      */
-    public function login(array $credentials): HttpServiceInterface
+    public function login(array $credentials): ?CustomerEntity
     {
-        return $this->post('/login?no_cache=1', $credentials, 'login', $credentials['email'] ?? null);
+        $loginData = $this->post('/login?no_cache=1', $credentials, 'login', $credentials['email'] ?? null);
+        $data = $loginData->toArray();
+
+        if(empty($data['data']['customer'])) {
+            return null;
+        }
+
+        $customerData = $data['data']['customer'];
+        $customerData['phone'] = $data['data']['addresses'][0]['phone'];
+        $customerData['delivery_address'] = $data['data']['addresses'][0];
+        return CustomerEntity::create($customerData, $this);
     }
 
     /**

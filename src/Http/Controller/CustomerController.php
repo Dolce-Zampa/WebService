@@ -43,7 +43,7 @@ class CustomerController extends Controller
 
         $loginResponse = $this->customerService->login($payload);
 
-        return $this->buildServiceResponse($loginResponse);
+        return response($loginResponse->toArray());
     }
 
     public function contact(Request $request, Response $response, array $argv): Response
