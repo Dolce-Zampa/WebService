@@ -24,13 +24,13 @@ class OrderController extends CartController
     public function orderHistory(Request $request, Response $response, array $argv): Response
     {
         $customerId = $argv['customerId'];
-        $cartList = $this->orderService->getOrderListFromUserId($customerId);
+        $orders = $this->orderService->getOrderListFromUserId($customerId);
 
-        if (is_null($cartList)) {
+        if (is_null($orders)) {
             return response([], 404);
         }
 
-        return response($cartList);
+        return response($orders);
 
     }
 

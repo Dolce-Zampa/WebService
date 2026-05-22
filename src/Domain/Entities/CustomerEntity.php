@@ -72,6 +72,10 @@ class CustomerEntity implements ObjectInterface
             'newsletter' => (bool) $customer['newsletter'],
         ];
 
+        if(isset($customer['id'])) {
+            $normalized['id'] = $this->encodeId($customer['id'], 'customer');
+        }
+
         $customer['delivery_address']['phone_mobile'] = $customer['phone'] ?? null;
         if (isset($customer['delivery_address']) && is_array($customer['delivery_address'])) {
             $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address']);
@@ -94,11 +98,16 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeDeliveryAddress(array $deliveryAddress): array
     {
+        $deliveryAddressData = '';
+        if(!empty($deliveryAddress['address1'])) {
+            $deliveryAddressData = $deliveryAddress['address1'];
+        }
+        
         return [
             'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
             'firstname' => (string) $this->data['firstname'],
             'lastname' => (string) $this->data['lastname'],
-            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', $deliveryAddress['address1']))),
+            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', $deliveryAddressData))),
             'city' => (string) $deliveryAddress['city'],
             'postcode' => (string) $deliveryAddress['postcode'],
             'id_country' => 10, //FIXME: Default country ID should be determined dynamically based on the delivery address details

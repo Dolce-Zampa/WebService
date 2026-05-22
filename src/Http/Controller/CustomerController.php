@@ -43,7 +43,7 @@ class CustomerController extends Controller
 
         $loginResponse = $this->customerService->login($payload);
 
-        return $this->buildServiceResponse($loginResponse);
+        return response($loginResponse->toArray());
     }
 
     public function contact(Request $request, Response $response, array $argv): Response
@@ -54,6 +54,58 @@ class CustomerController extends Controller
         $contactResponse = $this->customerService->contact($payload);
 
         return $this->buildServiceResponse($contactResponse, 201);
+    }
+
+    public function getAccount(Request $request, Response $response, array $argv): Response
+    {
+        $customerId = (int) ($argv['customerId'] ?? 0);
+        if ($customerId <= 0) {
+            throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        $serviceResponse = $this->customerService->getAccount($customerId);
+        return $this->buildServiceResponse($serviceResponse);
+    }
+
+    public function updateAccount(Request $request, Response $response, array $argv): Response
+    {
+        $customerId = (int) ($argv['customerId'] ?? 0);
+        if ($customerId <= 0) {
+            throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        $payload = $this->requireArrayPayload($request->getParsedBody());
+        $serviceResponse = $this->customerService->updateAccount($customerId, $payload);
+        return $this->buildServiceResponse($serviceResponse);
+    }
+
+    public function getAddresses(Request $request, Response $response, array $argv): Response
+    {
+        $customerId = (int) ($argv['customerId'] ?? 0);
+        if ($customerId <= 0) {
+            throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        $serviceResponse = $this->customerService->getAddresses($customerId);
+        return $this->buildServiceResponse($serviceResponse);
+    }
+
+    public function updateAddresses(Request $request, Response $response, array $argv): Response
+    {
+        $customerId = (int) ($argv['customerId'] ?? 0);
+        if ($customerId <= 0) {
+            throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        $payload = $this->requireArrayPayload($request->getParsedBody());
+        $serviceResponse = $this->customerService->updateAddresses($customerId, $payload);
+        return $this->buildServiceResponse($serviceResponse);
+    }
+
+    public function logout(Request $request, Response $response, array $argv): Response
+    {
+        $serviceResponse = $this->customerService->logout();
+        return $this->buildServiceResponse($serviceResponse);
     }
 
     protected function validateCustomerPayload(array $payload): bool

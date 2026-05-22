@@ -55,7 +55,7 @@ class Order extends Cart implements PrestashopServiceInterface {
         }
     }
 
-    public function getOrderListFromUserId(?string $customerId = null): ?OrderEntity
+    public function getOrderListFromUserId(?string $customerId = null): ?array
     {
         $queryString = http_build_query([
             'id_customer' => $this->decodeId($customerId, 'customer'),
@@ -70,7 +70,19 @@ class Order extends Cart implements PrestashopServiceInterface {
             return null;
         }
 
-        return OrderEntity::create($response->toArray(), $this);
+        $data = $response->toArray();
+        if ($response->getHttpCode() >= 400 || !isset($data['data']['orders']) || !is_array($data['data']['orders'])) {
+            return null;
+        }
+
+        $orders = [];
+        foreach ($data['data']['orders'] as $row) {
+            if (is_array($row)) {
+                $orders[] = OrderEntity::create($row, $this)->toArray();
+            }
+        }
+
+        return $orders;
     }
 
     public function orderDetails(string $orderId): ?OrderEntity
@@ -87,7 +99,10 @@ class Order extends Cart implements PrestashopServiceInterface {
             return null;
         }
 
-        return OrderEntity::create($response->toArray(), $this);
+        $orderData = $response->toArray()['data']['order'] ?? null;
+        $orderData['customer'] = $response->toArray()['data']['customer'] ?? [];
+
+        return OrderEntity::create($orderData, $this);
     }
 
     public function newOrder(CartEntity $cart): CartEntity

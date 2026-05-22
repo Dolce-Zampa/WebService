@@ -130,6 +130,10 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         $idGuest = (int) Tools::getValue('id_guest');
 
         if ($idOrder <= 0 && $reference === '') {
+            if ($idCustomer > 0 || $idGuest > 0) {
+                return $this->getOrderHistory($idCustomer, $idGuest);
+            }
+
             throw new MlabFactoryApiException('You must provide id_order or reference.', 422);
         }
 
@@ -159,6 +163,38 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         return array(
             'message' => 'Order retrieved successfully.',
             'order' => MlabFactoryApiHelper::serializeOrder($order),
+        );
+    }
+
+    protected function getOrderHistory(int $idCustomer, int $idGuest)
+    {
+        $query = new DbQuery();
+        $query->select('o.`id_order`');
+        $query->from('orders', 'o');
+        $query->leftJoin('cart', 'c', 'c.`id_cart` = o.`id_cart`');
+
+        if ($idCustomer > 0) {
+            $query->where('o.`id_customer` = ' . (int) $idCustomer);
+        } elseif ($idGuest > 0) {
+            $query->where('c.`id_guest` = ' . (int) $idGuest);
+        } else {
+            throw new MlabFactoryApiException('You must provide id_customer or id_guest.', 422);
+        }
+        $query->orderBy('o.`date_add` DESC');
+
+        $rows = Db::getInstance()->executeS($query);
+
+        $orders = [];
+        foreach ($rows as $row) {
+            $order = new Order((int) $row['id_order']);
+            if (Validate::isLoadedObject($order)) {
+                $orders[] = MlabFactoryApiHelper::serializeOrder($order);
+            }
+        }
+
+        return array(
+            'message' => 'Order history retrieved successfully.',
+            'orders' => $orders,
         );
     }
 
