@@ -99,7 +99,10 @@ class Order extends Cart implements PrestashopServiceInterface {
             return null;
         }
 
-        return OrderEntity::create($response->toArray(), $this);
+        $orderData = $response->toArray()['data']['order'] ?? null;
+        $orderData['customer'] = $response->toArray()['data']['customer'] ?? [];
+
+        return OrderEntity::create($orderData, $this);
     }
 
     public function newOrder(CartEntity $cart): CartEntity
