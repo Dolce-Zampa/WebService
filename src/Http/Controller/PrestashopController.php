@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Service\PS\PsModule;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -24,6 +25,7 @@ class PrestashopController
 
         $response = $this->service->welcomeCoupon($payload);
 
+        Log::debug('PrestashopController: welcomeCoupon response', ['response' => $response->toArray()]);
         return response($response->toArray(), 200);
     }
 
