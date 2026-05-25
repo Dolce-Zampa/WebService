@@ -25,6 +25,7 @@ class PrestashopController
         $response = $this->service->welcomeCoupon($payload);
 
         if (!$response->failed()) {
+            Log::debug("Error response from welcome coupon service: " . $response->getBody());
             return response(['error' => 'Coupon not found'], 404);
         }
 
