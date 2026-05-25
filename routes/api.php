@@ -71,6 +71,10 @@ $app->group('/api', function () use ($app) {
     /** Configuration service API */
     $app->post('/api/config/cart-rules', PS\Webservice\Http\Controller\ConfigController::class . ':makeCartRulesConfig');  
 
+    /** MODULES */
+    $app->post('/api/modules/welcome-coupon', PS\Webservice\Http\Controller\PrestashopController::class . ':welcomeCoupon');  
+
+
 })->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
