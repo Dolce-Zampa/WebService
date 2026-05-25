@@ -80,6 +80,7 @@ class StripeWebhookController extends Controller
         $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
         $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
+        $couponCode = isset($metadata->coupon_code) ? (string) $metadata->coupon_code : null;
         $customerDetails = json_decode($metadata->customer);
 
         if ($cartId <= 0) {
@@ -121,6 +122,7 @@ class StripeWebhookController extends Controller
                     'amount_paid' => ($session->amount_total) / 100,
                     'create_account' => false, //FIXME: no account creation data from Stripe, default to false
                     'id_carrier' => $carrierId,
+                    'coupon_code' => $couponCode,
                 ],
                 $this->orderService
             );
