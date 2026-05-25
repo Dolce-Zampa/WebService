@@ -24,6 +24,19 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             throw new MlabFactoryApiException('Cart is empty.', 422, array('id_cart' => (int) $cart->id));
         }
 
+        // ========== APPLICA IL COUPON SE PRESENTE ==========
+        if (!empty($payload['coupon_code'])) {
+            $result = $this->applyCouponToCart($cart, $payload['coupon_code']);
+
+            if (!$result['success']) {
+                throw new MlabFactoryApiException($result['error'], 422, ['coupon_code' => $payload['coupon_code']]);
+            }
+
+            // Ricarica il carrello con lo sconto applicato
+            $cart = new Cart((int) $cart->id);
+        }
+        // ===================================================
+
         // Determine if this is a guest or registered customer
         $isGuest = (int) $cart->id_customer === 0 && (int) $cart->id_guest > 0;
 
@@ -263,5 +276,59 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         }
 
         return new Order($orderId);
+    }
+    /**
+     * Applica una cart rule (coupon) al carrello
+     * 
+     * @param Cart $cart
+     * @param string $couponCode Codice sconto da applicare
+     * @return array Risultato dell'operazione
+     */
+    private function applyCouponToCart(Cart $cart, string $couponCode): array
+    {
+        // Inizializza il contesto
+        $context = Context::getContext();
+        $context->cart = $cart;
+        $context->customer = new Customer($cart->id_customer);
+
+        // Cerca la cart rule per codice
+        $cartRule = new CartRule(CartRule::getIdByCode($couponCode));
+
+        if (!Validate::isLoadedObject($cartRule)) {
+            return [
+                'success' => false,
+                'error' => 'Coupon code not found.'
+            ];
+        }
+
+        // Verifica se la cart rule è valida per questo carrello/customer
+        if (!$cartRule->checkValidity($context, $cart->id, false)) {
+            $errors = $cartRule->getValidityErrors();
+            return [
+                'success' => false,
+                'error' => 'Coupon is not valid: ' . implode(', ', $errors)
+            ];
+        }
+
+        // Rimuovi eventuali cart rule esistenti (opzionale)
+        $cart->removeCartRules();
+
+        // Applica la cart rule al carrello
+        $cart->addCartRule($cartRule->id);
+
+        // Aggiorna il carrello per ricalcolare i totali
+        $cart->update();
+
+        return [
+            'success' => true,
+            'message' => 'Coupon applied successfully.',
+            'cart_rule' => [
+                'id' => $cartRule->id,
+                'name' => $cartRule->name[(int) $cart->id_lang],
+                'code' => $cartRule->code,
+                'reduction_percent' => $cartRule->reduction_percent,
+                'reduction_amount' => $cartRule->reduction_amount
+            ]
+        ];
     }
 }

@@ -73,6 +73,7 @@ class OrderSession implements ObjectInterface
                 'id_guest' => $this->decodeId($data['id_guest'], 'guest'),
                 'id_carrier' => $data['id_carrier'],
                 'customer' => json_encode($customerDetails),
+                'coupon_code' => $data['discounts'][0]['coupon'] ?? null,
             ],
         ];
 
