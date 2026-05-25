@@ -5,8 +5,8 @@ namespace PS\Webservice\Http\Controller;
 
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
+use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\Object\OrderSession;
-use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\Order;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -126,7 +126,7 @@ class OrderController extends CartController
         $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
 
         $currentCartRule = $this->currentCartRule();
-        $cartRules = CartRuleEntity::create(array_merge($payload['cart_rules'], $currentCartRule), $this->orderService) ?? [];
+        $cartRules = CartRuleEntity::create($currentCartRule, $this->orderService) ?? [];
 
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required'], 403);
@@ -185,6 +185,20 @@ class OrderController extends CartController
                 );
             }
 
+            // add discount if there are cart rules applied to this cart - in a real implementation we would need to check if the cart rules are still valid and applicable to this cart before applying them to the payment session
+            foreach ($cartRules->toArray() as $rule) {
+                if (isset($payload['cart_rules'])) {
+                    foreach ($payload['cart_rules'] as $clientRule) {
+                        $orderSession->addDiscount(new Discount(
+                            name: $clientRule['code'],
+                            amount_off: $this->mathReduction($orderSession, $clientRule['reduction_percent'] ?? null, $clientRule['reduction_amount'] ?? null),
+                            code: $clientRule['code'],
+                            duration: 'once'
+                        ));
+                    }
+                }
+            }
+
             //check for free shipping cart rule
             if ($this->checkForFreeShippingCartRule($cartRules, $orderSession) === false) {
                 $orderSession->addLineItem(
@@ -193,13 +207,6 @@ class OrderController extends CartController
                     price: (float) $carrierDetails->price_with_tax,
                     type: 'carrier'
                 );
-            }
-
-            foreach ($cartRules->toArray() as $cartRule) {
-                $rule = JsonDataStorage::coupon()->createQuery()->where('id', (string) $cartRule['id'])->fetchAll();
-                if(!empty($rule)) {
-                    $orderSession->addCartRule($cartRule);
-                }
             }
 
             $checkoutUrl = $paymentService->createPaymentSession($orderSession);
@@ -219,6 +226,21 @@ class OrderController extends CartController
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function mathReduction(OrderSession $currentOrder, ?float $reductionPercent = null, ?float $reductionAmount = null): float
+    {
+        $total = $currentOrder->total();
+        
+        if (!empty($reductionPercent)) {
+            $reduction = ($total * ($reductionPercent / 100));
+        }
+
+        if (!empty($reductionAmount)) {
+            $reduction = $reductionAmount;
+        }
+
+        return max($reduction, 0);
     }
 
     private function checkForFreeShippingCartRule(CartRuleEntity $cartRules, OrderSession $totalToPay): bool

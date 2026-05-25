@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\Payments;
 
+use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\Object\OrderSession;
 
 class PaymentService implements PaymentGatewayInterface
