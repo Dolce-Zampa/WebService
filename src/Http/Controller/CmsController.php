@@ -35,10 +35,20 @@ class CmsController extends Controller
     {
         $uri = $request->getUri()->getPath();
         $queryString = $request->getUri()->getQuery();
+        $method = strtoupper($request->getMethod());
         $fullUrl = $uri . ($queryString ? '?' . $queryString : '');
+
+        $payload = (array) ($request->getParsedBody() ?? []);
+        if (empty($payload)) {
+            $rawBody = (string) $request->getBody();
+            $decodedBody = json_decode($rawBody, true);
+            if (is_array($decodedBody)) {
+                $payload = $decodedBody;
+            }
+        }
         
         // Costruisci l'URL completo per il reindirizzamento
-        $response = $this->cmsService->toPrestashop($fullUrl);
-        echo $response->getBody();die;
+        $response = $this->cmsService->toPrestashop($fullUrl, $method, $payload);
+        return response($response->toArray());
     }
 }

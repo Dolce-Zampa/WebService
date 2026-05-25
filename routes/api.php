@@ -20,6 +20,11 @@ $app->post('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http
 /** Stripe webhook */
 $app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
 
+/** Password reset */
+$app->post('/api/password-reset', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
+$app->put('/api/password-reset', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
+$app->patch('/api/password-reset', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
+
 $app->group('/api', function () use ($app) {
 
     $app->get('/api/categories', PS\Webservice\Http\Controller\CategoryController::class . ':categoryList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('categories'));

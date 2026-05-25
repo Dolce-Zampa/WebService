@@ -28,6 +28,12 @@ RewriteRule ^api/login(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=w
 RewriteRule ^api/register(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=register&ws_key=$1 [QSA,L]
 RewriteRule ^api/password-reset(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=passwordreset&ws_key=$1 [QSA,L]
 
+RewriteRule ^api/password-reset(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=passwordreset&ws_key=$1 [QSA,L]
+RewriteRule ^api/customers(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=customers&ws_key=$1 [QSA,L]
+RewriteRule ^api/account(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=account&ws_key=$1 [QSA,L]
+RewriteRule ^api/addresses(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=addresses&ws_key=$1 [QSA,L]
+RewriteRule ^api/logout(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=logout&ws_key=$1 [QSA,L]
+
 RewriteRule ^api(?:/(.*))?$ %{ENV:REWRITEBASE}webservice/dispatcher.php?url=$1 [QSA,L]
 RewriteRule ^upload/.+$ %{ENV:REWRITEBASE}index.php [QSA,L]
 
