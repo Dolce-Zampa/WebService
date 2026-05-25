@@ -62,6 +62,11 @@ $container->set(\PS\Webservice\Service\PS\Cms::class, function ($c) {
     return new \PS\Webservice\Service\PS\Cms($httpService);
 });
 
+$container->set(\PS\Webservice\Service\PS\PsModule::class, function ($c) {
+    $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
+    return new \PS\Webservice\Service\PS\PsModule($httpService);
+});
+
 /** CONTROLLERS */
 $container->set(\PS\Webservice\Http\Controller\ProductController::class, function ($c) {
     $productService = $c->get(\PS\Webservice\Service\PS\Product::class);
@@ -106,5 +111,10 @@ $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, f
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Cms::class);
     return new \PS\Webservice\Http\Controller\CmsController($orderService);
+});
+
+$container->set(\PS\Webservice\Http\Controller\PrestashopController::class, function ($c) {
+    $orderService = $c->get(\PS\Webservice\Service\PS\PsModule::class);
+    return new \PS\Webservice\Http\Controller\PrestashopController($orderService);
 });
 

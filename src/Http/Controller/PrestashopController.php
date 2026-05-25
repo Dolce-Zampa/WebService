@@ -3,19 +3,13 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
-use PS\Webservice\Domain\Entities\CartRuleEntity;
-use PS\Webservice\Domain\Entities\CustomerEntity;
-use PS\Webservice\Domain\Object\OrderSession;
-use PS\Webservice\Facades\JsonDataStorage;
-use PS\Webservice\Service\PS\Order;
-use PS\Webservice\Service\PS\PrestashopService;
 use PS\Webservice\Service\PS\PsModule;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class PrestashopController
 {
-    private PsModule $prestashopService;
+    private PsModule $service;
     public function __construct(PsModule $prestashopService)
     {
         $this->service = $prestashopService;
