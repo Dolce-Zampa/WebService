@@ -19,10 +19,15 @@ public function cmsList(array $params = []): \PS\Webservice\Service\HttpServiceI
         return $this->httpService->invoke('GET', $params);
     }
 
-    public function toPrestashop($path): \PS\Webservice\Service\HttpServiceInterface
+    public function toPrestashop(string $path, string $method = 'GET', array $payload = []): \PS\Webservice\Service\HttpServiceInterface
     {
-        $this->httpService->setUrl($path);
-        return $this->httpService->invoke('GET');
+        $this->httpService->setUrl("/password-reset?no_cache=1");
+
+        if (!empty($payload)) {
+            return $this->httpService->invoke($method, $payload);
+        }
+
+        return $this->httpService->invoke($method);
     }
    
 }
