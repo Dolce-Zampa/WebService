@@ -7,6 +7,7 @@ use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\ObjectInterface;
+use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
 
@@ -14,14 +15,17 @@ class OrderSession implements ObjectInterface
 {
     use UuidGenerator;
     protected array $data;
-    private function __construct(array $data, private PrestashopServiceInterface $service)
+    private Order $service;
+    private function __construct(array $data, Order $service)
     {
         $this->data = $data;
+        $this->service = $service;
         $this->normalizeData();
     }
 
     public static function create(array $data, PrestashopServiceInterface $service): self
     {
+        /** @var Order $service */
         return new self($data, $service);
     }
 
@@ -108,9 +112,9 @@ class OrderSession implements ObjectInterface
         if ($existingCoupon) {
             $stripeCouponId = $existingCoupon->id;
         } else {
-            $stripeCouponId = $this->service->createStripeCoupon($discount);
+            $stripeCouponId = $this->service->createCouponCode($discount);
         }
-        
+
         // 3. Struttura corretta per Stripe Checkout
         $this->data['discounts'] = [
             [
