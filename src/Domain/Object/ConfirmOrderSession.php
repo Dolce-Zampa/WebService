@@ -87,6 +87,7 @@ class ConfirmOrderSession implements ObjectInterface
             'id_guest' => $data['id_guest'],
             'create_account' => (bool)($data['create_account'] ?? false),
             'id_carrier' => isset($data['id_carrier']) ? (int) $data['id_carrier'] : 14,
+            'coupon_code' => $data['coupon_code'] ?? null,
         ];
     }
 

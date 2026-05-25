@@ -138,7 +138,8 @@ class Order extends Cart implements PrestashopServiceInterface
             'payment_label' => $confirmSession->payment_label,
             'id_order_state' => $confirmSession->id_order_state,
             'amount_paid' => $confirmSession->amount_paid,
-            'id_carrier' => $confirmSession->id_carrier
+            'id_carrier' => $confirmSession->id_carrier,
+            'coupon_code' => $confirmSession->coupon_code,
         ];
 
         // Add customer/guest identification
