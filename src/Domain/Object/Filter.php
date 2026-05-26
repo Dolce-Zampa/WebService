@@ -65,12 +65,12 @@ final class Filter
         foreach ($dataValue as $filterKey => $filterValue) {
 
             if($filterKey === 'on_sale' && $filterValue === true) {
-                $originalePrice = number_format((int)$productData['original_price'], 2);
-                $currentPrice = number_format((int)$productData['price'], 2);
-                if($originalePrice <= $currentPrice) {
-                    return false; // Product is not on sale
+                $originalePrice = round((float)$productData['original_price'], 2, PHP_ROUND_HALF_UP);
+                $currentPrice = round((float)$productData['price'], 2, PHP_ROUND_HALF_UP);
+                if($originalePrice < $currentPrice) {
+                    return true; // Product is not on sale
                 }
-                return $originalePrice > $currentPrice;
+                continue;
             }
 
             if(is_array($filterValue)) {

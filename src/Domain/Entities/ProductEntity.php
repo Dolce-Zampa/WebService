@@ -95,9 +95,9 @@ class ProductEntity implements ObjectInterface
         }
 
         // normalize on_sale flag
-        $originalePrice = number_format((int)$this->data['original_price'], 2);
-        $currentPrice = number_format((int)$this->data['price'], 2);
-        $this->data['on_sale'] = $originalePrice > $currentPrice;
+        $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);
+        $currentPrice = round((float)$this->data['price'], 2, PHP_ROUND_HALF_UP);
+        $this->data['on_sale'] = $originalePrice < $currentPrice;
     }
 
     public function withFeatures(): self
