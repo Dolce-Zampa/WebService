@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
@@ -13,7 +14,7 @@ use PS\Webservice\Traits\ProductManipulation;
 class ProductEntity implements ObjectInterface
 {
     use ProductManipulation, ProductBuilder;
-    
+
     /** @var array<string, mixed> */
     private array $data;
     private Product $service;
@@ -79,19 +80,19 @@ class ProductEntity implements ObjectInterface
 
     public function normalizeData(): void
     {
-        if(!empty($this->data['filters'])) {
-           foreach($this->data as $key => $value) {
-                if(in_array($key, $this->filters)) {
+        if (!empty($this->data['filters'])) {
+            foreach ($this->data as $key => $value) {
+                if (in_array($key, $this->filters)) {
                     $this->data[$key] = $value;
                 } else {
                     unset($this->data[$key]);
                 }
-           }
+            }
         } else {
             unset($this->data['associations']['product_option_values']);
             $this->data['url'] = isset($this->data['url']) ? str_replace('https://www.dolcezampa.com', '', $this->data['url']) : null; //FIXME: remove these on production
             // $this->buildImageLink([ImageTail::ORIGINAL]); //FIXME: possiamo rimuovere l'immagine verrà creata tramite FRONTEND
-            
+
         }
     }
 
@@ -112,16 +113,27 @@ class ProductEntity implements ObjectInterface
         $bundles = JsonDataStorage::productBundles()->createQuery()->where('product_id', (string) $this->getId())->fetch();
         if (!empty($bundles)) {
             foreach ($bundles as $bundle) {
-                foreach($bundle['bundle'] as $item) {
-                    $bundleFound = $this->service->getProductById((int) $item['product_id']);
-                    $this->data['bundles'][] = $bundleFound ? $bundleFound->toArray() : null;
+                foreach ($bundle['bundle'] as $item) {
+                    try {
+                        $bundleFound = $this->service->getProductById((int) $item['product_id']);
+                        if ($bundleFound === null) {
+                            Log::warning("Bundle product with ID {$item['product_id']} not found for product ID {$this->getId()}");
+                            continue;
+                        }
+                        $bundleFound = $bundleFound->toArray();
+                        $bundleFound['bundle_reduction'] = $item['reduction'];
+                        $bundleFound['bundle_reduction_type'] = $item['reduction_type'];
+                        $this->data['bundles'][] = $bundleFound;
+                    } catch (\Exception $e) {
+                        Log::error("Error retrieving bundle product with ID {$item['product_id']} for product ID {$this->getId()}: " . $e->getMessage());
+                    }
                 }
             }
         }
     }
 
-	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
-	{
-		return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray());
-	}
+    public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
+    {
+        return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray());
+    }
 }

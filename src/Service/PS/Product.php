@@ -136,7 +136,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         
     }
 
-    public function getProductById(int $id): ProductEntity
+    public function getProductById(int $id): ?ProductEntity
     {
         $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
         $response = $this->httpService->invoke('GET');
@@ -145,7 +145,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             if ($response->getHttpCode() === 404) {
                 return null; // Product not found
             }
-            throw new \RuntimeException("Failed to retrieve product detail: " . $response->getHttpCode());
+            throw new PrestashopConnectorException($this->httpService);
         }
 
         $productData = $response->toArray()['products'][0];
