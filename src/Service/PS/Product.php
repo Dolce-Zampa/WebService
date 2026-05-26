@@ -207,4 +207,15 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
         return $collection;
     }
+
+    public function getFeaturedPromotions(): Collection
+    {
+        $products = $this->productsList(filter: new Filter(['on_sale' => true]));
+
+        if(is_null($products) || $products->isEmpty()) {
+            return new Collection(); // No promotions found
+        }
+
+        return $products;
+    }
 }

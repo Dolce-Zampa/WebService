@@ -178,4 +178,14 @@ class ProductController extends Controller
         $searchResults = $this->productService->searchProducts($query);
         return response($searchResults->toArray());
     }
+
+    public function featuredPromotions(Request $request, Response $response)
+    {
+        $promotions = $this->productService->getFeaturedPromotions();
+
+        return response([
+            'success' => true,
+            'data' => $promotions->toArray()
+        ]);
+    }
 }

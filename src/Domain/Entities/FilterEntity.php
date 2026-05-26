@@ -133,8 +133,12 @@ class FilterEntity implements ObjectInterface
             }
         }
 
+        if(empty($object)) {
+            return [];
+        }
+
         return [
-            'id_attribute_group' => (int) $object['id_attribute_group'],
+            'id_attribute_group' => (int) $object['id_attribute_group'] ,
             'name' => (int) $object['name'],
             'type' => (int) $object['type'],
             'values' => $typeAttribute,

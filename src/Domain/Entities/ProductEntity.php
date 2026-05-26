@@ -93,6 +93,11 @@ class ProductEntity implements ObjectInterface
             $this->data['url'] = isset($this->data['url']) ? str_replace('https://www.dolcezampa.com', '', $this->data['url']) : null; //FIXME: remove these on production
             // $this->buildImageLink([ImageTail::ORIGINAL]); //FIXME: possiamo rimuovere l'immagine verrà creata tramite FRONTEND
         }
+
+        // normalize on_sale flag
+        $originalePrice = number_format((int)$this->data['original_price'], 2);
+        $currentPrice = number_format((int)$this->data['price'], 2);
+        $this->data['on_sale'] = $originalePrice > $currentPrice;
     }
 
     public function withFeatures(): self
@@ -134,5 +139,10 @@ class ProductEntity implements ObjectInterface
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
     {
         return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray());
+    }
+
+    public function addFiler(FilterEntity $filter): void
+    {
+        $this->data['filters'][] = $filter->toArray();
     }
 }

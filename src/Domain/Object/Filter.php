@@ -11,7 +11,7 @@ final class Filter
 
     private array $data;
 
-    const ALLOWED_FILTER = ['product_option_values', 'id_attribute', 'id_default_combination', 'id_supplier', 'id', 'id_manufacturer', 'id_category_default','price','customizable'];
+    const ALLOWED_FILTER = ['on_sale', 'product_option_values', 'id_attribute', 'id_default_combination', 'id_supplier', 'id', 'id_manufacturer', 'id_category_default','price','customizable'];
 
     public function __construct(array $data)
     {
@@ -64,12 +64,13 @@ final class Filter
         
         foreach ($dataValue as $filterKey => $filterValue) {
 
-            if($filterKey === 'on_sale') {
-                $originalPrice = number_format((int)$productData['original_price'], 2);
+            if($filterKey === 'on_sale' && $filterValue === true) {
+                $originalePrice = number_format((int)$productData['original_price'], 2);
                 $currentPrice = number_format((int)$productData['price'], 2);
-                if($originalPrice > $currentPrice) {
-                    return true; // Product is on sale
+                if($originalePrice <= $currentPrice) {
+                    return false; // Product is not on sale
                 }
+                return $originalePrice > $currentPrice;
             }
 
             if(is_array($filterValue)) {
@@ -81,12 +82,16 @@ final class Filter
                 continue; // Skip non-array filters for now
             }
 
+            if(is_int($filterValue) || is_string($filterValue)) {
+                $filterValue = (string) $filterValue;
+            }
+
             $filterValues = explode('|',$filterValue);
             if (!in_array($filterKey, self::ALLOWED_FILTER, true)) {
                 continue; // Skip unsupported filters
             }
 
-            if(is_array($productData[$filterKey])) {
+            if(isset($productData[$filterKey]) && is_array($productData[$filterKey])) {
                 foreach($productData[$filterKey] as $productValue) {
                     if (in_array($productValue['id'], $filterValues)) {
                         return true; // Product matches the filter criteria
@@ -99,7 +104,7 @@ final class Filter
             }
         }
 
-        return false; // Product matches all filter criteria
+        return false; // Product not matches all filter criteria
     }
 
     
