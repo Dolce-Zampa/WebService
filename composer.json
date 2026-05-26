@@ -28,7 +28,7 @@
         "symfony/property-access": "^7.0",
         "illuminate/filesystem": "^11.0",
         "nesbot/carbon": "^3.2",
-        "logtail/monolog-logtail": "^3.1",
+        "logtail/monolog-logtail": "^3.3",
         "bref/bref": "~2.4.1",
         "php-di/php-di": "^7.1",
         "guzzlehttp/guzzle": "^7.10",
