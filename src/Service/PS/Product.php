@@ -5,7 +5,6 @@ namespace PS\Webservice\Service\PS;
 
 use PS\Webservice\Domain\Entities\FilterEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Models\ProductLangTable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Object\Filter;
@@ -133,14 +132,20 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return null; // Product not found
         }
 
-        $this->httpService->setUrl("/products/{$productId}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
+        return $this->getProductById($productId);
+        
+    }
+
+    public function getProductById(int $id): ?ProductEntity
+    {
+        $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
         $response = $this->httpService->invoke('GET');
 
         if ($response->failed()) {
             if ($response->getHttpCode() === 404) {
                 return null; // Product not found
             }
-            throw new \RuntimeException("Failed to retrieve product detail: " . $response->getHttpCode());
+            throw new PrestashopConnectorException($this->httpService);
         }
 
         $productData = $response->toArray()['products'][0];

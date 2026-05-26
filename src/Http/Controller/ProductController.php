@@ -145,7 +145,7 @@ class ProductController extends Controller
             ], 404);
         }
 
-        return response($productDetail->toArray());
+        return response($productDetail->withFeatures()->toArray());
     }
 
     public function productsRelated(Request $request, Response $response, array $args)

@@ -109,6 +109,8 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             );
         }
 
+        $this->addCustomCartRule($cart, $amountPaid);
+
         $paymentModule->validateOrder(
             (int) $cart->id,
             $orderStateId,
@@ -133,6 +135,55 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             'cart' => MlabFactoryApiHelper::serializeCart($cart),
             'guest_registered' => $isGuest,
         );
+    }
+
+    private function addCustomCartRule(Cart $cart, float $amountPaid)
+    {
+        $cart = new Cart((int) $cart->id);
+
+        // Totale reale calcolato da PrestaShop
+        $psTotal = (float) $cart->getOrderTotal(true, Cart::BOTH);
+
+        // Totale deciso dalla tua API
+        $customTotal = (float) $amountPaid;
+
+        // Differenza
+        $difference = round($psTotal - $customTotal, 2);
+
+        // Applichiamo regola solo se necessario
+        if (abs($difference) > 0.01) {
+
+            $cartRule = new CartRule();
+
+            $defaultLang = (int) Configuration::get('PS_LANG_DEFAULT');
+
+            $cartRule->name = [
+                $defaultLang => 'Custom API price adjustment'
+            ];
+
+            $cartRule->id_customer = (int) $cart->id_customer;
+            $cartRule->quantity = 1;
+            $cartRule->quantity_per_user = 1;
+
+            // Se differenza positiva → sconto
+            if ($difference > 0) {
+                $cartRule->reduction_amount = $difference;
+                $cartRule->reduction_tax = true;
+            }
+            // Se differenza negativa → sovrapprezzo
+            else {
+                // Creiamo un prodotto fee invece (vedi sotto)
+                throw new Exception('Sovrapprezzo: meglio usare prodotto fee');
+            }
+
+            $cartRule->date_from = date('Y-m-d H:i:s');
+            $cartRule->date_to = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+            $cartRule->active = 1;
+            $cartRule->add();
+
+            $cart->addCartRule($cartRule->id);
+        }
     }
 
     protected function handleGetRequest()
