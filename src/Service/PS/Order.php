@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
-use Illuminate\Container\Attributes\Cache;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
