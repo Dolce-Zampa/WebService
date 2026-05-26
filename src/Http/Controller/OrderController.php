@@ -189,12 +189,7 @@ class OrderController extends CartController
             foreach ($cartRules->toArray() as $rule) {
                 if (isset($payload['cart_rules'])) {
                     foreach ($payload['cart_rules'] as $clientRule) {
-                        $orderSession->addDiscount(new Discount(
-                            name: $clientRule['code'],
-                            amount_off: $this->mathReduction($orderSession, $clientRule['reduction_percent'] ?? null, $clientRule['reduction_amount'] ?? null),
-                            code: $clientRule['code'],
-                            duration: 'once'
-                        ));
+                        $this->manageDiscounts($orderSession, $clientRule);
                     }
                 }
             }
@@ -228,10 +223,20 @@ class OrderController extends CartController
         }
     }
 
+    protected function manageDiscounts(OrderSession $orderSession, array $cartRules): void
+    {
+        $orderSession->addDiscount(new Discount(
+            name: $cartRules['code'],
+            amount_off: $this->mathReduction($orderSession, $cartRules['reduction_percent'] ?? null, $cartRules['reduction_amount'] ?? null),
+            code: $cartRules['code'],
+            duration: 'once'
+        ));
+    }
+
     private function mathReduction(OrderSession $currentOrder, ?float $reductionPercent = null, ?float $reductionAmount = null): float
     {
         $total = $currentOrder->total();
-        
+
         if (!empty($reductionPercent)) {
             $reduction = ($total * ($reductionPercent / 100));
         }
