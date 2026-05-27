@@ -28,13 +28,7 @@ final class Rule
         $rule = [
             "id" => $this->encodeId((int) $this->data['id'], 'cart-rule'),
             "rule" => $this->data['rule'],
-            "conditions" => [
-                "valid-from" => $this->data['conditions']['valid_from'] ?? "2000-01-01",
-                "valid-to" => $this->data['conditions']['valid_to'] ?? "2100-01-01",
-                "minimum-spend" => $this->data['conditions']['minimum_spend'] ?? 1.00,
-                "applicable" => $this->data['conditions']['applicable'] ?? [],
-                "excluded" => $this->data['conditions']['excluded'] ?? [],
-            ]
+            "conditions" => $this->data['conditions'] ?? [],
         ];
 
         $this->data = $rule;
