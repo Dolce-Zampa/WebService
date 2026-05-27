@@ -145,4 +145,9 @@ class OrderSession implements ObjectInterface
         return $calculatedTotal / 100; // Convert back to euros
 
     }
+
+    public function service(): Order
+    {
+        return $this->service;
+    }
 }

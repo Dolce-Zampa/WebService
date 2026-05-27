@@ -5,6 +5,7 @@ namespace PS\Webservice\Http\Controller;
 
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
+use PS\Webservice\Domain\Object\ConfirmOrderSession;
 use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\PS\Order;
@@ -117,6 +118,9 @@ class OrderController extends CartController
     {
         $payload = $request->getParsedBody();
 
+        // check payment method if cod 
+        $paymentMethod = $payload['payment_method'];
+
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
         }
@@ -139,7 +143,7 @@ class OrderController extends CartController
 
         // Create payment session
         try {
-            $paymentService = $this->initializePaymentService(env('DEFAULT_PAYMENT_METHOD', 'stripe'));
+            $paymentService = $this->initializePaymentService($paymentMethod);
 
             //recuperiamo il corriere scelto dal cliente per aggiungerlo alla sessione di pagamento
             $carrierId = $payload['id_carrier'] ?? null;
@@ -319,6 +323,8 @@ class OrderController extends CartController
             case 'stripe':
                 $apiKey = $_ENV['STRIPE_API_KEY'] ?? throw new \RuntimeException('STRIPE_API_KEY not configured');
                 return \PS\Webservice\Service\Payments\PaymentService::setApiKey($apiKey);
+            case 'cod':
+                return \PS\Webservice\Service\Payments\CodPaymentService::setApiKey('');
             default:
                 throw new \InvalidArgumentException('Unsupported payment method: ' . $paymentMethod);
         }

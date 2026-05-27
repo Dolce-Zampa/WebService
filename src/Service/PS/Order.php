@@ -5,6 +5,7 @@ namespace PS\Webservice\Service\PS;
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CartEntity;
+use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Models\CartStorage;
 use PS\Webservice\Domain\Object\ConfirmOrderSession;
@@ -122,7 +123,7 @@ class Order extends Cart implements PrestashopServiceInterface
         return $cart;
     }
 
-    public function confirmOrder(ConfirmOrderSession $confirmSession): void
+    protected function confirmOrder(ConfirmOrderSession $confirmSession): void
     {
         $errors = $confirmSession->validate();
         if (!empty($errors)) {
@@ -208,6 +209,40 @@ class Order extends Cart implements PrestashopServiceInterface
         } catch (\Stripe\Exception\ApiErrorException $e) {
             return null;
         }
+    }
+
+    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment'): void
+    {
+        // finalize the order with a "payment_success" state. This will trigger the creation of the order in PrestaShop.
+        $confirmSession = ConfirmOrderSession::create(
+                [
+                    'id_cart' => $cartId,
+                    'id_customer' => $customerId,
+                    'id_guest' => $guestId,
+                    'order_state' => ConfirmOrderSession::ORDER_STATE['confirm'],
+                    'amount_paid' => $amountPaid,
+                    'create_account' => false, //FIXME: no account creation data from Stripe, default to false
+                    'id_carrier' => $carrierId,
+                    'coupon_code' => $couponCode,
+                    'payment_label' => $paymentMethod,
+                ],
+                $this
+            );
+
+        $confirmSession->setCustomer(
+            CustomerEntity::create([
+                'id' => null,
+                'email' => $email,
+                'firstname' => $firstname,
+                'lastname' => $lastname,
+                'phome' => $customerDetails->phone ?? null,
+                'delivery_address' => (array) $customerDetails->delivery_address, //FIXME: no address data from Stripe, set to null
+                'newsletter' => false, //FIXME: no newsletter subscription data from Stripe, default to false
+            ], $this)
+        );
+
+
+        $this->confirmOrder($confirmSession);
     }
 
     public function createCouponCode(Discount $discount): string
