@@ -60,7 +60,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             if(!is_null($filter) && $filter->match($productData) !== true) {
                 continue; // Skip products that do not match the filter criteria
             }
-            $collection->push(ProductEntity::create($productData, $this));
+            $collection->push(ProductEntity::create($filter->productData, $this));
         }
 
         return $collection;

@@ -1,10 +1,35 @@
 [
     {
-        "product_id": 114,
+        "product_id": 114, 
         "bundle": [
             {
                 "product_id": 56,
                 "reduction": 25,
+                "reduction_type": "amount"
+            },
+            {
+                "product_id": 115,
+                "reduction": 10,
+                "reduction_type": "amount"
+            },
+            {
+                "product_id": 29,
+                "reduction": 10,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 113,
+        "bundle": [
+            {
+                "product_id": 56,
+                "reduction": 25,
+                "reduction_type": "amount"
+            },
+            {
+                "product_id": 115,
+                "reduction": 10,
                 "reduction_type": "amount"
             }
         ]
@@ -33,7 +58,22 @@
                 "reduction_type": "percentage"
             },
             {
-                "product_id": 141,
+                "product_id": 114,
+                "reduction": 10,
+                "reduction_type": "percentage"
+            }
+        ]
+    },
+    {
+        "product_id": 141,
+        "bundle": [
+            {
+                "product_id": 148,
+                "reduction": 10,
+                "reduction_type": "percentage"
+            },
+            {
+                "product_id": 149,
                 "reduction": 10,
                 "reduction_type": "percentage"
             }

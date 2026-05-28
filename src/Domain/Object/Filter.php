@@ -10,6 +10,7 @@ final class Filter
     use UuidGenerator;
 
     private array $data;
+    private array $productData;
 
     const ALLOWED_FILTER = ['on_sale', 'product_option_values', 'id_attribute', 'id_default_combination', 'id_supplier', 'id', 'id_manufacturer', 'id_category_default','price','customizable'];
 
@@ -45,11 +46,12 @@ final class Filter
 
     public function __get(string $name): mixed
     {
-        return $this->data[$name];
+        return $this->$name;
     }
 
     public function match(array $productData): bool
     {
+        $this->productData = $productData;
         if(empty($this->data)) {
             return true; // No filters to apply, so the product matches by default
         }
@@ -92,8 +94,9 @@ final class Filter
             }
 
             if(isset($productData[$filterKey]) && is_array($productData[$filterKey])) {
-                foreach($productData[$filterKey] as $productValue) {
+                foreach($productData[$filterKey] as $index => $productValue) {
                     if (in_array($productValue['id'], $filterValues)) {
+                        $this->productData['id_default_image'] = $this->productData['associations']['images'][$index]['id']; // Set id_category_default for future reference
                         return true; // Product matches the filter criteria
                     }
                 }
