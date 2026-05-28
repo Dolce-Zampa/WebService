@@ -76,7 +76,7 @@ $app->group('/api', function () use ($app) {
     $app->post('/api/modules/welcome-coupon', PS\Webservice\Http\Controller\PrestashopController::class . ':welcomeCoupon');  
 
 
-})->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+});
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
 
