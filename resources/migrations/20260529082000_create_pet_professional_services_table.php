@@ -18,7 +18,9 @@ final class CreatePetProfessionalServicesTable extends AbstractMigration
             ->addColumn('fiscal_code', 'string', ['limit' => 32, 'null' => true])
             ->addColumn('fiscal_data', 'json', ['null' => true])
             ->addColumn('address', 'string', ['limit' => 255])
-            ->addColumn('service_type', 'string', ['limit' => 100])
+            ->addColumn('service_type', 'enum', [
+                'values' => ['pet-sitting', 'toilettatore', 'allevamento'],
+            ])
             ->addColumn('description', 'text', ['null' => true])
             ->addColumn('media', 'json', ['null' => true])
             ->addColumn('created_at', 'timestamp', ['default' => 'CURRENT_TIMESTAMP'])

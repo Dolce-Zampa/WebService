@@ -11,6 +11,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 
 class PetProfessionalServiceController extends Controller
 {
+    private const ALLOWED_SERVICE_TYPES = ['pet-sitting', 'toilettatore', 'allevamento'];
+
     public function categories(Request $request, Response $response): Response
     {
         try {
@@ -214,6 +216,10 @@ class PetProfessionalServiceController extends Controller
             }
 
             $payload[$field] = trim((string) $value);
+
+            if ($field === 'service_type' && $payload[$field] !== '' && !in_array($payload[$field], self::ALLOWED_SERVICE_TYPES, true)) {
+                return ['error' => 'service_type non valido. Valori consentiti: pet-sitting, toilettatore, allevamento.'];
+            }
         }
 
         if (!$isUpdate) {

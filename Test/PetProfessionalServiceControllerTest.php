@@ -42,17 +42,17 @@ final class PetProfessionalServiceControllerTest extends TestCase
     {
         Capsule::table('pet_professional_services')->insert([
             [
-                'service_type' => 'Toelettatura',
+                'service_type' => 'toilettatore',
                 'created_at' => '2026-05-29 00:00:00',
                 'updated_at' => '2026-05-29 00:00:00',
             ],
             [
-                'service_type' => ' Educatore ',
+                'service_type' => ' allevamento ',
                 'created_at' => '2026-05-29 00:00:00',
                 'updated_at' => '2026-05-29 00:00:00',
             ],
             [
-                'service_type' => 'Toelettatura',
+                'service_type' => 'toilettatore',
                 'created_at' => '2026-05-29 00:00:00',
                 'updated_at' => '2026-05-29 00:00:00',
             ],
@@ -79,9 +79,34 @@ final class PetProfessionalServiceControllerTest extends TestCase
             'success' => true,
             'data' => [
                 'categories' => [
-                    'Educatore',
-                    'Toelettatura',
+                    'allevamento',
+                    'toilettatore',
                 ],
+            ],
+        ], json_decode((string) $result->getBody(), true));
+    }
+
+    public function test_save_rejects_invalid_service_type(): void
+    {
+        $controller = new PetProfessionalServiceController();
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request
+            ->method('getParsedBody')
+            ->willReturn([
+                'first_name' => 'Mario',
+                'last_name' => 'Rossi',
+                'address' => 'Via Roma',
+                'service_type' => 'educatore',
+            ]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->save($request, $response);
+
+        $this->assertSame(422, $result->getStatusCode());
+        $this->assertSame([
+            'success' => true,
+            'data' => [
+                'message' => 'service_type non valido. Valori consentiti: pet-sitting, toilettatore, allevamento.',
             ],
         ], json_decode((string) $result->getBody(), true));
     }
