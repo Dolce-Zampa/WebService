@@ -118,3 +118,6 @@ $container->set(\PS\Webservice\Http\Controller\PrestashopController::class, func
     return new \PS\Webservice\Http\Controller\PrestashopController($orderService);
 });
 
+$container->set(\PS\Webservice\Http\Controller\PetProfessionalServiceController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\PetProfessionalServiceController();
+});

@@ -52,6 +52,11 @@
             "config/helpers.php"
         ]
     },
+    "scripts": {
+        "db:create": "vendor/bin/phinx create",
+        "db:migrate": "vendor/bin/phinx migrate",
+        "db:rollback": "vendor/bin/phinx rollback"
+    },
     "authors": [
         {
             "name": "Marco De Felice",
