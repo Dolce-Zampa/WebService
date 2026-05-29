@@ -12,6 +12,15 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
+
+    - name: Create test .env file
+      run: |
+        cat > .env << EOF
+        APP_ENV=test
+        APP_DEBUG=true
+        DATABASE_URL=sqlite:///:memory:
+        # Aggiungi altre variabili necessarie per i test
+        EOF
     
     - name: Build the Docker image
       run: |
