@@ -11,6 +11,24 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 
 class PetProfessionalServiceController extends Controller
 {
+    public function categories(Request $request, Response $response): Response
+    {
+        try {
+            $categories = PetProfessionalService::query()
+                ->pluck('service_type')
+                ->map(static fn (mixed $serviceType): string => trim((string) $serviceType))
+                ->filter(static fn (string $serviceType): bool => $serviceType !== '')
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+
+            return response($categories);
+        } catch (\Exception $e) {
+            return $this->internalError($e);
+        }
+    }
+
     public function index(Request $request, Response $response): Response
     {
         try {

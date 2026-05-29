@@ -68,6 +68,8 @@ $app->group('/api', function () use ($app) {
     /** Pet professional services api */
     $app->get('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':index');
     $app->get('/api/pet-services/search', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':search');
+    $app->get('/api/pet-services/categories', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':categories');
+    $app->get('/api/pet-services/categores', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':categories');
     $app->get('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':show');
     $app->post('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':save')
         ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
