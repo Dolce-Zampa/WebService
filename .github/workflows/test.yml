@@ -1,0 +1,36 @@
+name: Docker Image CI
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.TOKEN }}
+    
+    - name: Pull the Docker image
+      run: |
+        docker pull ghcr.io/dolce-zampa/webservice:latest
+    
+    - name: Run unit tests
+      run: |
+        docker run --rm ghcr.io/dolce-zampa/webservice:latest vendor/bin/phpunit --testdox --colors=always > test-results.txt || true
+        cat test-results.txt
+        # Check if there are any failed tests
+        if grep -q "FAILURES!" test-results.txt; then
+          exit 1
+        fi
