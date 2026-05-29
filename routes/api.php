@@ -69,9 +69,12 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':index');
     $app->get('/api/pet-services/search', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':search');
     $app->get('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':show');
-    $app->post('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':save');
-    $app->put('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':update');
-    $app->delete('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':destroy');
+    $app->post('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':save')
+        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->put('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':update')
+        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->delete('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':destroy')
+        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
     /** CMS */
     $app->get('/api/cms', PS\Webservice\Http\Controller\CmsController::class . ':cmsList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('cmslist'));

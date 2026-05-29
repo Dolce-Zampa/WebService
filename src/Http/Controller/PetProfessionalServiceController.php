@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Models\PetProfessionalService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -23,14 +24,16 @@ class PetProfessionalServiceController extends Controller
                 ->offset($offset)
                 ->limit($limit)
                 ->get();
+            $total = PetProfessionalService::query()->count();
 
             return response([
                 'page' => $page,
                 'limit' => $limit,
+                'total' => $total,
                 'items' => $items->toArray(),
             ]);
         } catch (\Exception $e) {
-            return response(['message' => $e->getMessage()], 500);
+            return $this->internalError($e);
         }
     }
 
@@ -45,7 +48,7 @@ class PetProfessionalServiceController extends Controller
 
             return response($item->toArray());
         } catch (\Exception $e) {
-            return response(['message' => $e->getMessage()], 500);
+            return $this->internalError($e);
         }
     }
 
@@ -72,10 +75,12 @@ class PetProfessionalServiceController extends Controller
             if ($address !== '') {
                 $query->where('address', 'like', '%' . $this->escapeLike($address) . '%');
             }
+            $total = (clone $query)->count();
 
             return response([
                 'page' => $page,
                 'limit' => $limit,
+                'total' => $total,
                 'items' => $query
                     ->orderBy('id', 'desc')
                     ->offset($offset)
@@ -84,7 +89,7 @@ class PetProfessionalServiceController extends Controller
                     ->toArray(),
             ]);
         } catch (\Exception $e) {
-            return response(['message' => $e->getMessage()], 500);
+            return $this->internalError($e);
         }
     }
 
@@ -101,7 +106,7 @@ class PetProfessionalServiceController extends Controller
 
             return response($item->toArray(), 201);
         } catch (\Exception $e) {
-            return response(['message' => $e->getMessage()], 500);
+            return $this->internalError($e);
         }
     }
 
@@ -129,7 +134,7 @@ class PetProfessionalServiceController extends Controller
 
             return response($item->fresh()->toArray());
         } catch (\Exception $e) {
-            return response(['message' => $e->getMessage()], 500);
+            return $this->internalError($e);
         }
     }
 
@@ -146,7 +151,7 @@ class PetProfessionalServiceController extends Controller
 
             return response(['message' => 'Servizio eliminato correttamente.']);
         } catch (\Exception $e) {
-            return response(['message' => $e->getMessage()], 500);
+            return $this->internalError($e);
         }
     }
 
@@ -208,5 +213,12 @@ class PetProfessionalServiceController extends Controller
             ['\\\\', '\%', '\_'],
             $value
         );
+    }
+
+    private function internalError(\Exception $e): Response
+    {
+        Log::error('Pet professional services API error', ['exception' => $e]);
+
+        return response(['message' => 'Errore interno del server.'], 500);
     }
 }
