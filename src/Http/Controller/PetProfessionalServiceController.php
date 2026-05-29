@@ -13,9 +13,22 @@ class PetProfessionalServiceController extends Controller
     public function index(Request $request, Response $response): Response
     {
         try {
-            $items = PetProfessionalService::query()->orderBy('id', 'desc')->get();
+            $queryParams = $request->getQueryParams();
+            $page = max(1, (int) ($queryParams['page'] ?? 1));
+            $limit = min(100, max(1, (int) ($queryParams['limit'] ?? 20)));
+            $offset = ($page - 1) * $limit;
 
-            return response($items->toArray());
+            $items = PetProfessionalService::query()
+                ->orderBy('id', 'desc')
+                ->offset($offset)
+                ->limit($limit)
+                ->get();
+
+            return response([
+                'page' => $page,
+                'limit' => $limit,
+                'items' => $items->toArray(),
+            ]);
         } catch (\Exception $e) {
             return response(['message' => $e->getMessage()], 500);
         }
@@ -42,6 +55,9 @@ class PetProfessionalServiceController extends Controller
             $queryParams = $request->getQueryParams();
             $serviceType = trim((string) ($queryParams['service_type'] ?? ''));
             $address = trim((string) ($queryParams['address'] ?? ''));
+            $page = max(1, (int) ($queryParams['page'] ?? 1));
+            $limit = min(100, max(1, (int) ($queryParams['limit'] ?? 20)));
+            $offset = ($page - 1) * $limit;
 
             if ($serviceType === '' && $address === '') {
                 return response(['message' => 'Inserire almeno service_type o address per la ricerca.'], 422);
@@ -50,14 +66,23 @@ class PetProfessionalServiceController extends Controller
             $query = PetProfessionalService::query();
 
             if ($serviceType !== '') {
-                $query->where('service_type', 'like', '%' . $serviceType . '%');
+                $query->where('service_type', 'like', '%' . $this->escapeLike($serviceType) . '%');
             }
 
             if ($address !== '') {
-                $query->where('address', 'like', '%' . $address . '%');
+                $query->where('address', 'like', '%' . $this->escapeLike($address) . '%');
             }
 
-            return response($query->orderBy('id', 'desc')->get()->toArray());
+            return response([
+                'page' => $page,
+                'limit' => $limit,
+                'items' => $query
+                    ->orderBy('id', 'desc')
+                    ->offset($offset)
+                    ->limit($limit)
+                    ->get()
+                    ->toArray(),
+            ]);
         } catch (\Exception $e) {
             return response(['message' => $e->getMessage()], 500);
         }
@@ -174,5 +199,14 @@ class PetProfessionalServiceController extends Controller
         }
 
         return $payload;
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return str_replace(
+            ['\\', '%', '_'],
+            ['\\\\', '\%', '\_'],
+            $value
+        );
     }
 }
