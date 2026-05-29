@@ -15,11 +15,12 @@ class PetProfessionalServiceController extends Controller
     {
         try {
             $categories = PetProfessionalService::query()
+                ->selectRaw('TRIM(service_type) as service_type')
+                ->whereNotNull('service_type')
+                ->whereRaw("TRIM(service_type) <> ''")
+                ->distinct()
+                ->orderBy('service_type')
                 ->pluck('service_type')
-                ->map(static fn (mixed $serviceType): string => trim((string) $serviceType))
-                ->filter(static fn (string $serviceType): bool => $serviceType !== '')
-                ->unique()
-                ->sort()
                 ->values()
                 ->all();
 
