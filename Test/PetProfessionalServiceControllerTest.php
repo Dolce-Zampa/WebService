@@ -78,8 +78,10 @@ final class PetProfessionalServiceControllerTest extends TestCase
         $this->assertSame([
             'success' => true,
             'data' => [
-                'Educatore',
-                'Toelettatura',
+                'categories' => [
+                    'Educatore',
+                    'Toelettatura',
+                ],
             ],
         ], json_decode((string) $result->getBody(), true));
     }

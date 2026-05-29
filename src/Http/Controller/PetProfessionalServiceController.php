@@ -23,7 +23,9 @@ class PetProfessionalServiceController extends Controller
                 ->values()
                 ->all();
 
-            return response($categories);
+            return response([
+                'categories' => $categories,
+            ]);
         } catch (\Exception $e) {
             return $this->internalError($e);
         }
