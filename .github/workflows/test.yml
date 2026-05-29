@@ -18,6 +18,7 @@ jobs:
         APP_DEBUG=true
         DATABASE_URL=sqlite:///:memory:
         # Aggiungi altre variabili necessarie per i test
+        LOGTAIL_API_KEY=test
         EOF
     
     - name: Build Docker image (without push)
