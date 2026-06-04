@@ -21,8 +21,7 @@ final class AddCoordinatesToPetProfessionalServicesTable extends AbstractMigrati
                 'scale' => 7,
                 'null' => true,
             ])
-            ->addIndex(['latitude'])
-            ->addIndex(['longitude'])
+            ->addIndex(['latitude', 'longitude'])
             ->update();
     }
 }

@@ -107,7 +107,7 @@ final class PetProfessionalServiceControllerTest extends TestCase
 
         $this->assertSame(422, $result->getStatusCode());
         $this->assertSame([
-            'success' => true,
+            'success' => false,
             'data' => [
                 'message' => 'service_type non valido. Valori consentiti: pet-sitting, toilettatore, allevamento.',
             ],

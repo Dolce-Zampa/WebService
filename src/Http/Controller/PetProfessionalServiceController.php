@@ -105,15 +105,15 @@ class PetProfessionalServiceController extends Controller
             }
 
             if (
-                ($latitudeMin['provided'] && $latitudeMin['value'] < -90)
-                || ($latitudeMax['provided'] && $latitudeMax['value'] > 90)
+                ($latitudeMin['provided'] && ($latitudeMin['value'] < -90 || $latitudeMin['value'] > 90))
+                || ($latitudeMax['provided'] && ($latitudeMax['value'] < -90 || $latitudeMax['value'] > 90))
             ) {
                 return response(['message' => 'Range latitude non valido. Valori consentiti: da -90 a 90.'], 422);
             }
 
             if (
-                ($longitudeMin['provided'] && $longitudeMin['value'] < -180)
-                || ($longitudeMax['provided'] && $longitudeMax['value'] > 180)
+                ($longitudeMin['provided'] && ($longitudeMin['value'] < -180 || $longitudeMin['value'] > 180))
+                || ($longitudeMax['provided'] && ($longitudeMax['value'] < -180 || $longitudeMax['value'] > 180))
             ) {
                 return response(['message' => 'Range longitude non valido. Valori consentiti: da -180 a 180.'], 422);
             }
