@@ -81,12 +81,49 @@ class PetProfessionalServiceController extends Controller
             $queryParams = $request->getQueryParams();
             $serviceType = trim((string) ($queryParams['service_type'] ?? ''));
             $address = trim((string) ($queryParams['address'] ?? ''));
+            $latitudeMin = $this->parseFloatQueryParam($queryParams, 'lat_min', ['latitude_min']);
+            $latitudeMax = $this->parseFloatQueryParam($queryParams, 'lat_max', ['latitude_max']);
+            $longitudeMin = $this->parseFloatQueryParam($queryParams, 'lng_min', ['lon_min', 'long_min', 'longitude_min']);
+            $longitudeMax = $this->parseFloatQueryParam($queryParams, 'lng_max', ['lon_max', 'long_max', 'longitude_max']);
             $page = max(1, (int) ($queryParams['page'] ?? 1));
             $limit = min(100, max(1, (int) ($queryParams['limit'] ?? 20)));
             $offset = ($page - 1) * $limit;
 
-            if ($serviceType === '' && $address === '') {
-                return response(['message' => 'Inserire almeno service_type o address per la ricerca.'], 422);
+            foreach ([$latitudeMin, $latitudeMax, $longitudeMin, $longitudeMax] as $coordinateParam) {
+                if (isset($coordinateParam['error'])) {
+                    return response(['message' => $coordinateParam['error']], 422);
+                }
+            }
+
+            $hasCoordinateFilter = $latitudeMin['provided']
+                || $latitudeMax['provided']
+                || $longitudeMin['provided']
+                || $longitudeMax['provided'];
+
+            if ($serviceType === '' && $address === '' && !$hasCoordinateFilter) {
+                return response(['message' => 'Inserire almeno service_type, address o range di coordinate per la ricerca.'], 422);
+            }
+
+            if (
+                ($latitudeMin['provided'] && $latitudeMin['value'] < -90)
+                || ($latitudeMax['provided'] && $latitudeMax['value'] > 90)
+            ) {
+                return response(['message' => 'Range latitude non valido. Valori consentiti: da -90 a 90.'], 422);
+            }
+
+            if (
+                ($longitudeMin['provided'] && $longitudeMin['value'] < -180)
+                || ($longitudeMax['provided'] && $longitudeMax['value'] > 180)
+            ) {
+                return response(['message' => 'Range longitude non valido. Valori consentiti: da -180 a 180.'], 422);
+            }
+
+            if ($latitudeMin['provided'] && $latitudeMax['provided'] && $latitudeMin['value'] > $latitudeMax['value']) {
+                return response(['message' => 'Range latitude non valido: lat_min deve essere minore o uguale a lat_max.'], 422);
+            }
+
+            if ($longitudeMin['provided'] && $longitudeMax['provided'] && $longitudeMin['value'] > $longitudeMax['value']) {
+                return response(['message' => 'Range longitude non valido: lng_min deve essere minore o uguale a lng_max.'], 422);
             }
 
             $query = PetProfessionalService::query();
@@ -97,6 +134,22 @@ class PetProfessionalServiceController extends Controller
 
             if ($address !== '') {
                 $query->where('address', 'like', '%' . $this->escapeLike($address) . '%');
+            }
+
+            if ($latitudeMin['provided']) {
+                $query->where('latitude', '>=', $latitudeMin['value']);
+            }
+
+            if ($latitudeMax['provided']) {
+                $query->where('latitude', '<=', $latitudeMax['value']);
+            }
+
+            if ($longitudeMin['provided']) {
+                $query->where('longitude', '>=', $longitudeMin['value']);
+            }
+
+            if ($longitudeMax['provided']) {
+                $query->where('longitude', '<=', $longitudeMax['value']);
             }
             $total = (clone $query)->count();
 
@@ -189,6 +242,8 @@ class PetProfessionalServiceController extends Controller
             'fiscal_code',
             'fiscal_data',
             'address',
+            'latitude',
+            'longitude',
             'service_type',
             'description',
             'media',
@@ -207,6 +262,28 @@ class PetProfessionalServiceController extends Controller
                 }
 
                 $payload[$field] = $value;
+                continue;
+            }
+
+            if (in_array($field, ['latitude', 'longitude'], true)) {
+                if ($value === '' || $value === null) {
+                    $payload[$field] = null;
+                    continue;
+                }
+
+                if (!is_numeric($value)) {
+                    return ['error' => $field . ' deve essere numerico.'];
+                }
+
+                $numericValue = (float) $value;
+                $min = $field === 'latitude' ? -90 : -180;
+                $max = $field === 'latitude' ? 90 : 180;
+
+                if ($numericValue < $min || $numericValue > $max) {
+                    return ['error' => $field . ' fuori range.'];
+                }
+
+                $payload[$field] = $numericValue;
                 continue;
             }
 
@@ -240,6 +317,31 @@ class PetProfessionalServiceController extends Controller
             ['\\\\', '\%', '\_'],
             $value
         );
+    }
+
+    private function parseFloatQueryParam(array $queryParams, string $primaryKey, array $aliases = []): array
+    {
+        $keys = [$primaryKey, ...$aliases];
+
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $queryParams)) {
+                continue;
+            }
+
+            $rawValue = trim((string) $queryParams[$key]);
+
+            if ($rawValue === '') {
+                return ['provided' => false, 'value' => null];
+            }
+
+            if (!is_numeric($rawValue)) {
+                return ['provided' => false, 'value' => null, 'error' => $key . ' deve essere numerico.'];
+            }
+
+            return ['provided' => true, 'value' => (float) $rawValue];
+        }
+
+        return ['provided' => false, 'value' => null];
     }
 
     private function internalError(\Exception $e): Response

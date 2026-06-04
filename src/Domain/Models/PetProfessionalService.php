@@ -20,6 +20,8 @@ class PetProfessionalService extends Model
         'fiscal_code',
         'fiscal_data',
         'address',
+        'latitude',
+        'longitude',
         'service_type',
         'description',
         'media',
@@ -28,5 +30,7 @@ class PetProfessionalService extends Model
     protected $casts = [
         'fiscal_data' => 'array',
         'media' => 'array',
+        'latitude' => 'float',
+        'longitude' => 'float',
     ];
 }

@@ -28,7 +28,10 @@ final class PetProfessionalServiceControllerTest extends TestCase
 
             Capsule::schema()->create('pet_professional_services', static function (Blueprint $table): void {
                 $table->increments('id');
+                $table->string('address')->nullable();
                 $table->string('service_type')->nullable();
+                $table->decimal('latitude', 10, 7)->nullable();
+                $table->decimal('longitude', 10, 7)->nullable();
                 $table->timestamps();
             });
 
@@ -107,6 +110,70 @@ final class PetProfessionalServiceControllerTest extends TestCase
             'success' => true,
             'data' => [
                 'message' => 'service_type non valido. Valori consentiti: pet-sitting, toilettatore, allevamento.',
+            ],
+        ], json_decode((string) $result->getBody(), true));
+    }
+
+    public function test_search_filters_by_latitude_and_longitude_range(): void
+    {
+        Capsule::table('pet_professional_services')->insert([
+            [
+                'address' => 'Milano',
+                'service_type' => 'pet-sitting',
+                'latitude' => 45.4642000,
+                'longitude' => 9.1900000,
+                'created_at' => '2026-06-04 00:00:00',
+                'updated_at' => '2026-06-04 00:00:00',
+            ],
+            [
+                'address' => 'Roma',
+                'service_type' => 'toilettatore',
+                'latitude' => 41.9028000,
+                'longitude' => 12.4964000,
+                'created_at' => '2026-06-04 00:00:00',
+                'updated_at' => '2026-06-04 00:00:00',
+            ],
+        ]);
+
+        $controller = new PetProfessionalServiceController();
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request
+            ->method('getQueryParams')
+            ->willReturn([
+                'lat_min' => '45.0',
+                'lat_max' => '46.0',
+                'lng_min' => '9.0',
+                'lng_max' => '10.0',
+            ]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->search($request, $response);
+        $payload = json_decode((string) $result->getBody(), true);
+
+        $this->assertSame(200, $result->getStatusCode());
+        $this->assertTrue($payload['success']);
+        $this->assertSame(1, $payload['data']['total']);
+        $this->assertSame('Milano', $payload['data']['items'][0]['address']);
+    }
+
+    public function test_search_rejects_invalid_latitude_range(): void
+    {
+        $controller = new PetProfessionalServiceController();
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request
+            ->method('getQueryParams')
+            ->willReturn([
+                'lat_min' => '91',
+            ]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->search($request, $response);
+
+        $this->assertSame(422, $result->getStatusCode());
+        $this->assertSame([
+            'success' => false,
+            'data' => [
+                'message' => 'Range latitude non valido. Valori consentiti: da -90 a 90.',
             ],
         ], json_decode((string) $result->getBody(), true));
     }
