@@ -250,8 +250,13 @@ class MlabFactoryApiHelper
 
             //get image id
             $idImage = self::getCoverImage($product);
+            $sellerId = (int) ($product['id_manufacturer'] ?? 0);
+            if ($sellerId <= 0) {
+                $sellerId = (int) ($product['id_supplier'] ?? 0);
+            }
             $products[] = array(
                 'id_product' => (int) $product['id_product'],
+                'seller_id' => $sellerId,
                 'id_image' => $idImage,
                 'id_product_attribute' => (int) $product['id_product_attribute'],
                 'id_customization' => (int) $product['id_customization'],

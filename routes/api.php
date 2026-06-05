@@ -12,6 +12,7 @@ $app->get('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::cl
 $app->post('/api/cart', PS\Webservice\Http\Controller\CartController::class . ':createCart');
 $app->post('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':updateCart');
 $app->delete('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':deleteCart');
+$app->post('/api/cart/shipping/sellers', PS\Webservice\Http\Controller\CartController::class . ':calculateSellerShipping');
 $app->get('/api/cart-rules', PS\Webservice\Http\Controller\CartController::class . ':getCartRules');
 $app->get('/api/cart-rules/coupon/featured', PS\Webservice\Http\Controller\CartController::class . ':getFeaturedCoupons');
 $app->get('/api/cart-rules/coupon/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');

@@ -6,16 +6,19 @@ namespace PS\Webservice\Http\Controller;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Facades\JsonDataStorage;
+use PS\Webservice\Service\SellerShippingCalculator;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PS\Webservice\Service\PS\Cart;
 
 class CartController extends Controller {
     protected Cart $cartService;
+    private SellerShippingCalculator $sellerShippingCalculator;
 
-    public function __construct(Cart $cartService)
+    public function __construct(Cart $cartService, ?SellerShippingCalculator $sellerShippingCalculator = null)
     {
         $this->cartService = $cartService;
+        $this->sellerShippingCalculator = $sellerShippingCalculator ?? new SellerShippingCalculator();
     }
 
     public function getCartList(Request $request, Response $response, array $argv): Response
@@ -162,6 +165,35 @@ class CartController extends Controller {
         $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
         $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->cartService);
         return response($cartRules->toArray());
+    }
+
+    public function calculateSellerShipping(Request $request, Response $response, array $argv): Response
+    {
+        $payload = $request->getParsedBody();
+        if (!is_array($payload)) {
+            return response(['error' => 'Invalid payload format'], 400);
+        }
+
+        $products = $payload['products'] ?? null;
+        if (!is_array($products) || count($products) === 0) {
+            return response(['error' => 'Field products must be a non-empty array'], 400);
+        }
+
+        foreach ($products as $index => $product) {
+            if (!is_array($product) || !isset($product['seller_id'])) {
+                return response(['error' => "Missing seller_id for product at index {$index}"], 400);
+            }
+        }
+
+        $sellerRules = $payload['seller_rules'] ?? [];
+        if (!is_array($sellerRules)) {
+            return response(['error' => 'Field seller_rules must be an array'], 400);
+        }
+
+        $shippingBySeller = $this->sellerShippingCalculator->calculate($products, $sellerRules);
+        return response([
+            'shipping_by_seller' => $shippingBySeller,
+        ]);
     }
 
     protected function validateCartPayload(array $payload): bool

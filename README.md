@@ -49,6 +49,50 @@ You can use an fake mailhog server
 - docker exec budgetcontrol-ms-authentication bash -c "vendor/bin/phinx rollback -t 0 && vendor/bin/phinx migrate && vendor/bin/phinx seed:run" 
 - docker exec budgetcontrol-ms-authentication vendor/bin/phpunit test
 
+## API - Seller Shipping
+
+### POST `/api/cart/shipping/sellers`
+Calcola la spedizione per venditore in base ai prodotti del carrello e alle soglie per venditore.
+
+Request:
+```json
+{
+  "products": [
+    { "id_product": 10, "seller_id": 1, "price_wt": 20, "quantity": 2 },
+    { "id_product": 12, "seller_id": 2, "price_wt": 15, "quantity": 1 }
+  ],
+  "seller_rules": [
+    { "seller_id": 1, "free_shipping_threshold": 35, "shipping_cost": 7.5 },
+    { "seller_id": 2, "free_shipping_threshold": 40, "shipping_cost": 5 }
+  ]
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "shipping_by_seller": [
+      {
+        "seller_id": 1,
+        "products_total": 40,
+        "free_shipping_threshold": 35,
+        "shipping_cost": 0,
+        "is_free_shipping": true
+      },
+      {
+        "seller_id": 2,
+        "products_total": 15,
+        "free_shipping_threshold": 40,
+        "shipping_cost": 5,
+        "is_free_shipping": false
+      }
+    ]
+  }
+}
+```
+
 ## Contributing
 
 Contributions are welcome! Please read our [Contribution Guidelines](CONTRIBUTING.md) for more information.
