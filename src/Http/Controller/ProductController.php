@@ -148,6 +148,27 @@ class ProductController extends Controller
         return response($productDetail->withFeatures()->toArray());
     }
 
+    public function productById(Request $request, Response $response, array $args)
+    {
+        $id = isset($args['id']) ? (int) $args['id'] : null;
+        if (!$id || $id <= 0) {
+            return response([
+                'success' => false,
+                'message' => 'Product ID is required'
+            ], 400);
+        }
+
+        $productDetail = $this->productService->getProductById($id);
+        if (!$productDetail) {
+            return response([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+        }
+
+        return response($productDetail->withFeatures()->toArray());
+    }
+
     public function productsRelated(Request $request, Response $response, array $args)
     {
         $id = $args['id'] ?? null;
