@@ -34,7 +34,7 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/product-promotions', PS\Webservice\Http\Controller\ProductController::class . ':featuredPromotions')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products,promotions'));
     $app->get('/api/products', PS\Webservice\Http\Controller\ProductController::class . ':productByCategory')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
     $app->get('/api/products/{id}/related', PS\Webservice\Http\Controller\ProductController::class . ':productsRelated')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
-    $app->get('/api/producs/{id}', PS\Webservice\Http\Controller\ProductController::class . ':productById')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
+    $app->get('/api/products/{id}', PS\Webservice\Http\Controller\ProductController::class . ':productById')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
     $app->get('/api/product/{slug}', PS\Webservice\Http\Controller\ProductController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
 
     /** brands list */
