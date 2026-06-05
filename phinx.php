@@ -4,7 +4,7 @@ require_once __DIR__ . '/bootstrap/app.php';
 
 return [
     'paths' => [
-        'migrations' => 'vendor/budgetcontrol/schema-registry-service/resources/migrations',
+        'migrations' => 'resources/migrations',
         'seeds' => 'resources/seeds'
     ],
     'environments' => [
