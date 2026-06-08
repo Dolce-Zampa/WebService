@@ -237,8 +237,13 @@ class OrderController extends CartController
         ));
     }
 
+    /**
+     * @deprecated 
+     */
     private function mathReduction(OrderSession $currentOrder, ?float $reductionPercent = null, ?float $reductionAmount = null): float
     {
+        return $reductionPercent;
+
         $total = $currentOrder->total();
 
         if (!empty($reductionPercent)) {
