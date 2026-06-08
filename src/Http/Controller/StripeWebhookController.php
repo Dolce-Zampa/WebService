@@ -3,15 +3,12 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
-use PS\Webservice\Domain\Entities\CustomerEntity;
-use PS\Webservice\Domain\Object\ConfirmOrderSession;
-use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\PS\Order;
 use Illuminate\Support\Facades\Log;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
-class StripeWebhookController extends Controller
+class StripeWebhookController extends OrderController
 {
     private Order $orderService;
 
@@ -50,6 +47,11 @@ class StripeWebhookController extends Controller
             }
         }
 
+        // if session expired or payment failed, we can handle other event types here (e.g. "checkout.session.expired", "payment_intent.payment_failed") to update the order status in PrestaShop accordingly.
+        if ($event->type === 'checkout.session.expired' || $event->type === 'payment_intent.payment_failed') {
+            Log::info('Stripe webhook: checkout session expired or failed for session ' . $event->data->object->id);
+        }
+
         return response(['received' => true], 200);
     }
 
@@ -75,6 +77,7 @@ class StripeWebhookController extends Controller
         $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
         $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
+        $couponCode = isset($metadata->coupon_code) ? (string) $metadata->coupon_code : null;
         $customerDetails = json_decode($metadata->customer);
 
         if ($cartId <= 0) {
@@ -105,35 +108,20 @@ class StripeWebhookController extends Controller
         $email = $customerDetails->email;
         $firstname = $customerDetails->firstname;
         $lastname = $customerDetails->lastname;
+        $amountPaid = ($session->amount_total) / 100;
         
-        // finalize the order with a "payment_success" state. This will trigger the creation of the order in PrestaShop.
-        $confirmSession = ConfirmOrderSession::create(
-                [
-                    'id_cart' => $cartId,
-                    'id_customer' => $customerId,
-                    'id_guest' => $guestId,
-                    'order_state' => ConfirmOrderSession::ORDER_STATE['confirm'],
-                    'amount_paid' => ($session->amount_total) / 100,
-                    'create_account' => false, //FIXME: no account creation data from Stripe, default to false
-                    'id_carrier' => $carrierId,
-                ],
-                $this->orderService
-            );
-
-        $confirmSession->setCustomer(
-            CustomerEntity::create([
-                'id' => null,
-                'email' => $email,
-                'firstname' => $firstname,
-                'lastname' => $lastname,
-                'phome' => $customerDetails->phone ?? null,
-                'delivery_address' => (array) $customerDetails->delivery_address, //FIXME: no address data from Stripe, set to null
-                'newsletter' => false, //FIXME: no newsletter subscription data from Stripe, default to false
-            ], $this->orderService)
+        $this->orderService->confirmSessionOrder(
+            $cartId,
+            $customerId,
+            $guestId,
+            $carrierId,
+            $couponCode,
+            $email,
+            $firstname,
+            $lastname,
+            $customerDetails,
+            $amountPaid
         );
-
-
-        $this->orderService->confirmOrder($confirmSession);
 
         Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
     }

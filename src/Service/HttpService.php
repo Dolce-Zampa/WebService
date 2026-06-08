@@ -10,7 +10,6 @@ use PS\Webservice\Domain\Object\PayloadServiceData;
 use PS\Webservice\Domain\Object\WebserviceConfig;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\HttpServiceInterface;
-use PS\Webservice\Traits\UseCache;
 use Slim\Http\Interfaces\ResponseInterface;
 
 class HttpService implements HttpServiceInterface

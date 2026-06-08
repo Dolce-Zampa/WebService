@@ -3,18 +3,22 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
-use Illuminate\Container\Attributes\Cache;
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CartEntity;
+use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Models\CartStorage;
 use PS\Webservice\Domain\Object\ConfirmOrderSession;
+use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\HttpServiceInterface;
-use Illuminate\Support\Facades\Log;
+use PS\Webservice\Service\PS\Cart;
+use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UseCache;
 use PS\Webservice\Traits\UuidGenerator;
 
-class Order extends Cart implements PrestashopServiceInterface {
+class Order extends Cart implements PrestashopServiceInterface
+{
 
     use UuidGenerator, UseCache;
 
@@ -25,12 +29,12 @@ class Order extends Cart implements PrestashopServiceInterface {
 
     public function getOrderByCartId(int|string $cartId, int|string|null $customerId = null, int|string|null $guestId = null): ?OrderEntity
     {
-        if(is_string($cartId)) {
+        if (is_string($cartId)) {
             $cartId = $this->decodeId($cartId, 'cart');
         }
 
         // find reference order from cache
-        $cachedOrder = JsonDataStorage::carts()->createQuery()->where('id_cart',(string) $cartId)->fetchAll();
+        $cachedOrder = JsonDataStorage::carts()->createQuery()->where('id_cart', (string) $cartId)->fetchAll();
         if (empty($cachedOrder)) {
             Log::debug("Order retrieved from cache for cart {$cartId}");
             throw new \RuntimeException("Order retrieved from cache for cart {$cartId}");
@@ -55,13 +59,13 @@ class Order extends Cart implements PrestashopServiceInterface {
         }
     }
 
-    public function getOrderListFromUserId(?string $customerId = null): ?OrderEntity
+    public function getOrderListFromUserId(?string $customerId = null): ?array
     {
         $queryString = http_build_query([
             'id_customer' => $this->decodeId($customerId, 'customer'),
         ]);
 
-        $this->httpService->setUrl("/api/orders?{$queryString}");
+        $this->httpService->setUrl("/orders?{$queryString}");
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -70,7 +74,19 @@ class Order extends Cart implements PrestashopServiceInterface {
             return null;
         }
 
-        return OrderEntity::create($response->toArray(), $this);
+        $data = $response->toArray();
+        if ($response->getHttpCode() >= 400 || !isset($data['data']['orders']) || !is_array($data['data']['orders'])) {
+            return null;
+        }
+
+        $orders = [];
+        foreach ($data['data']['orders'] as $row) {
+            if (is_array($row)) {
+                $orders[] = OrderEntity::create($row, $this)->toArray();
+            }
+        }
+
+        return $orders;
     }
 
     public function orderDetails(string $orderId): ?OrderEntity
@@ -78,7 +94,7 @@ class Order extends Cart implements PrestashopServiceInterface {
         $queryString = http_build_query([
             'id_order' => $this->decodeId($orderId, 'order'),
         ]);
-        $this->httpService->setUrl("/api/orders?{$queryString}");
+        $this->httpService->setUrl("/orders?{$queryString}");
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -87,12 +103,15 @@ class Order extends Cart implements PrestashopServiceInterface {
             return null;
         }
 
-        return OrderEntity::create($response->toArray(), $this);
+        $orderData = $response->toArray()['data']['order'] ?? null;
+        $orderData['customer'] = $response->toArray()['data']['customer'] ?? [];
+
+        return OrderEntity::create($orderData, $this);
     }
 
     public function newOrder(CartEntity $cart): CartEntity
     {
-        $this->httpService->setUrl("/api/orders");
+        $this->httpService->setUrl("/orders");
 
         try {
             $response = $this->httpService->invoke('POST', $cart->generatePayload());
@@ -104,7 +123,7 @@ class Order extends Cart implements PrestashopServiceInterface {
         return $cart;
     }
 
-    public function confirmOrder(ConfirmOrderSession $confirmSession): void
+    protected function confirmOrder(ConfirmOrderSession $confirmSession): void
     {
         $errors = $confirmSession->validate();
         if (!empty($errors)) {
@@ -119,7 +138,8 @@ class Order extends Cart implements PrestashopServiceInterface {
             'payment_label' => $confirmSession->payment_label,
             'id_order_state' => $confirmSession->id_order_state,
             'amount_paid' => $confirmSession->amount_paid,
-            'id_carrier' => $confirmSession->id_carrier
+            'id_carrier' => $confirmSession->id_carrier,
+            'coupon_code' => $confirmSession->coupon_code,
         ];
 
         // Add customer/guest identification
@@ -135,7 +155,7 @@ class Order extends Cart implements PrestashopServiceInterface {
             $orderData['email'] = $confirmSession->getCustomer()->email;
             $orderData['firstname'] = $confirmSession->getCustomer()->firstname;
             $orderData['lastname'] = $confirmSession->getCustomer()->lastname;
-            
+
             if ($confirmSession->getCustomer()->password !== null) {
                 $orderData['password'] = $confirmSession->getCustomer()->password;
             }
@@ -149,7 +169,7 @@ class Order extends Cart implements PrestashopServiceInterface {
         if ($confirmSession->getDeliveryAddress() !== null) {
             $orderData['delivery_address'] = $confirmSession->getDeliveryAddress();
         }
-        
+
         if ($confirmSession->getInvoiceAddress() !== null) {
             $orderData['invoice_address'] = $confirmSession->getInvoiceAddress();
         }
@@ -163,16 +183,79 @@ class Order extends Cart implements PrestashopServiceInterface {
             }
 
             Log::debug("Order confirmation response for cart {$confirmSession->id_cart}: " . json_encode($dataResponse) . ' code: ' . $response->getHttpCode());
-            
+
             // setup reference in storage for later retrieval in getOrderByCartId
             JsonDataStorage::carts()->insert(
-                new CartStorage( $dataResponse['data']['order'] )
+                new CartStorage($dataResponse['data']['order'])
             );
 
         } catch (\Exception $e) {
             Log::error("Exception occurred while confirming order for cart {$confirmSession->id_cart}: " . $e->getMessage());
             throw new \RuntimeException("Failed to confirm order: " . $e->getMessage());
         }
+    }
+
+    public function findExistingStripeCoupon(string $couponName): ?\Stripe\Coupon
+    {
+        try {
+            $coupons = \Stripe\Coupon::all(['limit' => 100]);
+
+            foreach ($coupons->data as $coupon) {
+                if ($coupon->name === $couponName) {
+                    return $coupon;
+                }
+            }
+            return null;
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            return null;
+        }
+    }
+
+    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment'): void
+    {
+        // finalize the order with a "payment_success" state. This will trigger the creation of the order in PrestaShop.
+        $confirmSession = ConfirmOrderSession::create(
+                [
+                    'id_cart' => $cartId,
+                    'id_customer' => $customerId,
+                    'id_guest' => $guestId,
+                    'order_state' => ConfirmOrderSession::ORDER_STATE['confirm'],
+                    'amount_paid' => $amountPaid,
+                    'create_account' => false, //FIXME: no account creation data from Stripe, default to false
+                    'id_carrier' => $carrierId,
+                    'coupon_code' => $couponCode,
+                    'payment_label' => $paymentMethod,
+                ],
+                $this
+            );
+
+        $confirmSession->setCustomer(
+            CustomerEntity::create([
+                'id' => null,
+                'email' => $email,
+                'firstname' => $firstname,
+                'lastname' => $lastname,
+                'phome' => $customerDetails->phone ?? null,
+                'delivery_address' => (array) $customerDetails->delivery_address, //FIXME: no address data from Stripe, set to null
+                'newsletter' => false, //FIXME: no newsletter subscription data from Stripe, default to false
+            ], $this)
+        );
+
+
+        $this->confirmOrder($confirmSession);
+    }
+
+    public function createCouponCode(Discount $discount): string
+    {
+        // 2. Se non esiste, lo crei al volo
+        $stripeCoupon = \Stripe\Coupon::create([
+            'name' => $discount->name,
+            // Usi 'percent_off' o 'amount_off' in base al tuo sconto
+            'percent_off' => $discount->amount_off,
+            'duration' => $discount->duration, // 'once', 'forever', 'repeating'
+        ]);
+        
+        return $stripeCoupon->id;
     }
 
 }

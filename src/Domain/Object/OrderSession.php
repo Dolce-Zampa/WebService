@@ -4,11 +4,10 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Object;
 
 use PS\Webservice\Domain\Entities\CarrierEntity;
-use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
-use PS\Webservice\Domain\Models\CouponStorage;
+use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\ObjectInterface;
-use PS\Webservice\Facades\JsonDataStorage;
+use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
 
@@ -16,15 +15,18 @@ class OrderSession implements ObjectInterface
 {
     use UuidGenerator;
     protected array $data;
-
-    private function __construct(array $data) {
+    private Order $service;
+    private function __construct(array $data, Order $service)
+    {
         $this->data = $data;
+        $this->service = $service;
         $this->normalizeData();
     }
 
     public static function create(array $data, PrestashopServiceInterface $service): self
     {
-        return new self($data);
+        /** @var Order $service */
+        return new self($data, $service);
     }
 
     public function __get(string $name): mixed
@@ -50,13 +52,16 @@ class OrderSession implements ObjectInterface
          * @var  CustomerEntity $customer
          */
         $customer = $data['customer'];
-        if(! $customer instanceof CustomerEntity) {
+        if (!$customer instanceof CustomerEntity) {
             throw new \InvalidArgumentException('customer must be an instance of CustomerEntity to create an order session');
         }
 
         $customerDetails = $customer->toArray();
         $this->data = [
             'mode' => 'payment',
+            // 'permissions' => [ 
+            //     'update_discounts' => 'server_only',
+            // ],
             'success_url' => $this->appendQueryParam($data['success_url'] ?? '', 'cart_id', $cartId),
             'cancel_url' => $this->appendQueryParam($data['cancel_url'] ?? '', 'cart_id', $cartId),
             'line_items' => $data['line_items'] ?? [],
@@ -68,6 +73,7 @@ class OrderSession implements ObjectInterface
                 'id_guest' => $this->decodeId($data['id_guest'], 'guest'),
                 'id_carrier' => $data['id_carrier'],
                 'customer' => json_encode($customerDetails),
+                'coupon_code' => $data['discounts'][0]['coupon'] ?? null,
             ],
         ];
 
@@ -94,16 +100,29 @@ class OrderSession implements ObjectInterface
                 'product_data' => [
                     'name' => $name
                 ],
-                'unit_amount' => (int)($price * 100),
+                'unit_amount' => (int) ($price * 100),
             ],
             'quantity' => $quantity
         ];
     }
 
-    public function addCartRule(array $cartRule): void
+    public function addDiscount(Discount $discount): void
     {
-        /** @var Rule $rule */
-        $this->data['discount']['coupon'] = $cartRule['id_relative']; //FIXME: we need to create a coupon in Stripe for this cart rule and use its ID here
+        $existingCoupon = $this->service->findExistingStripeCoupon($discount->code);
+
+        if ($existingCoupon) {
+            $stripeCouponId = $existingCoupon->id;
+        } else {
+            $stripeCouponId = $this->service->createCouponCode($discount);
+        }
+
+        // 3. Struttura corretta per Stripe Checkout
+        $this->data['discounts'] = [
+            [
+                'coupon' => $stripeCouponId
+            ]
+        ];
+
     }
 
     public function addCarrier(CarrierEntity $carrier): void
@@ -116,4 +135,19 @@ class OrderSession implements ObjectInterface
         return new PayloadServiceData($this->data, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
     }
 
+    public function total(): float
+    {
+        $calculatedTotal = 0;
+        foreach ($this->data['line_items'] as $item) {
+            $calculatedTotal += $item['price_data']['unit_amount'] * $item['quantity'];
+        }
+
+        return $calculatedTotal / 100; // Convert back to euros
+
+    }
+
+    public function service(): Order
+    {
+        return $this->service;
+    }
 }

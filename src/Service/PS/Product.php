@@ -5,7 +5,6 @@ namespace PS\Webservice\Service\PS;
 
 use PS\Webservice\Domain\Entities\FilterEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Models\ProductLangTable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Object\Filter;
@@ -61,7 +60,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             if(!is_null($filter) && $filter->match($productData) !== true) {
                 continue; // Skip products that do not match the filter criteria
             }
-            $collection->push(ProductEntity::create($productData, $this));
+            $collection->push(ProductEntity::create($filter->productData, $this));
         }
 
         return $collection;
@@ -101,14 +100,18 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      * @param string $categoryId The ID of the category to retrieve products from
      * @return Collection A collection of products that belong to the specified category
      */
-    public function getProductByManufacture(string $manufactureId, array $pagination = [], string $sort = 'id_DESC', ?Filter $filters = null): Collection
+    public function getProductByManufacture(string $manufactureId, string $categoryId = null, array $pagination = [], string $sort = 'id_DESC', ?Filter $filters = null): Collection
     {
         $limit = $pagination['limit'] ?? 10;
         $page = $pagination['page'] ?? 1;
         $offset = ($page - 1) * $limit;
 
-        $products = $this->productsList(['display' => 'full', 'sort' => $sort, 'limit' => "$offset,$limit", 'filter[id_manufacturer]' => "[$manufactureId]", 'filter[active]' => 1]
-        , $filters);
+        $options = ['display' => 'full', 'sort' => $sort, 'limit' => "$offset,$limit", 'filter[id_manufacturer]' => "[$manufactureId]", 'filter[active]' => 1];
+        if (!empty($categoryId)) {
+            $options['filter[id_category_default]'] = "[$categoryId]";
+        }
+
+        $products = $this->productsList($options, $filters);
         return $products;
     }
 
@@ -129,14 +132,20 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return null; // Product not found
         }
 
-        $this->httpService->setUrl("/products/{$productId}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
+        return $this->getProductById($productId);
+        
+    }
+
+    public function getProductById(int $id): ?ProductEntity
+    {
+        $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
         $response = $this->httpService->invoke('GET');
 
         if ($response->failed()) {
             if ($response->getHttpCode() === 404) {
                 return null; // Product not found
             }
-            throw new \RuntimeException("Failed to retrieve product detail: " . $response->getHttpCode());
+            throw new PrestashopConnectorException($this->httpService);
         }
 
         $productData = $response->toArray()['products'][0];
@@ -197,5 +206,16 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }
 
         return $collection;
+    }
+
+    public function getFeaturedPromotions(): Collection
+    {
+        $products = $this->productsList(filter: new Filter(['on_sale' => true]));
+
+        if(is_null($products) || $products->isEmpty()) {
+            return new Collection(); // No promotions found
+        }
+
+        return $products;
     }
 }

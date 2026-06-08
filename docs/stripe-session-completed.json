@@ -1,0 +1,155 @@
+{
+  "id": "evt_1TZtj0K1qx2Lg2xpUUGIGwTj",
+  "object": "event",
+  "api_version": "2026-01-28.clover",
+  "created": 1779458814,
+  "data": {
+    "object": {
+      "id": "cs_live_b1u07Ve3MZqM31caAbP6Hs3WldyBm0Xl2CwhjTU82q1wpXlBN3J0rnaltn",
+      "object": "checkout.session",
+      "adaptive_pricing": {
+        "enabled": true
+      },
+      "after_expiration": null,
+      "allow_promotion_codes": null,
+      "amount_subtotal": 6210,
+      "amount_total": 6210,
+      "automatic_tax": {
+        "enabled": false,
+        "liability": null,
+        "provider": null,
+        "status": null
+      },
+      "billing_address_collection": null,
+      "branding_settings": {
+        "background_color": "#ffffff",
+        "border_style": "rounded",
+        "button_color": "#f9ab00",
+        "display_name": "Dolce Zampa di Yovana Felices",
+        "font_family": "default",
+        "icon": null,
+        "logo": {
+          "file": "file_1T0J8KK1qx2Lg2xpSasHX5Lt",
+          "type": "file"
+        }
+      },
+      "cancel_url": "https://www.dolcezampa.com/checkout/cancel?cart_id=P2OgK6Oo",
+      "client_reference_id": null,
+      "client_secret": null,
+      "collected_information": null,
+      "consent": null,
+      "consent_collection": null,
+      "created": 1779458736,
+      "currency": "eur",
+      "currency_conversion": null,
+      "custom_fields": [],
+      "custom_text": {
+        "after_submit": null,
+        "shipping_address": null,
+        "submit": null,
+        "terms_of_service_acceptance": null
+      },
+      "customer": null,
+      "customer_account": null,
+      "customer_creation": "if_required",
+      "customer_details": {
+        "address": {
+          "city": null,
+          "country": "IT",
+          "line1": null,
+          "line2": null,
+          "postal_code": null,
+          "state": null
+        },
+        "business_name": null,
+        "email": "marco.defelice890@gmail.com",
+        "individual_name": null,
+        "name": "Marco De Felice",
+        "phone": null,
+        "tax_exempt": "none",
+        "tax_ids": []
+      },
+      "customer_email": null,
+      "discounts": [],
+      "expires_at": 1779545136,
+      "integration_identifier": null,
+      "invoice": null,
+      "invoice_creation": {
+        "enabled": false,
+        "invoice_data": {
+          "account_tax_ids": null,
+          "custom_fields": null,
+          "description": null,
+          "footer": null,
+          "issuer": null,
+          "metadata": {},
+          "rendering_options": null
+        }
+      },
+      "livemode": true,
+      "locale": null,
+      "managed_payments": {
+        "enabled": false
+      },
+      "metadata": {
+        "id_carrier": "14",
+        "cart_id": "234",
+        "id_guest": "12271409",
+        "coupon_code": "SUMMER10",  
+        "customer": "{\"email\":\"marco.defelice@icloud.com\",\"password\":\"\",\"firstname\":\"Marco\",\"lastname\":\"De Felice\",\"phone\":\"3319843630\",\"newsletter\":false,\"delivery_address\":{\"alias\":\"home\",\"firstname\":\"Marco\",\"lastname\":\"De Felice\",\"address1\":\"Via Carpiano\",\"city\":\"LONATE POZZOLO\",\"postcode\":\"21015\",\"id_country\":10,\"phone_mobile\":\"3319843630\",\"id_state\":228},\"invoice_address\":null}"
+      },
+      "mode": "payment",
+      "origin_context": null,
+      "payment_intent": "pi_3TZtiyK1qx2Lg2xp0QOPnA4V",
+      "payment_link": null,
+      "payment_method_collection": "if_required",
+      "payment_method_configuration_details": {
+        "id": "pmc_1T03NGK1qx2Lg2xppa96gNV6",
+        "parent": null
+      },
+      "payment_method_options": {
+        "card": {
+          "request_three_d_secure": "automatic"
+        }
+      },
+      "payment_method_types": [
+        "card",
+        "klarna",
+        "paypal",
+        "revolut_pay",
+        "amazon_pay",
+        "satispay"
+      ],
+      "payment_status": "paid",
+      "permissions": null,
+      "phone_number_collection": {
+        "enabled": false
+      },
+      "recovered_from": null,
+      "saved_payment_method_options": null,
+      "setup_intent": null,
+      "shipping_address_collection": null,
+      "shipping_cost": null,
+      "shipping_options": [],
+      "status": "complete",
+      "submit_type": null,
+      "subscription": null,
+      "success_url": "https://www.dolcezampa.com/checkout/success?cart_id=P2OgK6Oo",
+      "total_details": {
+        "amount_discount": 0,
+        "amount_shipping": 0,
+        "amount_tax": 0
+      },
+      "ui_mode": "hosted",
+      "url": null,
+      "wallet_options": null
+    }
+  },
+  "livemode": true,
+  "pending_webhooks": 0,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "checkout.session.completed"
+}

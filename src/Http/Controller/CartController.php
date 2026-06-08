@@ -98,6 +98,31 @@ class CartController extends Controller {
         return response($cartEntity->toArray(), 201);
     }
 
+    public function deleteCart(Request $request, Response $response, array $argv): Response
+    {
+        $cartId = $argv['cartId'];
+        $cartId = $argv['cartId'];
+        $params = $request->getParsedBody();
+        $payload = $request->getParsedBody();
+        $isGuest = (bool) $params['isGuest'] ?? false;
+        $customerId = empty($isGuest) ? $payload['customerId'] : null;
+        $guestId = $isGuest == true ? $payload['customerId'] : null;
+
+        if ($customerId === null && $guestId === null) {
+            return response(['error' => 'Customer ID or guest ID is required to delete cart'], 403);
+        }
+
+        $result = $this->cartService->deleteCart($cartId, $customerId, $guestId);
+        
+        if($result->failed()) {
+            return response([
+                "error" => "Failed to delete cart",
+            ], 500);
+        }
+
+        return response(['message' => 'Cart deleted successfully']);
+    }
+
     public function getFeaturedCoupons(Request $request, Response $response, array $argv): Response
     {
         $storage = JsonDataStorage::coupon()->fetchAll();

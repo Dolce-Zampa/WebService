@@ -24,9 +24,22 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             throw new MlabFactoryApiException('Cart is empty.', 422, array('id_cart' => (int) $cart->id));
         }
 
+        // ========== APPLICA IL COUPON SE PRESENTE ==========
+        if (!empty($payload['coupon_code'])) {
+            $result = $this->applyCouponToCart($cart, $payload['coupon_code']);
+
+            if (!$result['success']) {
+                throw new MlabFactoryApiException($result['error'], 422, ['coupon_code' => $payload['coupon_code']]);
+            }
+
+            // Ricarica il carrello con lo sconto applicato
+            $cart = new Cart((int) $cart->id);
+        }
+        // ===================================================
+
         // Determine if this is a guest or registered customer
         $isGuest = (int) $cart->id_customer === 0 && (int) $cart->id_guest > 0;
-        
+
         if ($isGuest) {
             // Guest checkout - create temporary customer from guest and cart data
             $customer = MlabFactoryApiHelper::createCustomerFromGuest($cart, $payload);
@@ -54,7 +67,7 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             $cart->id_carrier = $carrierId;
             $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
         }
-        
+
         // Update cart with customer if it was a guest
         if ($isGuest) {
             $cart->id_customer = (int) $customer->id;
@@ -86,7 +99,7 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             FROM `' . _DB_PREFIX_ . 'orders`
             WHERE `id_cart` = ' . (int) $cart->id
         );
-        
+
         if ($existingOrderId > 0) {
             $order = new Order($existingOrderId);
 
@@ -96,17 +109,19 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             );
         }
 
-        // $paymentModule->validateOrder(
-        //     (int) $cart->id,
-        //     $orderStateId,
-        //     $amountPaid,
-        //     $paymentLabel,
-        //     null,
-        //     array(),
-        //     (int) $cart->id_currency,
-        //     false,
-        //     $customer->secure_key
-        // );
+        $this->addCustomCartRule($cart, $amountPaid);
+
+        $paymentModule->validateOrder(
+            (int) $cart->id,
+            $orderStateId,
+            $amountPaid,
+            $paymentLabel,
+            null,
+            array(),
+            (int) $cart->id_currency,
+            false,
+            $customer->secure_key
+        );
 
         $orderId = (int) $paymentModule->currentOrder;
         $order = new Order($orderId);
@@ -122,6 +137,74 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         );
     }
 
+    private function addCustomCartRule(Cart $cart, float $amountPaid)
+    {
+        $cart = new Cart((int) $cart->id);
+
+        // Totale reale calcolato da PrestaShop
+        $psTotal = (float) $cart->getOrderTotal(true, Cart::BOTH);
+
+        // Totale deciso dalla tua API
+        $customTotal = (float) $amountPaid;
+
+        // Differenza
+        $difference = round($psTotal - $customTotal, 2);
+
+        // Applichiamo regola solo se necessario
+        if (abs($difference) > 0.01) {
+
+            // Se differenza positiva → Sconto (OK, teniamo la tua logica originale)
+            if ($difference > 0) {
+                $cartRule = new CartRule();
+                $defaultLang = (int) Configuration::get('PS_LANG_DEFAULT');
+                $cartRule->name = [$defaultLang => 'Custom API price adjustment'];
+                $cartRule->id_customer = (int) $cart->id_customer;
+                $cartRule->quantity = 1;
+                $cartRule->quantity_per_user = 1;
+                $cartRule->reduction_amount = $difference;
+                $cartRule->reduction_tax = true;
+                $cartRule->date_from = date('Y-m-d H:i:s');
+                $cartRule->date_to = date('Y-m-d H:i:s', strtotime('+1 hour'));
+                $cartRule->active = 1;
+                $cartRule->add();
+                $cart->addCartRule($cartRule->id);
+            }
+            // Se differenza negativa → Sovrapprezzo (usiamo un PRODOTTO)
+            else {
+                $fee_amount = abs($difference); // Importo del sovrapprezzo (positivo)
+
+                // 1. Definisci l'ID di un prodotto "fantasma" che userai come fee
+                //    (es. ID 9999 - crealo manualmente dal backoffice, disabilitalo dalla vetrina)
+                $id_product_fee = 151;
+
+                // 2. Imposta un prezzo specifico temporaneo per questo prodotto/carrello
+                $specific_price = new SpecificPrice();
+                $specific_price->id_product = $id_product_fee;
+                $specific_price->id_cart = (int) $cart->id; // Lega il prezzo a QUESTO carrello
+                $specific_price->id_shop = (int) $cart->id_shop;
+                $specific_price->id_currency = (int) $cart->id_currency;
+                $specific_price->id_country = (int) Context::getContext()->country->id;
+                $specific_price->id_customer = (int) $cart->id_customer;
+                $specific_price->price = $fee_amount; // Qui imposti l'importo della fee
+                $specific_price->from_quantity = 1;
+                $specific_price->reduction_type = 'amount';
+                $specific_price->reduction_tax = 1;
+                $specific_price->reduction = 0;
+                $specific_price->from = date('Y-m-d H:i:s');
+                $specific_price->to = date('Y-m-d H:i:s', strtotime('+1 hour')); // Valido 1 ora
+
+                try {
+                    $specific_price->add();
+                    // Aggiungi 1 pezzo del prodotto fee al carrello
+                    $cart->updateQty(1, $id_product_fee);
+                } catch (Exception $e) {
+                    // Gestisci l'errore (es. logga)
+                    PrestaShopLogger::addLog("Errore nell'aggiunta della fee: " . $e->getMessage());
+                }
+            }
+        }
+    }
+
     protected function handleGetRequest()
     {
         $idOrder = (int) Tools::getValue('id_order');
@@ -130,6 +213,10 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         $idGuest = (int) Tools::getValue('id_guest');
 
         if ($idOrder <= 0 && $reference === '') {
+            if ($idCustomer > 0 || $idGuest > 0) {
+                return $this->getOrderHistory($idCustomer, $idGuest);
+            }
+
             throw new MlabFactoryApiException('You must provide id_order or reference.', 422);
         }
 
@@ -162,6 +249,38 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         );
     }
 
+    protected function getOrderHistory(int $idCustomer, int $idGuest)
+    {
+        $query = new DbQuery();
+        $query->select('o.`id_order`');
+        $query->from('orders', 'o');
+        $query->leftJoin('cart', 'c', 'c.`id_cart` = o.`id_cart`');
+
+        if ($idCustomer > 0) {
+            $query->where('o.`id_customer` = ' . (int) $idCustomer);
+        } elseif ($idGuest > 0) {
+            $query->where('c.`id_guest` = ' . (int) $idGuest);
+        } else {
+            throw new MlabFactoryApiException('You must provide id_customer or id_guest.', 422);
+        }
+        $query->orderBy('o.`date_add` DESC');
+
+        $rows = Db::getInstance()->executeS($query);
+
+        $orders = [];
+        foreach ($rows as $row) {
+            $order = new Order((int) $row['id_order']);
+            if (Validate::isLoadedObject($order)) {
+                $orders[] = MlabFactoryApiHelper::serializeOrder($order);
+            }
+        }
+
+        return array(
+            'message' => 'Order history retrieved successfully.',
+            'orders' => $orders,
+        );
+    }
+
     protected function getOrderByReference($reference)
     {
         $orderId = (int) Db::getInstance()->getValue(
@@ -176,5 +295,59 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         }
 
         return new Order($orderId);
+    }
+    /**
+     * Applica una cart rule (coupon) al carrello
+     * 
+     * @param Cart $cart
+     * @param string $couponCode Codice sconto da applicare
+     * @return array Risultato dell'operazione
+     */
+    private function applyCouponToCart(Cart $cart, string $couponCode): array
+    {
+        // Inizializza il contesto
+        $context = Context::getContext();
+        $context->cart = $cart;
+        $context->customer = new Customer($cart->id_customer);
+
+        // Cerca la cart rule per codice
+        $cartRule = new CartRule(CartRule::getIdByCode($couponCode));
+
+        if (!Validate::isLoadedObject($cartRule)) {
+            return [
+                'success' => false,
+                'error' => 'Coupon code not found.'
+            ];
+        }
+
+        // Verifica se la cart rule è valida per questo carrello/customer
+        if (!$cartRule->checkValidity($context, $cart->id, false)) {
+            $errors = $cartRule->getValidityErrors();
+            return [
+                'success' => false,
+                'error' => 'Coupon is not valid: ' . implode(', ', $errors)
+            ];
+        }
+
+        // Rimuovi eventuali cart rule esistenti (opzionale)
+        $cart->removeCartRules();
+
+        // Applica la cart rule al carrello
+        $cart->addCartRule($cartRule->id);
+
+        // Aggiorna il carrello per ricalcolare i totali
+        $cart->update();
+
+        return [
+            'success' => true,
+            'message' => 'Coupon applied successfully.',
+            'cart_rule' => [
+                'id' => $cartRule->id,
+                'name' => $cartRule->name[(int) $cart->id_lang],
+                'code' => $cartRule->code,
+                'reduction_percent' => $cartRule->reduction_percent,
+                'reduction_amount' => $cartRule->reduction_amount
+            ]
+        ];
     }
 }

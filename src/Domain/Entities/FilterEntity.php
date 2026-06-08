@@ -119,16 +119,26 @@ class FilterEntity implements ObjectInterface
             if ($data['name'] == $type) {
                 $object = $attribute[$key];
                 foreach ($data['values'] as $value) {
-                    $typeAttribute[] = [
+                    $attr = [
                         "id_attribute" => (int) $value['id_attribute'],
                         "value" => $value['value'] ?? '',
                     ];
+
+                    if($type === 'Colore') {
+                        $attr['color'] = $value['color'] ?? '';
+                    }
+
+                    $typeAttribute[] = $attr;
                 }
             }
         }
 
+        if(empty($object)) {
+            return [];
+        }
+
         return [
-            'id_attribute_group' => (int) $object['id_attribute_group'],
+            'id_attribute_group' => (int) $object['id_attribute_group'] ,
             'name' => (int) $object['name'],
             'type' => (int) $object['type'],
             'values' => $typeAttribute,

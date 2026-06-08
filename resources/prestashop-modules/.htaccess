@@ -24,6 +24,17 @@ RewriteRule ^api/cart_rules(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&mod
 RewriteRule ^api/catalog(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=product&ws_key=$1 [QSA,L]
 RewriteRule ^api/wishlists(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=wishlists&ws_key=$1 [QSA,L]
 RewriteRule ^api/contact(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=contact&ws_key=$1 [QSA,L]
+RewriteRule ^api/login(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=login&ws_key=$1 [QSA,L]
+RewriteRule ^api/register(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=register&ws_key=$1 [QSA,L]
+RewriteRule ^api/password-reset(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=passwordreset&ws_key=$1 [QSA,L]
+RewriteRule ^api/password-reset(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=passwordreset&ws_key=$1 [QSA,L]
+RewriteRule ^api/customers(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=customers&ws_key=$1 [QSA,L]
+RewriteRule ^api/account(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=account&ws_key=$1 [QSA,L]
+RewriteRule ^api/addresses(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=addresses&ws_key=$1 [QSA,L]
+RewriteRule ^api/logout(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=logout&ws_key=$1 [QSA,L]
+
+# Modules
+RewriteRule ^api/module/welcome-coupon$ %{ENV:REWRITEBASE}index.php?fc=module&module=dolcezampa_subscription_coupon&controller=ajax&action=subscriptionCoupon [QSA,L]
 
 RewriteRule ^api(?:/(.*))?$ %{ENV:REWRITEBASE}webservice/dispatcher.php?url=$1 [QSA,L]
 RewriteRule ^upload/.+$ %{ENV:REWRITEBASE}index.php [QSA,L]
@@ -147,6 +158,7 @@ Redirect 301 /content/pettorine-in-pelle-guida-alla-scelta-migliore https://www.
 Redirect 301 /content/pettorine-in-biothane-per-cani-di-piccola-e-media-taglia-cosa-le-rende-cosi-speciali https://www.dolcezampa.com/blog/2025/12/01/pettorine-in-biothane-per-cani/
 Redirect 301 /category/abbigliamento https://www.dolcezampa.com/category/abbigliamento-per-cani
 Redirect 301 /category/borse https://www.dolcezampa.com/category/borse-per-cani
+Redirect 301 /category/guinzagli-pettorine https://www.dolcezampa.com/category/pettorine-per-cani
 
 php_value upload_max_filesize 16M
 php_value post_max_size 16M

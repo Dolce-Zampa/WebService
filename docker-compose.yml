@@ -1,5 +1,3 @@
-version: '2.2'
-
 services:
   webservice:
     container_name: dolcezampa_webservice

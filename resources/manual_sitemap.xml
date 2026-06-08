@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" 
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <url>
+    <loc><![CDATA[https://www.dolcezampa.com/prodotti-in-promozione]]></loc>
+    <changefreq>daily</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+    <url>
+    <loc><![CDATA[https://www.dolcezampa.com/nuovi-prodotti]]></loc>
+    <changefreq>daily</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc><![CDATA[https://www.dolcezampa.com/category/pettorine-collari/pagina/2]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc><![CDATA[https://www.dolcezampa.com/category/pettorine-collari/pagina/3]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc><![CDATA[https://www.dolcezampa.com/category/abbigliamento-per-cani/pagina/2]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+    <url>
+    <loc><![CDATA[https://www.dolcezampa.com/category/cucce-per-cani/pagina/2]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+    <url>
+    <loc><![CDATA[https://www.dolcezampa.com/category/accessori-per-cani/pagina/2]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+    <url>
+    <loc><![CDATA[https://www.dolcezampa.com/artigiani/art-and-dog-di-francesca]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+    <url>
+    <loc><![CDATA[https://www.dolcezampa.com/artigiani/teresa-ciotola]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+    <url>
+    <loc><![CDATA[https://www.dolcezampa.com/artigiani/claudia-cascioli]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+    <url>
+    <loc><![CDATA[https://www.dolcezampa.com/artigiani/pet-cherie]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+</urlset>

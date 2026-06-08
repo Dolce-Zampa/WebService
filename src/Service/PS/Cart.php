@@ -325,4 +325,33 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return is_array($data) ? $data : null;
     }
 
+    public function deleteCart(string $cartId, ?string $customerId = null, ?string $guestId = null): HttpServiceInterface
+    {
+        $queryParams = [
+            'id_cart' => $this->decodeId($cartId, 'cart'),
+            'ws_key' => $this->httpService->getConfig()->apikey,
+        ];
+
+        $payload = [
+            'id_cart' => $this->decodeId($cartId, 'cart'),
+        ];
+
+        if ($customerId !== null) {
+            $payload['id_customer'] = $this->decodeId($customerId, 'customer');
+        }
+
+        if ($guestId !== null) {
+            $payload['id_customer'] = $this->decodeId($guestId, 'guest');
+        }
+
+        $queryString = http_build_query($queryParams);
+        $this->httpService->setUrl("/carts?{$queryString}");
+
+        try {
+            return $this->httpService->invoke('DELETE', $payload);
+        } catch (\Exception $e) {
+            Log::error("Exception occurred while deleting cart with id {$cartId}: " . $e->getMessage());
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
 }

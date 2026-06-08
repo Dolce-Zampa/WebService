@@ -114,7 +114,7 @@ class ProductController extends Controller
         string $sort = 'id_DESC',
         Filter $filter
     ): array {
-        if ($category !== null) {
+        if ($manufacturer === null) {
             return [
                 $this->productService->getProductByCategory($category, $paginationOptions, $sort, $filter),
                 ['filter[id_category_default]' => "[$category]"],
@@ -122,8 +122,8 @@ class ProductController extends Controller
         }
 
         return [
-            $this->productService->getProductByManufacture($manufacturer, $paginationOptions, $sort, $filter),
-            ['filter[id_manufacturer]' => "[$manufacturer]"],
+            $this->productService->getProductByManufacture($manufacturer, $category, $paginationOptions, $sort, $filter),
+            ['filter[id_manufacturer]' => "[$manufacturer]"]
         ];
     }
 
@@ -145,7 +145,28 @@ class ProductController extends Controller
             ], 404);
         }
 
-        return response($productDetail->toArray());
+        return response($productDetail->withFeatures()->toArray());
+    }
+
+    public function productById(Request $request, Response $response, array $args)
+    {
+        $id = isset($args['id']) ? (int) $args['id'] : null;
+        if (!$id || $id <= 0) {
+            return response([
+                'success' => false,
+                'message' => 'Product ID is required'
+            ], 400);
+        }
+
+        $productDetail = $this->productService->getProductById($id);
+        if (!$productDetail) {
+            return response([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+        }
+
+        return response($productDetail->withFeatures()->toArray());
     }
 
     public function productsRelated(Request $request, Response $response, array $args)
@@ -177,5 +198,15 @@ class ProductController extends Controller
 
         $searchResults = $this->productService->searchProducts($query);
         return response($searchResults->toArray());
+    }
+
+    public function featuredPromotions(Request $request, Response $response)
+    {
+        $promotions = $this->productService->getFeaturedPromotions();
+
+        return response([
+            'success' => true,
+            'data' => $promotions->toArray()
+        ]);
     }
 }

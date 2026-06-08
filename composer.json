@@ -28,7 +28,7 @@
         "symfony/property-access": "^7.0",
         "illuminate/filesystem": "^11.0",
         "nesbot/carbon": "^3.2",
-        "logtail/monolog-logtail": "^3.1",
+        "logtail/monolog-logtail": "^3.3",
         "bref/bref": "~2.4.1",
         "php-di/php-di": "^7.1",
         "guzzlehttp/guzzle": "^7.10",
@@ -36,7 +36,8 @@
         "stripe/stripe-php": "^20.1",
         "hashids/hashids": "^5.0",
         "mdf/json-database-storage": "~v1.0.1",
-        "sentry/sentry": "^4.27"
+        "sentry/sentry": "^4.27",
+        "predis/predis": "^3.4"
     },
     "require-dev": {
         "nikic/php-parser": "^5.0",
@@ -50,6 +51,11 @@
         "files": [
             "config/helpers.php"
         ]
+    },
+    "scripts": {
+        "db:create": "vendor/bin/phinx create",
+        "db:migrate": "vendor/bin/phinx migrate",
+        "db:rollback": "vendor/bin/phinx rollback"
     },
     "authors": [
         {

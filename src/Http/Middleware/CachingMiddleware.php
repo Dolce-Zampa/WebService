@@ -14,24 +14,26 @@ class CachingMiddleware implements MiddlewareInterface
 {
     use UseCache;
     private ?int $ttl;
+    private array $tag;
 
-    public function __construct(?int $ttl = null) 
+    public function __construct(string $tag = '', ?int $ttl = null) 
     {
+        $this->tag = [$tag];
         $this->ttl = $ttl;
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         // Skip caching for non-GET requests
-        if ($request->getMethod() !== 'GET') {
+        if ($request->getMethod() !== 'GET' || env('APP_DISABLE_CACHE', false)) {
             return $handler->handle($request);
         }
 
         $uri = $request->getUri()->getPath();
         $queryParams = http_build_query($request->getQueryParams());
-        $cacheKey = 'api_cache:' . sha1($uri . '?' . $queryParams);
+        $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
 
-        Log::debug("Invoking URL " . $uri . '?' . $queryParams);
+        $this->tags($this->tag);
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
@@ -41,6 +43,7 @@ class CachingMiddleware implements MiddlewareInterface
 
         // Try to get from cache
         if ($this->existsInCache($cacheKey) && $skipCache === false) {
+            Log::debug("Cache hit for key: " . $cacheKey);
             $cachedData = $this->getFromCache($cacheKey);
             
             if (is_string($cachedData)) {

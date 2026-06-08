@@ -3,6 +3,8 @@ require_once __DIR__ . '/MlabFactoryApiException.php';
 
 class MlabFactoryApiHelper
 {
+    const DEFAULT_COUNTRY_ID = 10;
+
     public static function getArrayValue(array $data, $key, array $fallbackKeys = array())
     {
         if (array_key_exists($key, $data)) {
@@ -526,37 +528,44 @@ class MlabFactoryApiHelper
             if (!Validate::isLoadedObject($address) || (int) $address->id_customer !== (int) $customer->id) {
                 throw new MlabFactoryApiException('Address does not belong to the customer.', 422, array('id_address' => (int) $data['id_address']));
             }
-
-            return $address;
+            if (count($data) === 1 && isset($data['id_address'])) {
+                return $address;
+            }
+        } else {
+            $address = new Address();
+            $address->id_customer = (int) $customer->id;
         }
 
-        self::requireFields($data, array('address1', 'city', 'postcode', 'id_country'));
+        if (!Validate::isLoadedObject($address)) {
+            self::requireFields($data, array('address1', 'city', 'postcode', 'id_country'));
+        }
 
-        $address = new Address();
-        $address->id_customer = (int) $customer->id;
-        $address->alias = !empty($data['alias']) ? (string) $data['alias'] : 'home';
-        $address->firstname = !empty($data['firstname']) ? (string) $data['firstname'] : (string) $customer->firstname;
-        $address->lastname = !empty($data['lastname']) ? (string) $data['lastname'] : (string) $customer->lastname;
-        $address->company = (string) self::getValue($data, 'company', '');
-        $address->vat_number = (string) self::getValue($data, 'vat_number', '');
-        $address->dni = (string) self::getValue($data, 'dni', '');
-        $address->address1 = (string) $data['address1'];
-        $address->address2 = (string) self::getValue($data, 'address2', '');
-        $address->postcode = (string) $data['postcode'];
-        $address->city = (string) $data['city'];
-        $address->id_country = 10; //FIXME: (int) $data['id_country'];
-        $address->id_state = (int) self::getValue($data, 'id_state', 0);
-        $address->phone = (string) self::getValue($data, 'phone', '');
-        $address->phone_mobile = (string) self::getValue($data, 'phone_mobile', '');
-        $address->other = (string) self::getValue($data, 'other', '');
+        $address->alias = !empty($data['alias']) ? (string) $data['alias'] : (!empty($address->alias) ? (string) $address->alias : 'home');
+        $address->firstname = !empty($data['firstname']) ? (string) $data['firstname'] : (!empty($address->firstname) ? (string) $address->firstname : (string) $customer->firstname);
+        $address->lastname = !empty($data['lastname']) ? (string) $data['lastname'] : (!empty($address->lastname) ? (string) $address->lastname : (string) $customer->lastname);
+        $address->company = (string) self::getValue($data, 'company', (string) $address->company);
+        $address->vat_number = (string) self::getValue($data, 'vat_number', (string) $address->vat_number);
+        $address->dni = (string) self::getValue($data, 'dni', (string) $address->dni);
+        $address->address1 = (string) self::getValue($data, 'address1', (string) $address->address1);
+        $address->address2 = (string) self::getValue($data, 'address2', (string) $address->address2);
+        $address->postcode = (string) self::getValue($data, 'postcode', (string) $address->postcode);
+        $address->city = (string) self::getValue($data, 'city', (string) $address->city);
+        $currentCountryId = (int) $address->id_country;
+        $fallbackCountryId = $currentCountryId > 0 ? $currentCountryId : self::DEFAULT_COUNTRY_ID;
+        $address->id_country = (int) self::getValue($data, 'id_country', $fallbackCountryId);
+        $address->id_state = (int) self::getValue($data, 'id_state', (int) $address->id_state);
+        $address->phone = (string) self::getValue($data, 'phone', (string) $address->phone);
+        $address->phone_mobile = (string) self::getValue($data, 'phone_mobile', (string) $address->phone_mobile);
+        $address->other = (string) self::getValue($data, 'other', (string) $address->other);
 
         // if (!$address->validateFields(false) || !$address->validateController()) {
         //     $payload = json_encode($address->getFields());
         //     throw new MlabFactoryApiException('Invalid address payload.' . $payload, 422);
         // }
 
-        if (!$address->add()) {
-            throw new MlabFactoryApiException('Unable to create address.', 500);
+        $result = Validate::isLoadedObject($address) ? $address->update() : $address->add();
+        if (!$result) {
+            throw new MlabFactoryApiException('Unable to save address.', 500);
         }
 
         return $address;
