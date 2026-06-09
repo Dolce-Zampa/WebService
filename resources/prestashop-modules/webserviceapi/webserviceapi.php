@@ -166,7 +166,7 @@ class webserviceapi extends PaymentModule
             'X-Webhook-Secret: ' . $webhookSecret,
         ));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
 
