@@ -50,6 +50,8 @@ class PrestashopProductWebhookController extends Controller
 
         $productId   = (int) $payload['product_id'];
         $productName = (string) ($payload['product_name'] ?? '');
+        $textPrompt  = (string) ($payload['text_prompt'] ?? '');
+        $imagePrompt = (string) ($payload['image_prompt'] ?? '');
 
         // Only process products whose name contains the placeholder "n.d."
         if (stripos($productName, 'n.d.') === false) {
@@ -64,12 +66,12 @@ class PrestashopProductWebhookController extends Controller
 
         try {
             // 1. Generate SEO texts via ChatGPT
-            $seoContent = $this->openAIService->generateSeoContent($productName);
+            $seoContent = $this->openAIService->generateSeoContent($productName, $textPrompt);
 
             // 2. Generate product image via DALL-E (best-effort; failures are logged but non-fatal)
             $imageUrl = null;
             try {
-                $imageUrl = $this->openAIService->generateProductImage($seoContent['name']);
+                $imageUrl = $this->openAIService->generateProductImage($seoContent['name'], $imagePrompt);
             } catch (\Exception $imageEx) {
                 Log::warning("PrestashopProductWebhook: image generation skipped for product #{$productId}: " . $imageEx->getMessage());
             }

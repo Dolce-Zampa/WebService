@@ -11,6 +11,8 @@ class webserviceapi extends PaymentModule
     const CONFIG_WEBSERVICE_URL = 'MLABFACTORYAPI_WEBSERVICE_URL';
     const CONFIG_WEBHOOK_SECRET = 'MLABFACTORYAPI_WEBHOOK_SECRET';
     const CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED = 'MLABFACTORYAPI_PRODUCT_SAVED_WEBHOOK_ENABLED';
+    const CONFIG_CHATGPT_TEXT_PROMPT  = 'MLABFACTORYAPI_CHATGPT_TEXT_PROMPT';
+    const CONFIG_CHATGPT_IMAGE_PROMPT = 'MLABFACTORYAPI_CHATGPT_IMAGE_PROMPT';
     public function __construct()
     {
         $this->name = 'webserviceapi';
@@ -36,7 +38,9 @@ class webserviceapi extends PaymentModule
             && $this->registerHook('actionObjectProductAddAfter')
             && $this->registerHook('actionObjectProductUpdateAfter')
             && Configuration::updateValue(self::CONFIG_PAYMENT_MODULE, $this->getDefaultPaymentModule())
-            && Configuration::updateValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1);
+            && Configuration::updateValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1)
+            && Configuration::updateValue(self::CONFIG_CHATGPT_TEXT_PROMPT, '')
+            && Configuration::updateValue(self::CONFIG_CHATGPT_IMAGE_PROMPT, '');
     }
 
     public function uninstall()
@@ -45,6 +49,8 @@ class webserviceapi extends PaymentModule
             && Configuration::deleteByName(self::CONFIG_WEBSERVICE_URL)
             && Configuration::deleteByName(self::CONFIG_WEBHOOK_SECRET)
             && Configuration::deleteByName(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED)
+            && Configuration::deleteByName(self::CONFIG_CHATGPT_TEXT_PROMPT)
+            && Configuration::deleteByName(self::CONFIG_CHATGPT_IMAGE_PROMPT)
             && parent::uninstall();
     }
 
@@ -57,6 +63,8 @@ class webserviceapi extends PaymentModule
             $webserviceUrl   = trim((string) Tools::getValue(self::CONFIG_WEBSERVICE_URL));
             $webhookSecret   = trim((string) Tools::getValue(self::CONFIG_WEBHOOK_SECRET));
             $webhookEnabled  = (int) Tools::getValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 0);
+            $textPrompt      = trim((string) Tools::getValue(self::CONFIG_CHATGPT_TEXT_PROMPT));
+            $imagePrompt     = trim((string) Tools::getValue(self::CONFIG_CHATGPT_IMAGE_PROMPT));
 
             if ($paymentModule === '') {
                 $output .= $this->displayError($this->l('Payment module technical name is required.'));
@@ -65,6 +73,8 @@ class webserviceapi extends PaymentModule
                 Configuration::updateValue(self::CONFIG_WEBSERVICE_URL, $webserviceUrl);
                 Configuration::updateValue(self::CONFIG_WEBHOOK_SECRET, $webhookSecret);
                 Configuration::updateValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, $webhookEnabled);
+                Configuration::updateValue(self::CONFIG_CHATGPT_TEXT_PROMPT, $textPrompt);
+                Configuration::updateValue(self::CONFIG_CHATGPT_IMAGE_PROMPT, $imagePrompt);
                 $output .= $this->displayConfirmation($this->l('Settings updated.'));
             }
         }
@@ -135,6 +145,8 @@ class webserviceapi extends PaymentModule
         $payload = json_encode([
             'product_id'   => (int) $product->id,
             'product_name' => $productName,
+            'text_prompt'  => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
+            'image_prompt' => (string) Configuration::get(self::CONFIG_CHATGPT_IMAGE_PROMPT),
         ]);
 
         $ch = curl_init($url);
@@ -354,6 +366,24 @@ class webserviceapi extends PaymentModule
                         ),
                         'desc' => $this->l('If disabled, the product-saved webhook evolutive flow will not run.'),
                     ),
+                    array(
+                        'type'     => 'textarea',
+                        'label'    => $this->l('ChatGPT text generation prompt'),
+                        'name'     => self::CONFIG_CHATGPT_TEXT_PROMPT,
+                        'required' => false,
+                        'rows'     => 8,
+                        'cols'     => 60,
+                        'desc'     => $this->l('Custom prompt sent to ChatGPT for SEO text generation. Use {product_name} as placeholder for the product name. Leave empty to use the built-in default prompt.'),
+                    ),
+                    array(
+                        'type'     => 'textarea',
+                        'label'    => $this->l('ChatGPT image generation prompt'),
+                        'name'     => self::CONFIG_CHATGPT_IMAGE_PROMPT,
+                        'required' => false,
+                        'rows'     => 4,
+                        'cols'     => 60,
+                        'desc'     => $this->l('Custom prompt sent to DALL-E for product image generation. Use {product_name} as placeholder for the product name. Leave empty to use the built-in default prompt.'),
+                    ),
                 ),
                 'submit' => array(
                     'title' => $this->l('Save'),
@@ -371,10 +401,12 @@ class webserviceapi extends PaymentModule
         $helper->allow_employee_form_lang = (int) $this->context->language->id;
         $helper->submit_action = 'submitMlabFactoryApi';
         $helper->fields_value = array(
-            self::CONFIG_PAYMENT_MODULE => (string) Configuration::get(self::CONFIG_PAYMENT_MODULE),
-            self::CONFIG_WEBSERVICE_URL => (string) Configuration::get(self::CONFIG_WEBSERVICE_URL),
-            self::CONFIG_WEBHOOK_SECRET => (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET),
-            self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED => (int) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1),
+            self::CONFIG_PAYMENT_MODULE                 => (string) Configuration::get(self::CONFIG_PAYMENT_MODULE),
+            self::CONFIG_WEBSERVICE_URL                 => (string) Configuration::get(self::CONFIG_WEBSERVICE_URL),
+            self::CONFIG_WEBHOOK_SECRET                 => (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET),
+            self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED  => (int) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1),
+            self::CONFIG_CHATGPT_TEXT_PROMPT            => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
+            self::CONFIG_CHATGPT_IMAGE_PROMPT           => (string) Configuration::get(self::CONFIG_CHATGPT_IMAGE_PROMPT),
         );
 
         return $helper->generateForm(array($fieldsForm));

@@ -29,16 +29,22 @@ class OpenAIService
     /**
      * Generates SEO-optimised product content using ChatGPT.
      *
-     * @param string $productName The original product name (may contain "n.d.")
+     * @param string $productName  The original product name (may contain "n.d.")
+     * @param string $customPrompt Optional custom prompt. Use {product_name} as placeholder.
+     *                             When empty, the built-in default prompt is used.
      * @return array{name: string, description: string, description_short: string, meta_title: string, meta_description: string}
      * @throws \RuntimeException on API failure
      */
-    public function generateSeoContent(string $productName): array
+    public function generateSeoContent(string $productName, string $customPrompt = ''): array
     {
         // Sanitize the product name to prevent prompt injection
         $sanitized = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
         $escaped   = addslashes($sanitized);
-        $prompt = <<<PROMPT
+
+        if (!empty($customPrompt)) {
+            $prompt = str_replace('{product_name}', $escaped, $customPrompt);
+        } else {
+            $prompt = <<<PROMPT
 Sei un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici.
 Il prodotto ha attualmente questo nome: "{$escaped}".
 Genera i seguenti contenuti ottimizzati per SEO in italiano:
@@ -51,6 +57,7 @@ Genera i seguenti contenuti ottimizzati per SEO in italiano:
 Rispondi SOLTANTO con un oggetto JSON valido con le chiavi:
 "name", "description_short", "description", "meta_title", "meta_description"
 PROMPT;
+        }
 
         try {
             $response = $this->client->post('chat/completions', [
@@ -90,13 +97,21 @@ PROMPT;
     /**
      * Generates a product image URL using DALL-E.
      *
-     * @param string $productName The product name to base the image on
+     * @param string $productName  The product name to base the image on
+     * @param string $customPrompt Optional custom prompt. Use {product_name} as placeholder.
+     *                             When empty, the built-in default prompt is used.
      * @return string URL of the generated image (expires after ~1 hour)
      * @throws \RuntimeException on API failure
      */
-    public function generateProductImage(string $productName): string
+    public function generateProductImage(string $productName, string $customPrompt = ''): string
     {
-        $imagePrompt = "Foto prodotto professionale per e-commerce su sfondo bianco, luce uniforme e alta qualità: " . preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName) . ". Nessun testo nell'immagine.";
+        $sanitizedName = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
+
+        if (!empty($customPrompt)) {
+            $imagePrompt = str_replace('{product_name}', $sanitizedName, $customPrompt);
+        } else {
+            $imagePrompt = "Foto prodotto professionale per e-commerce su sfondo bianco, luce uniforme e alta qualità: " . $sanitizedName . ". Nessun testo nell'immagine.";
+        }
 
         try {
             $response = $this->client->post('images/generations', [
