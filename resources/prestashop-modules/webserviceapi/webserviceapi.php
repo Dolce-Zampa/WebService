@@ -10,6 +10,7 @@ class webserviceapi extends PaymentModule
     const CONFIG_PAYMENT_MODULE = 'MLABFACTORYAPI_PAYMENT_MODULE';
     const CONFIG_WEBSERVICE_URL = 'MLABFACTORYAPI_WEBSERVICE_URL';
     const CONFIG_WEBHOOK_SECRET = 'MLABFACTORYAPI_WEBHOOK_SECRET';
+    const CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED = 'MLABFACTORYAPI_PRODUCT_SAVED_WEBHOOK_ENABLED';
     public function __construct()
     {
         $this->name = 'webserviceapi';
@@ -34,7 +35,8 @@ class webserviceapi extends PaymentModule
             && $this->registerHook('paymentReturn')
             && $this->registerHook('actionObjectProductAddAfter')
             && $this->registerHook('actionObjectProductUpdateAfter')
-            && Configuration::updateValue(self::CONFIG_PAYMENT_MODULE, $this->getDefaultPaymentModule());
+            && Configuration::updateValue(self::CONFIG_PAYMENT_MODULE, $this->getDefaultPaymentModule())
+            && Configuration::updateValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1);
     }
 
     public function uninstall()
@@ -42,6 +44,7 @@ class webserviceapi extends PaymentModule
         return Configuration::deleteByName(self::CONFIG_PAYMENT_MODULE)
             && Configuration::deleteByName(self::CONFIG_WEBSERVICE_URL)
             && Configuration::deleteByName(self::CONFIG_WEBHOOK_SECRET)
+            && Configuration::deleteByName(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED)
             && parent::uninstall();
     }
 
@@ -53,6 +56,7 @@ class webserviceapi extends PaymentModule
             $paymentModule   = trim((string) Tools::getValue(self::CONFIG_PAYMENT_MODULE));
             $webserviceUrl   = trim((string) Tools::getValue(self::CONFIG_WEBSERVICE_URL));
             $webhookSecret   = trim((string) Tools::getValue(self::CONFIG_WEBHOOK_SECRET));
+            $webhookEnabled  = (int) Tools::getValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 0);
 
             if ($paymentModule === '') {
                 $output .= $this->displayError($this->l('Payment module technical name is required.'));
@@ -60,6 +64,7 @@ class webserviceapi extends PaymentModule
                 Configuration::updateValue(self::CONFIG_PAYMENT_MODULE, $paymentModule);
                 Configuration::updateValue(self::CONFIG_WEBSERVICE_URL, $webserviceUrl);
                 Configuration::updateValue(self::CONFIG_WEBHOOK_SECRET, $webhookSecret);
+                Configuration::updateValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, $webhookEnabled);
                 $output .= $this->displayConfirmation($this->l('Settings updated.'));
             }
         }
@@ -99,6 +104,11 @@ class webserviceapi extends PaymentModule
      */
     private function notifyProductSavedWebhook(Product $product)
     {
+        $webhookEnabled = (bool) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED);
+        if (!$webhookEnabled) {
+            return;
+        }
+
         $webhookBaseUrl = rtrim((string) Configuration::get(self::CONFIG_WEBSERVICE_URL), '/');
         $webhookSecret  = (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET);
 
@@ -324,6 +334,26 @@ class webserviceapi extends PaymentModule
                         'required' => false,
                         'desc' => $this->l('Shared secret sent in the X-Webhook-Secret header to authenticate the product-saved webhook.'),
                     ),
+                    array(
+                        'type' => 'switch',
+                        'label' => $this->l('Enable product-saved webhook'),
+                        'name' => self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED,
+                        'is_bool' => true,
+                        'required' => false,
+                        'values' => array(
+                            array(
+                                'id' => 'active_on',
+                                'value' => 1,
+                                'label' => $this->l('Enabled'),
+                            ),
+                            array(
+                                'id' => 'active_off',
+                                'value' => 0,
+                                'label' => $this->l('Disabled'),
+                            ),
+                        ),
+                        'desc' => $this->l('If disabled, the product-saved webhook evolutive flow will not run.'),
+                    ),
                 ),
                 'submit' => array(
                     'title' => $this->l('Save'),
@@ -344,6 +374,7 @@ class webserviceapi extends PaymentModule
             self::CONFIG_PAYMENT_MODULE => (string) Configuration::get(self::CONFIG_PAYMENT_MODULE),
             self::CONFIG_WEBSERVICE_URL => (string) Configuration::get(self::CONFIG_WEBSERVICE_URL),
             self::CONFIG_WEBHOOK_SECRET => (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET),
+            self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED => (int) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1),
         );
 
         return $helper->generateForm(array($fieldsForm));
