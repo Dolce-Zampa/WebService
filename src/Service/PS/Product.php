@@ -274,8 +274,10 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         $psBaseUrl = env('PS_BASE_URL', '');
         $apiKey    = env('PS_API_KEY', '');
 
-        $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 60]);
+        $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 60]); // FIXME: enable verify in production
 
+        $tmpFile = null;
+        $namedTmp = null;
         try {
             // Download the remote image into a temporary file
             $tmpFile = tempnam(sys_get_temp_dir(), 'ps_img_');
@@ -285,11 +287,16 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             $extension   = str_contains($contentType, 'png') ? 'png' : 'jpg';
             $namedTmp    = $tmpFile . '.' . $extension;
             rename($tmpFile, $namedTmp);
+            $tmpFile = null; // file has been renamed; clean up via $namedTmp
 
-            // Upload to PrestaShop via its native image API
+            // Upload to PrestaShop via its native image API using header-based auth only
             $uploadResponse = $client->post(
-                "https://{$apiKey}@{$psBaseUrl}/psapi/images/products/{$productId}?ws_key={$apiKey}&output_format=JSON",
+                "https://{$psBaseUrl}/psapi/images/products/{$productId}?output_format=JSON",
                 [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $apiKey,
+                        'X-WS-Key'      => $apiKey,
+                    ],
                     'multipart' => [
                         [
                             'name'     => 'image',
@@ -311,7 +318,12 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             Log::info("uploadProductImage: image uploaded for product #{$productId}");
             return true;
         } catch (\GuzzleHttp\Exception\RequestException $e) {
-            @unlink($tmpFile ?? '');
+            if ($tmpFile !== null) {
+                @unlink($tmpFile);
+            }
+            if ($namedTmp !== null) {
+                @unlink($namedTmp);
+            }
             Log::error("uploadProductImage: HTTP error for product #{$productId}: " . $e->getMessage());
             throw new PrestashopConnectorException($this->httpService);
         }

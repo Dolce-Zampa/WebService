@@ -33,7 +33,7 @@ class webserviceapiproductupdateModuleFrontController extends MlabFactoryApiBase
         $langId = (int) Configuration::get('PS_LANG_DEFAULT');
 
         // Apply only the fields provided in the payload
-        if (array_key_exists('name', $payload) && $payload['name'] !== '') {
+        if (array_key_exists('name', $payload) && $payload['name'] !== '' && $payload['name'] !== null) {
             $product->name[$langId] = (string) $payload['name'];
         }
         if (array_key_exists('description', $payload)) {

@@ -23,7 +23,6 @@ class OpenAIService
                 'Content-Type'  => 'application/json',
             ],
             'timeout' => 90,
-            'verify'  => false,
         ]);
     }
 
@@ -36,7 +35,9 @@ class OpenAIService
      */
     public function generateSeoContent(string $productName): array
     {
-        $escaped = addslashes($productName);
+        // Sanitize the product name to prevent prompt injection
+        $sanitized = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
+        $escaped   = addslashes($sanitized);
         $prompt = <<<PROMPT
 Sei un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici.
 Il prodotto ha attualmente questo nome: "{$escaped}".
@@ -95,7 +96,7 @@ PROMPT;
      */
     public function generateProductImage(string $productName): string
     {
-        $imagePrompt = "Foto prodotto professionale per e-commerce su sfondo bianco, luce uniforme e alta qualità: {$productName}. Nessun testo nell'immagine.";
+        $imagePrompt = "Foto prodotto professionale per e-commerce su sfondo bianco, luce uniforme e alta qualità: " . preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName) . ". Nessun testo nell'immagine.";
 
         try {
             $response = $this->client->post('images/generations', [
