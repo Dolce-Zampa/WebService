@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Service;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Log;
 
 class OpenAIService
@@ -12,7 +13,7 @@ class OpenAIService
     private string $model;
     private string $imageModel;
 
-    public function __construct(string $apiKey, string $model = 'gpt-4o', string $imageModel = 'dall-e-3')
+    public function __construct(string $apiKey, string $model = 'gpt-4o', string $imageModel = 'gpt-image-1')
     {
         $this->model = $model;
         $this->imageModel = $imageModel;
@@ -20,7 +21,6 @@ class OpenAIService
             'base_uri' => 'https://api.openai.com/v1/',
             'headers' => [
                 'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type'  => 'application/json',
             ],
             'timeout' => 90,
         ]);
@@ -138,6 +138,66 @@ PROMPT;
         } catch (\Exception $e) {
             Log::error('OpenAI image generation failed: ' . $e->getMessage());
             throw new \RuntimeException('Failed to generate product image: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
+     * Modifies an existing product image using AI instructions.
+     *
+     * @param string $sourceImageUrl Public URL of the source product image
+     * @param string $productName    Product name
+     * @param string $customPrompt   Optional custom prompt. Use {product_name} as placeholder.
+     * @return string URL of the edited image
+     * @throws \RuntimeException on API failure
+     */
+    public function editProductImage(string $sourceImageUrl, string $productName, string $customPrompt = ''): string
+    {
+        $sanitizedName = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
+
+        if (!empty($customPrompt)) {
+            $imagePrompt = str_replace('{product_name}', $sanitizedName, $customPrompt);
+        } else {
+            $imagePrompt = 'Modifica questa foto prodotto mantenendo il soggetto principale e rendila professionale per e-commerce (sfondo pulito, luce uniforme, alta definizione). Nessun testo nell\'immagine.';
+        }
+
+        try {
+            $sourceResponse = $this->client->get($sourceImageUrl);
+            $sourceContentType = $sourceResponse->getHeaderLine('Content-Type') ?: 'image/jpeg';
+            $extension = str_contains($sourceContentType, 'png') ? 'png' : 'jpg';
+            $sourceContent = $sourceResponse->getBody()->getContents();
+
+            if ($sourceContent === '') {
+                throw new \RuntimeException('Empty source image content');
+            }
+
+            $response = $this->client->post('images/edits', [
+                'multipart' => [
+                    ['name' => 'model', 'contents' => $this->imageModel],
+                    ['name' => 'prompt', 'contents' => $imagePrompt],
+                    ['name' => 'size', 'contents' => '1024x1024'],
+                    ['name' => 'quality', 'contents' => 'standard'],
+                    ['name' => 'response_format', 'contents' => 'url'],
+                    [
+                        'name' => 'image',
+                        'contents' => Utils::streamFor($sourceContent),
+                        'filename' => "source.{$extension}",
+                        'headers' => ['Content-Type' => $sourceContentType],
+                    ],
+                ],
+            ]);
+
+            $body     = json_decode($response->getBody()->getContents(), true);
+            $imageUrl = (string) ($body['data'][0]['url'] ?? '');
+
+            if (empty($imageUrl)) {
+                throw new \RuntimeException('Empty image URL in OpenAI edit response');
+            }
+
+            Log::info('OpenAI: image edited for product "' . $productName . '"');
+            return $imageUrl;
+        } catch (\Exception $e) {
+            Log::error('OpenAI image edit failed: ' . $e->getMessage());
+            throw new \RuntimeException('Failed to edit product image: ' . $e->getMessage(), 0, $e);
         }
     }
 }

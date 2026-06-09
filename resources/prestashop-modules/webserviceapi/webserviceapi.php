@@ -13,6 +13,7 @@ class webserviceapi extends PaymentModule
     const CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED = 'MLABFACTORYAPI_PRODUCT_SAVED_WEBHOOK_ENABLED';
     const CONFIG_CHATGPT_TEXT_PROMPT  = 'MLABFACTORYAPI_CHATGPT_TEXT_PROMPT';
     const CONFIG_CHATGPT_IMAGE_PROMPT = 'MLABFACTORYAPI_CHATGPT_IMAGE_PROMPT';
+    private static array $productWebhookDispatched = [];
     public function __construct()
     {
         $this->name = 'webserviceapi';
@@ -141,12 +142,19 @@ class webserviceapi extends PaymentModule
             return;
         }
 
+        $productId = (int) $product->id;
+        if (isset(self::$productWebhookDispatched[$productId])) {
+            return;
+        }
+        self::$productWebhookDispatched[$productId] = true;
+
         $url     = $webhookBaseUrl . '/api/webhooks/prestashop/product-saved';
         $payload = json_encode([
-            'product_id'   => (int) $product->id,
+            'product_id'   => $productId,
             'product_name' => $productName,
             'text_prompt'  => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
             'image_prompt' => (string) Configuration::get(self::CONFIG_CHATGPT_IMAGE_PROMPT),
+            'source_image_url' => $this->getProductCoverImageUrl($product),
         ]);
 
         $ch = curl_init($url);
@@ -176,6 +184,27 @@ class webserviceapi extends PaymentModule
                 (int) $product->id
             );
         }
+    }
+
+    private function getProductCoverImageUrl(Product $product): string
+    {
+        $cover = Product::getCover((int) $product->id);
+        $idImage = (int) ($cover['id_image'] ?? 0);
+        if ($idImage <= 0 || !isset($this->context->link)) {
+            return '';
+        }
+
+        $langId = (int) Configuration::get('PS_LANG_DEFAULT');
+        $linkRewrite = '';
+        if (isset($product->link_rewrite) && is_array($product->link_rewrite)) {
+            $linkRewrite = (string) ($product->link_rewrite[$langId] ?? '');
+        }
+
+        if ($linkRewrite === '') {
+            return '';
+        }
+
+        return (string) $this->context->link->getImageLink($linkRewrite, (string) $product->id . '-' . $idImage, 'large_default');
     }
 
     public function hookModuleRoutes()
