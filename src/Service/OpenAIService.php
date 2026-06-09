@@ -30,23 +30,36 @@ class OpenAIService
      * Generates SEO-optimised product content using ChatGPT.
      *
      * @param string $productName  The original product name (may contain "n.d.")
-     * @param string $customPrompt Optional custom prompt. Use {product_name} as placeholder.
+     * @param string $customPrompt Optional custom prompt. Use {product_name} and {product_short_description} as placeholders.
+     * @param string $productShortDescription Current product short description to use as context.
      *                             When empty, the built-in default prompt is used.
      * @return array{name: string, description: string, description_short: string, meta_title: string, meta_description: string}
      * @throws \RuntimeException on API failure
      */
-    public function generateSeoContent(string $productName, string $customPrompt = ''): array
+    public function generateSeoContent(string $productName, string $customPrompt = '', string $productShortDescription = ''): array
     {
         // Sanitize the product name to prevent prompt injection
         $sanitized = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
         $escaped   = addslashes($sanitized);
+        $sanitizedShortDescription = trim(strip_tags((string) $productShortDescription));
+        $sanitizedShortDescription = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $sanitizedShortDescription);
+        $escapedShortDescription = addslashes($sanitizedShortDescription);
 
         if (!empty($customPrompt)) {
-            $prompt = str_replace('{product_name}', $escaped, $customPrompt);
+            $prompt = str_replace(
+                ['{product_name}', '{product_short_description}'],
+                [$escaped, $escapedShortDescription],
+                $customPrompt
+            );
         } else {
+            $shortDescriptionContext = $escapedShortDescription !== ''
+                ? "Descrizione breve attuale del prodotto (usala come spunto senza copiarla letteralmente): \"{$escapedShortDescription}\"."
+                : '';
+
             $prompt = <<<PROMPT
 Sei un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici.
 Il prodotto ha attualmente questo nome: "{$escaped}".
+{$shortDescriptionContext}
 Genera i seguenti contenuti ottimizzati per SEO in italiano:
 1. Un nome prodotto SEO ottimizzato (senza la stringa "n.d.", conciso e descrittivo)
 2. Una descrizione breve (max 200 caratteri, HTML puro senza tag di blocco esterni)

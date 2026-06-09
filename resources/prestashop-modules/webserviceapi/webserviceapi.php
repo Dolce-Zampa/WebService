@@ -152,6 +152,7 @@ class webserviceapi extends PaymentModule
         $payload = json_encode([
             'product_id'   => $productId,
             'product_name' => $productName,
+            'product_short_description' => $this->getProductShortDescription($product, $langId),
             'text_prompt'  => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
             'image_prompt' => (string) Configuration::get(self::CONFIG_CHATGPT_IMAGE_PROMPT),
             'source_image_url' => $this->getProductCoverImageUrl($product),
@@ -205,6 +206,15 @@ class webserviceapi extends PaymentModule
         }
 
         return (string) $this->context->link->getImageLink($linkRewrite, (string) $product->id . '-' . $idImage, 'large_default');
+    }
+
+    private function getProductShortDescription(Product $product, int $langId): string
+    {
+        if (!isset($product->description_short) || !is_array($product->description_short)) {
+            return '';
+        }
+
+        return trim(strip_tags((string) ($product->description_short[$langId] ?? '')));
     }
 
     public function hookModuleRoutes()
@@ -402,7 +412,7 @@ class webserviceapi extends PaymentModule
                         'required' => false,
                         'rows'     => 8,
                         'cols'     => 60,
-                        'desc'     => $this->l('Custom prompt sent to ChatGPT for SEO text generation. Use {product_name} as placeholder for the product name. Leave empty to use the built-in default prompt.'),
+                        'desc'     => $this->l('Custom prompt sent to ChatGPT for SEO text generation. Use {product_name} and {product_short_description} as placeholders. Leave empty to use the built-in default prompt.'),
                     ),
                     array(
                         'type'     => 'textarea',

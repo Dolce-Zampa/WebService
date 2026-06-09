@@ -50,6 +50,7 @@ class PrestashopProductWebhookController extends Controller
 
         $productId   = (int) $payload['product_id'];
         $productName = (string) ($payload['product_name'] ?? '');
+        $productShortDescription = (string) ($payload['product_short_description'] ?? '');
         $textPrompt     = (string) ($payload['text_prompt'] ?? '');
         $imagePrompt    = (string) ($payload['image_prompt'] ?? '');
         $sourceImageUrl = (string) ($payload['source_image_url'] ?? '');
@@ -67,7 +68,7 @@ class PrestashopProductWebhookController extends Controller
 
         try {
             // 1. Generate SEO texts via ChatGPT
-            $seoContent = $this->openAIService->generateSeoContent($productName, $textPrompt);
+            $seoContent = $this->openAIService->generateSeoContent($productName, $textPrompt, $productShortDescription);
 
             // 2. Edit the existing product image via AI (best-effort; failures are logged but non-fatal)
             $imageUrl = null;
