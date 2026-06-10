@@ -236,7 +236,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 30]);
 
         try {
-            $this->httpService->setUrl("catalog/update?debug=true");
+            $this->httpService->setUrl("/catalog/update?debug=true");
             $response = $this->httpService->invoke('POST', [
                 array_merge(['id' => $productId], $data)
             ]);
