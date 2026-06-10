@@ -230,16 +230,10 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function updateProduct(int $productId, array $data): bool
     {
-        $psBaseUrl = env('PS_BASE_URL', '');
-        $wsKey     = env('WEBSERVICE_KEY', '');
-
-        $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 30]);
-
         try {
+            $payload = array_merge(['id' => $productId], $data);
             $this->httpService->setUrl("/catalog/update?debug=true");
-            $response = $this->httpService->invoke('POST', [
-                array_merge(['id' => $productId], $data)
-            ]);
+            $response = $this->httpService->invoke('POST', $payload);
 
             if ($response->failed()) {
                 throw new PrestashopConnectorException($this->httpService);
@@ -264,9 +258,6 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function uploadProductImage(int $productId, string $imageUrl): bool
     {
-        $psBaseUrl = env('PS_BASE_URL', '');
-        $apiKey    = env('PS_API_KEY', '');
-
         $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 60]); // FIXME: enable verify in production
 
         $tmpFile = null;

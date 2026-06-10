@@ -38,6 +38,7 @@ class OpenAIService
      */
     public function generateSeoContent(string $productName, string $customPrompt = '', string $productShortDescription = ''): array
     {
+
         // Sanitize the product name to prevent prompt injection
         $sanitized = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
         $escaped   = addslashes($sanitized);
@@ -60,8 +61,8 @@ class OpenAIService
 Agisci come un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici. Riceverai il nome attuale del prodotto "{$escaped}" e un contesto aggiuntivo: {$shortDescriptionContext}. Il tuo compito è generare i seguenti contenuti ottimizzati per SEO, in italiano, seguendo queste istruzioni dettagliate:
 
 - Genera un nuovo nome prodotto ottimizzato SEO, conciso e descrittivo, senza la stringa “n.d.”.
-- Crea una descrizione breve del prodotto (max 200 caratteri), utilizzando solo HTML in linea (senza tag di blocco esterni, senza CSS, senza tag h1).
-- Scrivi una descrizione completa e approfondita (almeno 300 parole) in HTML: usa solo paragrafi <p> e liste <ul>.
+- Crea una descrizione breve del prodotto (max 250 caratteri), utilizzando solo HTML in linea (senza tag di blocco esterni, senza CSS, senza tag h1).
+- Scrivi una descrizione completa e approfondita (almeno 500 parole) in HTML: usa solo paragrafi <p> e liste <ul>.
 - Redigi un meta title (max 70 caratteri), pertinente e attrattivo.
 - Crea una meta description (max 160 caratteri, senza HTML).
 
