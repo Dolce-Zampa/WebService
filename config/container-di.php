@@ -118,6 +118,18 @@ $container->set(\PS\Webservice\Http\Controller\PrestashopController::class, func
     return new \PS\Webservice\Http\Controller\PrestashopController($orderService);
 });
 
+$container->set(\PS\Webservice\Service\OpenAIService::class, function ($c) {
+    return new \PS\Webservice\Service\OpenAIService(
+        env('OPENAI_API_KEY', '')
+    );
+});
+
+$container->set(\PS\Webservice\Http\Controller\PrestashopProductWebhookController::class, function ($c) {
+    $openAIService  = $c->get(\PS\Webservice\Service\OpenAIService::class);
+    $productService = $c->get(\PS\Webservice\Service\PS\Product::class);
+    return new \PS\Webservice\Http\Controller\PrestashopProductWebhookController($openAIService, $productService);
+});
+
 $container->set(\PS\Webservice\Http\Controller\PetProfessionalServiceController::class, function ($c) {
     return new \PS\Webservice\Http\Controller\PetProfessionalServiceController();
 });
