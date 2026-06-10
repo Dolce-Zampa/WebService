@@ -6,17 +6,20 @@ namespace PS\Webservice\Http\Controller;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Service\OpenAIService;
 use PS\Webservice\Service\PS\Product;
+use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class PrestashopProductWebhookController extends Controller
 {
+    use UseCache;
+
     private OpenAIService $openAIService;
     private Product $productService;
 
     public function __construct(OpenAIService $openAIService, Product $productService)
     {
-        $this->openAIService  = $openAIService;
+        $this->openAIService = $openAIService;
         $this->productService = $productService;
     }
 
@@ -35,8 +38,8 @@ class PrestashopProductWebhookController extends Controller
     public function handleWebhook(Request $request, Response $response, array $args): Response
     {
         // Authenticate the incoming webhook with the shared secret
-        $incomingSecret  = $request->getHeaderLine('X-Webhook-Secret');
-        $expectedSecret  = env('WEBHOOK_SECRET', '');
+        $incomingSecret = $request->getHeaderLine('X-Webhook-Secret');
+        $expectedSecret = env('WEBHOOK_SECRET', '');
 
         if (empty($expectedSecret) || !hash_equals($expectedSecret, $incomingSecret)) {
             Log::warning('PrestashopProductWebhook: invalid or missing X-Webhook-Secret');
@@ -48,19 +51,19 @@ class PrestashopProductWebhookController extends Controller
             return response(['error' => 'Invalid payload: product_id is required'], 400);
         }
 
-        $productId   = (int) $payload['product_id'];
+        $productId = (int) $payload['product_id'];
         $productName = (string) ($payload['product_name'] ?? '');
         $productShortDescription = (string) ($payload['product_short_description'] ?? '');
-        $textPrompt     = (string) ($payload['text_prompt'] ?? '');
-        $imagePrompt    = (string) ($payload['image_prompt'] ?? '');
+        $textPrompt = (string) ($payload['text_prompt'] ?? '');
+        $imagePrompt = (string) ($payload['image_prompt'] ?? '');
         $sourceImageUrl = (string) ($payload['source_image_url'] ?? '');
 
         // Only process products whose name contains the placeholder "n.d."
         if (stripos($productName, 'n.d.') === false) {
             return response([
-                'received'  => true,
+                'received' => true,
                 'processed' => false,
-                'reason'    => '"n.d." not found in product name',
+                'reason' => '"n.d." not found in product name',
             ], 200);
         }
 
@@ -68,31 +71,47 @@ class PrestashopProductWebhookController extends Controller
 
         try {
             // 1. Generate SEO texts via ChatGPT
-            $seoContent = $this->openAIService->generateSeoContent($productName, $textPrompt, $productShortDescription);
+            $cacheKey = "seo_content_{$productId}";
+            if ($this->existsInCache($cacheKey)) {
+                Log::info("PrestashopProductWebhook: SEO content cache hit for product #{$productId}");
+                $seoContent = $this->getFromCache($cacheKey);
+            } else {
+                Log::info("PrestashopProductWebhook: SEO content cache miss for product #{$productId}, generating via OpenAI");
+                $seoContent = $this->openAIService->generateSeoContent($productName, $textPrompt, $productShortDescription);
+                $this->setToCache($cacheKey, $seoContent, 300); // Cache for 5 minutes
+            }
 
             // 2. Generate product images via AI (best-effort; failures are logged but non-fatal)
             // Always produce at least 5 images: 1 main + 4 detail/zoom/lifestyle shots.
             $imageUrls = [];
             try {
                 if ($this->shouldNotGenerateImage($productShortDescription) !== true) {
-                    Log::info("PrestashopProductWebhook: image generation triggered for product #{$productId} based on short description");
 
-                    if (!empty($sourceImageUrl)) {
-                        // Edit the existing source image as the primary shot
-                        try {
-                            $editedUrl = $this->openAIService->editProductImage($sourceImageUrl, $seoContent['name'], $imagePrompt);
-                            $imageUrls[] = $editedUrl;
-                        } catch (\Exception $editEx) {
-                            Log::warning("PrestashopProductWebhook: source image edit failed for product #{$productId}: " . $editEx->getMessage());
-                        }
-
-                        // Generate 4 additional detail/zoom/lifestyle images
-                        $additionalUrls = $this->openAIService->generateProductImages($seoContent['name'], 4, $imagePrompt);
-                        $imageUrls = array_merge($imageUrls, $additionalUrls);
+                    $cacheKey = "image_urls_{$productId}";
+                    if ($this->existsInCache($cacheKey)) {
+                        Log::info("PrestashopProductWebhook: image URLs cache hit for product #{$productId}");
+                        $imageUrls = $this->getFromCache($cacheKey);
                     } else {
-                        // No source image – generate 5 varied images from scratch
-                        Log::warning("PrestashopProductWebhook: source image missing for product #{$productId}, generating 5 images");
-                        $imageUrls = $this->openAIService->generateProductImages($seoContent['name'], 5, $imagePrompt);
+
+                        Log::info("PrestashopProductWebhook: image generation triggered for product #{$productId} based on short description");
+
+                        if (!empty($sourceImageUrl)) {
+                            // Edit the existing source image as the primary shot
+                            try {
+                                $editedUrl = $this->openAIService->editProductImage($sourceImageUrl, $seoContent['name'], $imagePrompt);
+                                $imageUrls[] = $editedUrl;
+                            } catch (\Exception $editEx) {
+                                Log::warning("PrestashopProductWebhook: source image edit failed for product #{$productId}: " . $editEx->getMessage());
+                            }
+
+                            // Generate 4 additional detail/zoom/lifestyle images
+                            $additionalUrls = $this->openAIService->generateProductImages($seoContent['name'], 4, $imagePrompt);
+                            $imageUrls = array_merge($imageUrls, $additionalUrls);
+                        } else {
+                            // No source image – generate 5 varied images from scratch
+                            Log::warning("PrestashopProductWebhook: source image missing for product #{$productId}, generating 5 images");
+                            $imageUrls = $this->openAIService->generateProductImages($seoContent['name'], 5, $imagePrompt);
+                        }
                     }
                 }
             } catch (\Exception $imageEx) {
@@ -114,8 +133,8 @@ class PrestashopProductWebhookController extends Controller
             Log::info("PrestashopProductWebhook: product #{$productId} enriched successfully");
 
             return response([
-                'received'   => true,
-                'processed'  => true,
+                'received' => true,
+                'processed' => true,
                 'product_id' => $productId,
             ], 200);
         } catch (\Exception $e) {

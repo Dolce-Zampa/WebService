@@ -38,7 +38,6 @@ class OpenAIService
      */
     public function generateSeoContent(string $productName, string $customPrompt = '', string $productShortDescription = ''): array
     {
-
         // Sanitize the product name to prevent prompt injection
         $sanitized = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
         $escaped   = addslashes($sanitized);
