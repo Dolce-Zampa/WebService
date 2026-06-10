@@ -93,6 +93,7 @@ class webserviceapi extends PaymentModule
         if (!isset($params['object']) || !($params['object'] instanceof Product)) {
             return;
         }
+        $this->notifyProductCacheClearWebhook($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
     }
 
@@ -104,7 +105,54 @@ class webserviceapi extends PaymentModule
         if (!isset($params['object']) || !($params['object'] instanceof Product)) {
             return;
         }
+        $this->notifyProductCacheClearWebhook($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
+    }
+
+    /**
+     * Sends a fire-and-forget webhook to the webservice to invalidate the
+     * product-related API cache. Called on every product add/update regardless
+     * of whether AI enrichment is needed.
+     */
+    private function notifyProductCacheClearWebhook(Product $product)
+    {
+        $webhookBaseUrl = rtrim((string) Configuration::get(self::CONFIG_WEBSERVICE_URL), '/');
+        $webhookSecret  = (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET);
+
+        if (empty($webhookBaseUrl) || empty($webhookSecret)) {
+            return;
+        }
+
+        $url     = $webhookBaseUrl . '/api/webhooks/prestashop/cache-clear';
+        $payload = json_encode(['product_id' => (int) $product->id]);
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($payload),
+            'X-Webhook-Secret: ' . $webhookSecret,
+        ));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
+
+        $result   = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($result === false || $httpCode >= 400) {
+            PrestaShopLogger::addLog(
+                "[webserviceapi] Cache-clear webhook failed for product #{$product->id}: HTTP {$httpCode} – {$curlErr}",
+                2,
+                null,
+                'Product',
+                (int) $product->id
+            );
+        }
     }
 
     /**
