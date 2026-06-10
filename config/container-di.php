@@ -124,10 +124,28 @@ $container->set(\PS\Webservice\Service\OpenAIService::class, function ($c) {
     );
 });
 
+$container->set(\PS\Webservice\Service\RedisQueue::class, function ($c) {
+    $redis = new \Predis\Client(
+        [
+            'scheme' => env('CACHE_REDIS_SCHEME', 'tcp'),
+            'host'   => env('CACHE_REDIS_HOST', '127.0.0.1'),
+            'port'   => (int) env('CACHE_REDIS_PORT', 6379),
+        ],
+        [
+            'parameters' => [
+                'password' => env('CACHE_REDIS_PASSWORD', ''),
+                'database' => (int) env('QUEUE_REDIS_DATABASE', 11),
+            ],
+        ]
+    );
+    return new \PS\Webservice\Service\RedisQueue($redis);
+});
+
 $container->set(\PS\Webservice\Http\Controller\PrestashopProductWebhookController::class, function ($c) {
     $openAIService  = $c->get(\PS\Webservice\Service\OpenAIService::class);
     $productService = $c->get(\PS\Webservice\Service\PS\Product::class);
-    return new \PS\Webservice\Http\Controller\PrestashopProductWebhookController($openAIService, $productService);
+    $queue          = $c->get(\PS\Webservice\Service\RedisQueue::class);
+    return new \PS\Webservice\Http\Controller\PrestashopProductWebhookController($openAIService, $productService, $queue);
 });
 
 $container->set(\PS\Webservice\Http\Controller\PetProfessionalServiceController::class, function ($c) {

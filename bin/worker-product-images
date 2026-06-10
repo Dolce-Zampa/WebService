@@ -1,0 +1,105 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * Product-image generation worker.
+ *
+ * Pops jobs from the Redis "product-image-jobs" queue and calls OpenAI to
+ * generate / edit product images, then uploads them to PrestaShop.
+ *
+ * Expected job payload (JSON):
+ * {
+ *   "productId":             <int>,
+ *   "productName":           <string>,   // SEO-optimised name already generated
+ *   "imagePrompt":           <string>,   // optional custom prompt
+ *   "sourceImageUrl":        <string>,   // optional existing image URL to edit
+ *   "productShortDescription": <string>  // used to check #NO-IMAGE# flag
+ * }
+ *
+ * Usage:
+ *   php bin/worker-product-images
+ */
+
+require_once __DIR__ . '/../bootstrap/app.php';
+
+use Illuminate\Support\Facades\Log;
+use PS\Webservice\Service\OpenAIService;
+use PS\Webservice\Service\PS\Product as ProductService;
+use PS\Webservice\Service\RedisQueue;
+
+/** @var \DI\Container $container */
+$openAIService  = $container->get(OpenAIService::class);
+$productService = $container->get(ProductService::class);
+$queue          = $container->get(RedisQueue::class);
+
+const QUEUE_NAME  = 'product-image-jobs';
+const NO_IMAGE_KEY = '#NO-IMAGE#';
+
+Log::info('ProductImageWorker: started, listening on queue "' . QUEUE_NAME . '"');
+
+while (true) {
+    $job = $queue->pop([QUEUE_NAME], 10);
+
+    if ($job === null) {
+        // Timeout – just keep looping
+        continue;
+    }
+
+    $payload = $job['payload'];
+
+    $productId               = (int)   ($payload['productId']               ?? 0);
+    $productName             = (string) ($payload['productName']             ?? '');
+    $imagePrompt             = (string) ($payload['imagePrompt']             ?? '');
+    $sourceImageUrl          = (string) ($payload['sourceImageUrl']          ?? '');
+    $productShortDescription = (string) ($payload['productShortDescription'] ?? '');
+
+    if ($productId === 0 || $productName === '') {
+        Log::warning('ProductImageWorker: skipping invalid job payload', $payload);
+        continue;
+    }
+
+    // Honour the #NO-IMAGE# flag
+    if (stripos($productShortDescription, NO_IMAGE_KEY) !== false) {
+        Log::info("ProductImageWorker: #NO-IMAGE# flag set for product #{$productId}, skipping image generation");
+        continue;
+    }
+
+    Log::info("ProductImageWorker: processing image job for product #{$productId} (\"{$productName}\")");
+
+    $imageUrls = [];
+
+    try {
+        if (!empty($sourceImageUrl)) {
+            // Edit the existing source image as the primary shot
+            try {
+                $editedUrl   = $openAIService->editProductImage($sourceImageUrl, $productName, $imagePrompt);
+                $imageUrls[] = $editedUrl;
+            } catch (\Exception $editEx) {
+                Log::warning("ProductImageWorker: source image edit failed for product #{$productId}: " . $editEx->getMessage());
+            }
+
+            // Generate 4 additional detail / zoom / lifestyle images
+            $additionalUrls = $openAIService->generateProductImages($productName, 4, $imagePrompt);
+            $imageUrls      = array_merge($imageUrls, $additionalUrls);
+        } else {
+            // No source image – generate 5 varied images from scratch
+            Log::info("ProductImageWorker: no source image for product #{$productId}, generating 5 images from scratch");
+            $imageUrls = $openAIService->generateProductImages($productName, 5, $imagePrompt);
+        }
+    } catch (\Exception $e) {
+        Log::error("ProductImageWorker: image generation failed for product #{$productId}: " . $e->getMessage());
+        continue;
+    }
+
+    foreach ($imageUrls as $idx => $imageUrl) {
+        try {
+            $productService->uploadProductImage($productId, $imageUrl);
+            Log::info("ProductImageWorker: uploaded image #{$idx} for product #{$productId}");
+        } catch (\Exception $uploadEx) {
+            Log::warning("ProductImageWorker: image upload #{$idx} failed for product #{$productId}: " . $uploadEx->getMessage());
+        }
+    }
+
+    Log::info("ProductImageWorker: finished product #{$productId} – " . count($imageUrls) . ' image(s) uploaded');
+}

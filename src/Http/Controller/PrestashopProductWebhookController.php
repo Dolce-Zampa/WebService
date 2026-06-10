@@ -6,6 +6,7 @@ namespace PS\Webservice\Http\Controller;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Service\OpenAIService;
 use PS\Webservice\Service\PS\Product;
+use PS\Webservice\Service\RedisQueue;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -16,11 +17,13 @@ class PrestashopProductWebhookController extends Controller
 
     private OpenAIService $openAIService;
     private Product $productService;
+    private RedisQueue $queue;
 
-    public function __construct(OpenAIService $openAIService, Product $productService)
+    public function __construct(OpenAIService $openAIService, Product $productService, RedisQueue $queue)
     {
         $this->openAIService = $openAIService;
         $this->productService = $productService;
+        $this->queue = $queue;
     }
 
     /**
@@ -81,61 +84,30 @@ class PrestashopProductWebhookController extends Controller
                 $this->setToCache($cacheKey, $seoContent, 300); // Cache for 5 minutes
             }
 
-            // 2. Generate product images via AI (best-effort; failures are logged but non-fatal)
-            // Always produce at least 5 images: 1 main + 4 detail/zoom/lifestyle shots.
-            $imageUrls = [];
-            try {
-                if ($this->shouldNotGenerateImage($productShortDescription) !== true) {
-
-                    $cacheKey = "image_urls_{$productId}";
-                    if ($this->existsInCache($cacheKey)) {
-                        Log::info("PrestashopProductWebhook: image URLs cache hit for product #{$productId}");
-                        $imageUrls = $this->getFromCache($cacheKey);
-                    } else {
-
-                        Log::info("PrestashopProductWebhook: image generation triggered for product #{$productId} based on short description");
-
-                        if (!empty($sourceImageUrl)) {
-                            // Edit the existing source image as the primary shot
-                            try {
-                                $editedUrl = $this->openAIService->editProductImage($sourceImageUrl, $seoContent['name'], $imagePrompt);
-                                $imageUrls[] = $editedUrl;
-                            } catch (\Exception $editEx) {
-                                Log::warning("PrestashopProductWebhook: source image edit failed for product #{$productId}: " . $editEx->getMessage());
-                            }
-
-                            // Generate 4 additional detail/zoom/lifestyle images
-                            $additionalUrls = $this->openAIService->generateProductImages($seoContent['name'], 4, $imagePrompt);
-                            $imageUrls = array_merge($imageUrls, $additionalUrls);
-                        } else {
-                            // No source image – generate 5 varied images from scratch
-                            Log::warning("PrestashopProductWebhook: source image missing for product #{$productId}, generating 5 images");
-                            $imageUrls = $this->openAIService->generateProductImages($seoContent['name'], 5, $imagePrompt);
-                        }
-                    }
-                }
-            } catch (\Exception $imageEx) {
-                Log::warning("PrestashopProductWebhook: image processing skipped for product #{$productId}: " . $imageEx->getMessage());
+            // 2. Queue product image generation (handled asynchronously by the worker)
+            if ($this->shouldNotGenerateImage($productShortDescription) !== true) {
+                $this->queue->push('product-image-jobs', [
+                    'productId'               => $productId,
+                    'productName'             => $seoContent['name'],
+                    'imagePrompt'             => $imagePrompt,
+                    'sourceImageUrl'          => $sourceImageUrl,
+                    'productShortDescription' => $productShortDescription,
+                ]);
+                Log::info("PrestashopProductWebhook: image job queued for product #{$productId}");
+            } else {
+                Log::info("PrestashopProductWebhook: #NO-IMAGE# flag set for product #{$productId}, image job skipped");
             }
 
             // 3. Update the product content in PrestaShop (keep it inactive / unpublished)
             $this->productService->updateProduct($productId, array_merge($seoContent, ['active' => 0]));
 
-            // 4. Upload all generated images
-            foreach ($imageUrls as $idx => $imageUrl) {
-                try {
-                    $this->productService->uploadProductImage($productId, $imageUrl);
-                } catch (\Exception $uploadEx) {
-                    Log::warning("PrestashopProductWebhook: image upload #{$idx} failed for product #{$productId}: " . $uploadEx->getMessage());
-                }
-            }
-
             Log::info("PrestashopProductWebhook: product #{$productId} enriched successfully");
 
             return response([
-                'received' => true,
-                'processed' => true,
+                'received'   => true,
+                'processed'  => true,
                 'product_id' => $productId,
+                'images'     => 'queued',
             ], 200);
         } catch (\Exception $e) {
             Log::error("PrestashopProductWebhook: failed to process product #{$productId}: " . $e->getMessage());

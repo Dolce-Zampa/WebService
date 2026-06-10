@@ -9,6 +9,14 @@ services:
     restart: unless-stopped
     ports:
       - "8787:80"
+
+  worker-product-images:
+    container_name: dolcezampa_worker_product_images
+    image: ghcr.io/dolce-zampa/webservice:v1-alpha
+    command: ["php", "bin/worker-product-images"]
+    restart: unless-stopped
+    networks:
+      - dolcezampa_default
   
   cache:
     image: redis:alpine
