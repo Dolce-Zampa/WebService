@@ -134,6 +134,7 @@ $container->set(\PS\Webservice\Service\RedisQueue::class, function ($c) {
         [
             'parameters' => [
                 'password' => env('CACHE_REDIS_PASSWORD', ''),
+                // Use a separate DB from the cache (DB 10) to avoid key collisions
                 'database' => (int) env('QUEUE_REDIS_DATABASE', 11),
             ],
         ]

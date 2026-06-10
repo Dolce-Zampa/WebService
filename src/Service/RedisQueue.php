@@ -47,7 +47,21 @@ class RedisQueue
 
         return [
             'queue'   => (string) $result[0],
-            'payload' => (array) json_decode((string) $result[1], true),
+            'payload' => $this->decodePayload((string) $result[1]),
         ];
+    }
+
+    /**
+     * @throws \RuntimeException on JSON decode failure
+     */
+    private function decodePayload(string $json): array
+    {
+        $data = json_decode($json, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
+            throw new \RuntimeException('RedisQueue: failed to decode job payload – ' . json_last_error_msg());
+        }
+
+        return $data;
     }
 }
