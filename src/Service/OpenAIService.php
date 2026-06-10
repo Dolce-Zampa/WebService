@@ -62,7 +62,7 @@ Il prodotto ha attualmente questo nome: "{$escaped}".
 {$shortDescriptionContext}
 Genera i seguenti contenuti ottimizzati per SEO in italiano:
 1. Un nome prodotto SEO ottimizzato (senza la stringa "n.d.", conciso e descrittivo)
-2. Una descrizione breve (max 200 caratteri, HTML puro senza tag di blocco esterni)
+2. Una descrizione breve (max 200 caratteri, HTML puro senza tag di blocco esterni, senza CSS e senza il tag h1)
 3. Una descrizione completa (almeno 300 parole, HTML con paragrafi <p> e liste <ul>)
 4. Un meta title (max 70 caratteri)
 5. Una meta description (max 160 caratteri, testo senza HTML)
