@@ -1,0 +1,45 @@
+name: Docker Image CI
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Create test .env file
+      run: |
+        cat > .env << EOF
+        APP_ENV=test
+        APP_DEBUG=true
+        DATABASE_URL=sqlite:///:memory:
+        # Aggiungi altre variabili necessarie per i test
+        LOGTAIL_API_KEY=test
+        EOF
+    
+    - name: Build Docker image (without push)
+      run: |
+        docker build -t webservice:test .
+    
+    - name: Run unit tests
+      run: |
+        docker run --rm webservice:test vendor/bin/phpunit --testdox --colors=always
+    
+    # Solo se arriviamo qui, i test sono passati
+    - name: Log in to GitHub Container Registry
+      if: success()  # Questo è implicito, ma lo metto per chiarezza
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.TOKEN }}
+    
+    - name: Push image to GHCR
+      if: success()  # Solo se i test sono passati
+      run: |
+        docker tag webservice:test ghcr.io/dolce-zampa/webservice:latest
+        docker push ghcr.io/dolce-zampa/webservice:latest

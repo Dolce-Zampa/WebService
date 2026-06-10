@@ -8,6 +8,12 @@
          displayDetailsOnTestsThatTriggerWarnings="true"
          >
 
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>Test</directory>
+        </testsuite>
+    </testsuites>
+
     <php>
         <!-- Add error reporting configuration -->
         <ini name="display_errors" value="1" />
