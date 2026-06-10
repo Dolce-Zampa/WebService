@@ -184,6 +184,75 @@ PROMPT;
     }
 
     /**
+     * Generates multiple product images (main + detail/zoom shots) using DALL-E.
+     *
+     * Returns an array of image URLs in this order:
+     *   0 – main product photo (white background)
+     *   1 – close-up / zoom detail shot #1 (key features / texture)
+     *   2 – close-up / zoom detail shot #2 (label / packaging detail)
+     *   3 – lifestyle / context shot (pet-friendly environment)
+     *   4 – angled / side-view shot
+     *
+     * Failures for individual images are caught and logged; the returned array may
+     * contain fewer elements if some generations fail.
+     *
+     * @param string $productName  The product name to base the images on
+     * @param int    $count        Number of images to generate (default 5, min 1, max 10)
+     * @param string $customPrompt Optional base prompt. Use {product_name} as placeholder.
+     *                             When provided it is used for ALL shots (index appended for variety).
+     * @return string[] Array of image URLs (expires after ~1 hour)
+     */
+    public function generateProductImages(string $productName, int $count = 5, string $customPrompt = ''): array
+    {
+        $count = max(1, min(10, $count));
+        $sanitizedName = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
+
+        $defaultPrompts = [
+            "Foto prodotto professionale per e-commerce su sfondo bianco puro, luce uniforme e alta qualità: {$sanitizedName}. Nessun testo nell'immagine.",
+            "Zoom primo piano sui dettagli principali del prodotto {$sanitizedName}: texture, materiali e caratteristiche distintive. Sfondo neutro, illuminazione da studio. Nessun testo.",
+            "Dettaglio ravvicinato dell'etichetta, della confezione o degli ingredienti del prodotto {$sanitizedName}. Primo piano ad alta definizione. Nessun testo.",
+            "Immagine lifestyle del prodotto {$sanitizedName} in una ambientazione pet-friendly, con animale domestico sullo sfondo o in uso reale. Luce naturale. Nessun testo.",
+            "Vista laterale / angolata a 45° del prodotto {$sanitizedName} su sfondo bianco, evidenziando volume e proporzioni. Illuminazione professionale. Nessun testo.",
+        ];
+
+        $urls = [];
+        for ($i = 0; $i < $count; $i++) {
+            if (!empty($customPrompt)) {
+                $imagePrompt = str_replace('{product_name}', $sanitizedName, $customPrompt) . " (variante " . ($i + 1) . ")";
+            } else {
+                $imagePrompt = $defaultPrompts[$i] ?? $defaultPrompts[0];
+            }
+
+            try {
+                $response = $this->client->post('images/generations', [
+                    'json' => [
+                        'model'   => $this->imageModel,
+                        'prompt'  => $imagePrompt,
+                        'n'       => 1,
+                        'size'    => '1024x1024',
+                        'quality' => 'standard',
+                    ],
+                ]);
+
+                $body     = json_decode($response->getBody()->getContents(), true);
+                $imageUrl = (string) ($body['data'][0]['url'] ?? '');
+
+                if (empty($imageUrl)) {
+                    Log::warning("OpenAI: empty URL for product image #{$i} of \"{$productName}\"");
+                    continue;
+                }
+
+                Log::info("OpenAI: image #{$i} generated for product \"{$productName}\"");
+                $urls[] = $imageUrl;
+            } catch (\Exception $e) {
+                Log::warning("OpenAI: failed to generate image #{$i} for \"{$productName}\": " . $e->getMessage());
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
      * Modifies an existing product image using AI instructions.
      *
      * @param string $sourceImageUrl Public URL of the source product image
