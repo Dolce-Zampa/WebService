@@ -73,11 +73,14 @@ class PrestashopProductWebhookController extends Controller
             // 2. Edit the existing product image via AI (best-effort; failures are logged but non-fatal)
             $imageUrl = null;
             try {
-                if (!empty($sourceImageUrl)) {
-                    $imageUrl = $this->openAIService->editProductImage($sourceImageUrl, $seoContent['name'], $imagePrompt);
-                } else {
-                    $imageUrl = $this->openAIService->generateProductImage($seoContent['name'], $imagePrompt);
-                    Log::warning("PrestashopProductWebhook: source image missing for product #{$productId}, fallback to image generation");
+                if($this->shouldNotGenerateImage($productShortDescription) !== true) {
+                    Log::info("PrestashopProductWebhook: image generation triggered for product #{$productId} based on short description");
+                    if (!empty($sourceImageUrl)) {
+                        $imageUrl = $this->openAIService->editProductImage($sourceImageUrl, $seoContent['name'], $imagePrompt);
+                    } else {
+                        $imageUrl = $this->openAIService->generateProductImage($seoContent['name'], $imagePrompt);
+                        Log::warning("PrestashopProductWebhook: source image missing for product #{$productId}, fallback to image generation");
+                    }
                 }
             } catch (\Exception $imageEx) {
                 Log::warning("PrestashopProductWebhook: image processing skipped for product #{$productId}: " . $imageEx->getMessage());
@@ -106,5 +109,17 @@ class PrestashopProductWebhookController extends Controller
             Log::error("PrestashopProductWebhook: failed to process product #{$productId}: " . $e->getMessage());
             return response(['error' => 'Failed to process product'], 500);
         }
+    }
+
+    /**
+     * find into a short description some key configurations
+     * 
+     * @param string $productShortDescription
+     * @return bool
+     */
+    private function shouldNotGenerateImage($productShortDescription): bool
+    {
+        $key = "#NO-IMAGE#";
+        return stripos($productShortDescription, $key) !== false;
     }
 }
