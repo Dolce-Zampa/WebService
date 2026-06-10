@@ -57,18 +57,47 @@ class OpenAIService
                 : '';
 
             $prompt = <<<PROMPT
-Sei un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici.
-Il prodotto ha attualmente questo nome: "{$escaped}".
-{$shortDescriptionContext}
-Genera i seguenti contenuti ottimizzati per SEO in italiano:
-1. Un nome prodotto SEO ottimizzato (senza la stringa "n.d.", conciso e descrittivo)
-2. Una descrizione breve (max 200 caratteri, HTML puro senza tag di blocco esterni, senza CSS e senza il tag h1)
-3. Una descrizione completa (almeno 300 parole, HTML con paragrafi <p> e liste <ul>)
-4. Un meta title (max 70 caratteri)
-5. Una meta description (max 160 caratteri, testo senza HTML)
+Agisci come un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici. Riceverai il nome attuale del prodotto "{$escaped}" e un contesto aggiuntivo: {$shortDescriptionContext}. Il tuo compito è generare i seguenti contenuti ottimizzati per SEO, in italiano, seguendo queste istruzioni dettagliate:
 
-Rispondi SOLTANTO con un oggetto JSON valido con le chiavi:
-"name", "description_short", "description", "meta_title", "meta_description"
+- Genera un nuovo nome prodotto ottimizzato SEO, conciso e descrittivo, senza la stringa “n.d.”.
+- Crea una descrizione breve del prodotto (max 200 caratteri), utilizzando solo HTML in linea (senza tag di blocco esterni, senza CSS, senza tag h1).
+- Scrivi una descrizione completa e approfondita (almeno 300 parole) in HTML: usa solo paragrafi <p> e liste <ul>.
+- Redigi un meta title (max 70 caratteri), pertinente e attrattivo.
+- Crea una meta description (max 160 caratteri, senza HTML).
+
+Istruzioni aggiuntive:
+
+- Rispondi esclusivamente con un oggetto JSON valido con le seguenti chiavi: "name", "description_short", "description", "meta_title", "meta_description".
+- Non includere nessun testo o commento esterno, solo la risposta JSON.
+- Pensa passo-passo alle scelte terminologiche, ai benefici centrali per il cliente, all'ottimizzazione delle keywords inerenti il prodotto e l’utilità per l’utente prima di produrre i risultati finali. Ragiona internamente sulle peculiarità del prodotto in base al contesto fornito, sugli intenti di ricerca principali, e sulla chiarezza e sintesi necessarie per l’e-commerce.
+- Mantieni uno stile professionale e coinvolgente, adatto a un negozio online di prodotti per animali domestici.
+
+Formato output richiesto: Solo oggetto JSON senza alcun testo aggiuntivo, nel seguente schema:
+{
+  "name": "...",
+  "description_short": "...",
+  "description": "...",
+  "meta_title": "...",
+  "meta_description": "..."
+}
+
+Esempio di output atteso:
+{
+  "name": "Crocchette Premium per Cani Adulti Pollo e Riso",
+  "description_short": "Alimento completo per cani adulti, con pollo e riso. Nutrizione bilanciata, gusto irresistibile.",
+  "description": "<p>Le Crocchette Premium per Cani Adulti con Pollo e Riso offrono una nutrizione bilanciata...</p><ul><li>Alta digeribilità</li><li>Ricco di proteine animali</li><li>Ideale per tutte le razze</li></ul><p>Garantisce benessere quotidiano e supporto alle difese immunitarie.</p>",
+  "meta_title": "Crocchette Pollo e Riso per Cani Adulti | Premium Nutritive",
+  "meta_description": "Crocchette per cani adulti al pollo e riso, nutrizione completa e gusto irresistibile. Scopri la qualità premium!"
+}
+
+(Nota: i contenuti reali devono essere adattati alla lunghezza e al livello di dettaglio corretti, secondo la reale descrizione del prodotto.)
+
+IMPORTANTE: Rispondi solo con l’oggetto JSON come indicato. Nessun testo extra, nessun commento.
+
+---
+
+RICORDA:  
+Genera, dato un prodotto e-commerce per animali domestici e il suo contesto, un output JSON che includa (1) nome SEO ottimizzato – senza “n.d.” – (2) breve descrizione in HTML inline, (3) descrizione completa in <p>/<ul> HTML, (4) meta title, (5) meta description, seguendo gli step di ragionamento prima di produrre la risposta e rispettando rigorosamente formati e limiti di caratteri descritti."
 PROMPT;
         }
 
@@ -170,7 +199,30 @@ PROMPT;
         if (!empty($customPrompt)) {
             $imagePrompt = str_replace('{product_name}', $sanitizedName, $customPrompt);
         } else {
-            $imagePrompt = 'Modifica questa foto prodotto mantenendo il soggetto principale e rendila professionale per e-commerce (sfondo pulito, luce uniforme, alta definizione). Nessun testo nell\'immagine.';
+            $imagePrompt = <<<PROMPT
+Migliora questa foto prodotto per uso e-commerce, mantenendo il soggetto principale ben visibile. Esegui i seguenti passaggi:
+
+- Analizza l’immagine e identifica chiaramente il soggetto principale del prodotto.
+- Isola il soggetto principale rimuovendo o sfocando qualsiasi elemento di sfondo che non appartiene al prodotto.
+- Sostituisci lo sfondo con uno sfondo pet, (tipicamente una ambientazione dedicata al mondo pet family), mantenendo una coerenza visiva e un’illuminazione naturale.
+- Migliora l’illuminazione in modo che il soggetto sia ben illuminato, senza ombre troppo marcate né zone sovraesposte o sottoesposte.
+- Migliora la definizione e la nitidezza dell’immagine, rendendo visibili i dettagli del prodotto senza introdurre artefatti.
+- Non aggiungere nessun testo, logo o grafica sovrapposta all’immagine.
+- Mantieni la proporzione e la prospettiva naturale del soggetto.
+
+Assicurati che il risultato finale rispetti tutti i requisiti sopra indicati, producendo un’immagine pronta per essere utilizzata su un sito e-commerce professionale.
+
+**Formato output:**  
+Restituisci esclusivamente la nuova immagine modificata, senza aggiungere didascalie, testo o descrizioni.
+
+---
+
+**Promemoria istruzioni chiave:**  
+- Mantieni solo il soggetto principale; sfondo neutro e pulito.  
+- Illuminazione uniforme e dettagli in alta definizione.  
+- Nessun testo o elemento grafico sovrapposto.  
+- Output: restituisci esclusivamente l’immagine modificata, pronta per e-commerce.
+PROMPT;
         }
 
         try {
