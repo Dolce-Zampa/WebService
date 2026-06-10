@@ -19,7 +19,8 @@ class HttpService implements HttpServiceInterface
     private \GuzzleHttp\Psr7\Response $response;
     private int $httpCode;
 
-    private string $body;
+    private array $multipartData = [];
+
 
     public function __construct(WebserviceConfig $config)
     {
@@ -57,6 +58,10 @@ class HttpService implements HttpServiceInterface
             if (!empty($data)) {
                 // Se il metodo è POST/PUT, usiamo 'json'
                 $options['json'] = $data;
+            }
+
+            if(!empty($this->multipartData)) {
+                $options['multipart'] = $this->multipartData;
             }
 
             Log::debug("HTTP request: {$method} {$this->api} with data: " . json_encode($data));
@@ -147,5 +152,10 @@ class HttpService implements HttpServiceInterface
         ];
 
         JsonDataStorage::httpRequest()->insert(new RequestStorage($requestData));
+    }
+
+    public function setMultipartData(array $multipartData): void
+    {
+        $this->multipartData = $multipartData;
     }
 }

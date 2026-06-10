@@ -236,20 +236,13 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 30]);
 
         try {
-            $response = $client->post("https://{$psBaseUrl}/api/products/update", [
-                'json'    => array_merge(['id' => $productId], $data),
-                'headers' => [
-                    'Content-Type' => 'application/json',
-                    'X-WS-Key'     => $wsKey,
-                ],
+            $this->httpService->setUrl("catalog/update?debug=true");
+            $response = $this->httpService->invoke('POST', [
+                array_merge(['id' => $productId], $data)
             ]);
 
-            $body = json_decode($response->getBody()->getContents(), true);
-            $ok   = (bool) ($body['success'] ?? false);
-
-            if (!$ok) {
-                Log::error("updateProduct: module returned success=false for product #{$productId}. Body: " . json_encode($body));
-                throw new \RuntimeException("PrestaShop module returned failure for product #{$productId}");
+            if ($response->failed()) {
+                throw new PrestashopConnectorException($this->httpService);
             }
 
             Log::info("updateProduct: product #{$productId} updated successfully");
@@ -290,29 +283,17 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             $tmpFile = null; // file has been renamed; clean up via $namedTmp
 
             // Upload to PrestaShop via its native image API using header-based auth only
-            $uploadResponse = $client->post(
-                "https://{$psBaseUrl}/psapi/images/products/{$productId}?output_format=JSON",
-                [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . $apiKey,
-                        'X-WS-Key'      => $apiKey,
-                    ],
-                    'multipart' => [
-                        [
+            $this->httpService->setUrl("/images/products/{$productId}?output_format=JSON");
+            $response = $this->httpService->setMultipartData([
                             'name'     => 'image',
                             'contents' => fopen($namedTmp, 'r'),
                             'filename' => "product_{$productId}.{$extension}",
-                        ],
-                    ],
-                ]
-            );
+                        ])->invoke('POST', []);
 
             @unlink($namedTmp);
 
-            $statusCode = $uploadResponse->getStatusCode();
-            if ($statusCode >= 400) {
-                Log::error("uploadProductImage: PS returned HTTP {$statusCode} for product #{$productId}");
-                return false;
+            if ($response->failed()) {
+                throw new PrestashopConnectorException($this->httpService);
             }
 
             Log::info("uploadProductImage: image uploaded for product #{$productId}");

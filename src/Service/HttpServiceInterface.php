@@ -15,6 +15,8 @@ interface HttpServiceInterface {
 
     public function invoke(string $method, array|PayloadServiceData $data = []): self;
 
+    public function setMultipartData(array $multipartData): void;
+
     public function response(): ResponseInterface;
 
     public function getBody(): string;
