@@ -25,7 +25,7 @@ require_once __DIR__ . '/../bootstrap/app.php';
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Service\OpenAIService;
-use PS\Webservice\Service\PS\Product as ProductService;
+use PS\Webservice\Service\PS\Prod as ProductService;
 use PS\Webservice\Service\RedisQueue;
 
 /** @var \DI\Container $container */
@@ -100,6 +100,23 @@ while (true) {
             Log::info("ProductImageWorker: uploaded image #{$idx} for product #{$productId}");
         } catch (\Exception $uploadEx) {
             Log::warning("ProductImageWorker: image upload #{$idx} failed for product #{$productId}: " . $uploadEx->getMessage());
+        }
+    }
+
+    //we should delete the source image
+    foreach($sourceImageUrls as $sourceImageUrl) {
+
+        $imageId = function($source) {
+            $obj = explode("/",$source);
+            $image = explode("-", $obj[3]);
+            return $image[0];
+        };
+
+        try {
+            $productService->deleteImage($productId, $imageId($sourceImageUrl));
+            Log::info("ProductImageWorker: deleted source image for product #{$productId}");
+        } catch (\Exception $deleteEx) {
+            Log::warning("ProductImageWorker: failed to delete source image for product #{$productId}: " . $deleteEx->getMessage());
         }
     }
 

@@ -299,4 +299,31 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             Log::error("uploadProductImage: HTTP error for product #{$productId}: " . $e->getMessage());
             throw new PrestashopConnectorException($this->httpService);
         }
-    }}
+    }
+
+    /**
+     * 
+     * @param int $productId
+     * @param int $imageId
+     * @throws PrestashopConnectorException
+     * @return bool
+     */
+    public function deleteImage(int $productId, int $imageId): bool
+    {
+        try {
+            $this->httpService->setUrl("/images/products/{$productId}/{$imageId}");
+            $response = $this->httpService->invoke('DELETE');
+
+            if ($response->failed()) {
+                throw new PrestashopConnectorException($this->httpService);
+            }
+
+            Log::info("deleteImage: image #{$imageId} deleted for product #{$productId}");
+            return true;
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            Log::error("deleteImage: HTTP error for product #{$productId}, image #{$imageId}: " . $e->getMessage());
+            throw new PrestashopConnectorException($this->httpService);
+        }
+    }
+    
+}
