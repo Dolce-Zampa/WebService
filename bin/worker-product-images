@@ -77,7 +77,7 @@ while (true) {
                     $editedUrl   = $openAIService->editProductImage($sourceImageUrl, $productName, $imagePrompt);
                     $imageUrls[] = $editedUrl;
                 } catch (\Exception $editEx) {
-                    Log::warning("ProductImageWorker: source image edit failed for product #{$productId}: " . $editEx->getMessage());
+                    Log::warning("ProductImageWorker: source image edit failed for product #{$productId}: and url {$sourceImageUrl} " . $editEx->getMessage());
                 }
             }
 
@@ -88,7 +88,7 @@ while (true) {
             Log::warning("ProductImageWorker: no source image provided for product #{$productId}, generating from scratch");
         }
     } catch (\Exception $e) {
-        Log::error("ProductImageWorker: image generation failed for product #{$productId}: " . $e->getMessage());
+        Log::error("ProductImageWorker: image generation failed for product #{$productId}:  and url {$sourceImageUrl}" . $e->getMessage());
         continue;
     }
 

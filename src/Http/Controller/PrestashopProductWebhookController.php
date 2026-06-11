@@ -19,6 +19,8 @@ class PrestashopProductWebhookController extends Controller
     private Product $productService;
     private RedisQueue $queue;
 
+    const NO_TEXT_KEY  = '#NO-TEXT#';
+
     public function __construct(OpenAIService $openAIService, Product $productService, RedisQueue $queue)
     {
         $this->openAIService = $openAIService;
@@ -80,7 +82,18 @@ class PrestashopProductWebhookController extends Controller
                 $seoContent = $this->getFromCache($cacheKey);
             } else {
                 Log::info("PrestashopProductWebhook: SEO content cache miss for product #{$productId}, generating via OpenAI");
-                $seoContent = $this->openAIService->generateSeoContent($productName, $textPrompt, $productShortDescription);
+                if(strpos($productShortDescription, self::NO_TEXT_KEY) !== false) {
+                    Log::info("PrestashopProductWebhook: #NO-TEXT# flag set for product #{$productId}, skipping SEO content generation");
+                    $seoContent = [
+                        'name' => $productName,
+                        'description' => '',
+                        'meta_title' => '',
+                        'meta_description' => '',
+                    ];
+                } else {
+                    $seoContent = $this->openAIService->generateSeoContent($productName, $textPrompt, $productShortDescription);
+                }
+
                 $this->setToCache($cacheKey, $seoContent, 300); // Cache for 5 minutes
             }
 
@@ -90,7 +103,7 @@ class PrestashopProductWebhookController extends Controller
                     'productId'               => $productId,
                     'productName'             => $seoContent['name'],
                     'imagePrompt'             => $imagePrompt,
-                    'sourceImageUrl'          => $sourceImageUrls,
+                    'sourceImageUrls'          => $sourceImageUrls,
                     'productShortDescription' => $productShortDescription,
                 ]);
                 Log::info("PrestashopProductWebhook: image job queued for product #{$productId}");
@@ -99,7 +112,12 @@ class PrestashopProductWebhookController extends Controller
             }
 
             // 3. Update the product content in PrestaShop (keep it inactive / unpublished)
-            $this->productService->updateProduct($productId, array_merge($seoContent, ['active' => 0]));
+            if(!empty($seoContent['description'])) {
+                $this->productService->updateProduct($productId, array_merge($seoContent, ['active' => 0]));
+                Log::info("PrestashopProductWebhook: product #{$productId} updated with SEO content");
+            } else {
+                Log::info("PrestashopProductWebhook: no description generated for product #{$productId}, skipping product update");
+            }
 
             Log::info("PrestashopProductWebhook: product #{$productId} enriched successfully");
 
