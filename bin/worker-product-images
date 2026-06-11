@@ -112,7 +112,7 @@ while (true) {
         };
 
         try {
-            $productService->deleteImage($productId, $imageId($sourceImageUrl));
+            $productService->deleteImage($productId, (int) $imageId($sourceImageUrl));
             Log::info("ProductImageWorker: deleted source image for product #{$productId}");
         } catch (\Exception $deleteEx) {
             Log::warning("ProductImageWorker: failed to delete source image for product #{$productId}: " . $deleteEx->getMessage());

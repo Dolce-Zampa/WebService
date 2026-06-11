@@ -19,7 +19,7 @@ interface HttpServiceInterface {
 
     public function response(): ResponseInterface;
 
-    public function getBody(): string;
+    public function getBody(): ?string;
 
     public function toArray(): array;
 

@@ -97,7 +97,7 @@ class HttpService implements HttpServiceInterface
      *
      * @return string The response body.
      */
-    public function getBody(): string
+    public function getBody(): ?string
     {
         return $this->body;
     }

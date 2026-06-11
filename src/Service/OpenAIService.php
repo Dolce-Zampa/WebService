@@ -374,7 +374,7 @@ PROMPT;
 
     protected function saveImage($b64): string
     {
-        $outputDir = storage_path('app/public/generated-images/');
+        $outputDir = storage_path('generated-images/');
         if (!is_dir($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
@@ -383,7 +383,7 @@ PROMPT;
         file_put_contents($outputPath, base64_decode($b64));
 
         // URL pubblico (adatta al tuo setup)
-        $imageUrl = $this->baseUriImage . '/storage/generated-images/' . $filename;
+        $imageUrl = $this->baseUriImage . $outputDir . $filename;
         return $imageUrl;
     }
 }
