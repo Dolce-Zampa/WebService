@@ -254,7 +254,7 @@ PROMPT;
                 $b64 = (string) ($body['data'][0]['b64_json'] ?? '');
 
                 if (empty($b64)) {
-                    throw new \RuntimeException('Empty image data in OpenAI edit response');
+                    throw new \RuntimeException('Empty image data in OpenAI generateProductImages');
                 }
 
                 // Salva il base64 su disco e restituisci il path/URL locale
@@ -334,7 +334,6 @@ PROMPT;
                 ],
             ]);
 
-            $body = json_decode($response->getBody()->getContents(), true);
             $body = json_decode($response->getBody()->getContents(), true);
             $b64 = (string) ($body['data'][0]['b64_json'] ?? '');
 
