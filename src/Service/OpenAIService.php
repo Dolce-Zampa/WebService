@@ -207,10 +207,10 @@ PROMPT;
         $count = max(1, min(10, $count));
         $sanitizedName = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
 
-        $sourceResponse = $this->client->get($sourceImageUrl);
-        $sourceContentType = $sourceResponse->getHeaderLine('Content-Type') ?: 'image/jpeg';
-        $extension = str_contains($sourceContentType, 'png') ? 'png' : 'jpg';
-        $sourceContent = $sourceResponse->getBody()->getContents();
+        $source            = $this->fetchSourceImage($sourceImageUrl);
+        $sourceContent     = $source['content'];
+        $sourceContentType = $source['content_type'];
+        $extension         = $source['extension'];
 
         if ($sourceContent === '') {
             throw new \RuntimeException('Empty source image content');
@@ -310,10 +310,10 @@ PROMPT;
         }
 
         try {
-            $sourceResponse = $this->client->get($sourceImageUrl);
-            $sourceContentType = $sourceResponse->getHeaderLine('Content-Type') ?: 'image/jpeg';
-            $extension = str_contains($sourceContentType, 'png') ? 'png' : 'jpg';
-            $sourceContent = $sourceResponse->getBody()->getContents();
+            $source            = $this->fetchSourceImage($sourceImageUrl);
+            $sourceContent     = $source['content'];
+            $sourceContentType = $source['content_type'];
+            $extension         = $source['extension'];
 
             if ($sourceContent === '') {
                 throw new \RuntimeException('Empty source image content');
@@ -339,7 +339,7 @@ PROMPT;
             $imageUrl = (string) ($body['data'][0]['url'] ?? '');
 
             //save image in backup folder for 1 hour
-            $backupPath = __DIR__ . storage_path('backups/images/');
+            $backupPath = storage_path('backups/images/');
             if (!is_dir($backupPath)) {
                 mkdir($backupPath, 0755, true);
             }
@@ -356,5 +356,25 @@ PROMPT;
             Log::error('OpenAI image edit failed: ' . $e->getMessage());
             throw new \RuntimeException('Failed to edit product image: ' . $e->getMessage(), 0, $e);
         }
+    }
+
+    private function fetchSourceImage(string $sourceImageUrl): array
+    {
+        $httpClient = new Client(['timeout' => 30]);
+        $response = $httpClient->get($sourceImageUrl);
+
+        $contentType = $response->getHeaderLine('Content-Type') ?: 'image/jpeg';
+        $extension   = str_contains($contentType, 'png') ? 'png' : 'jpg';
+        $content     = $response->getBody()->getContents();
+
+        if ($content === '') {
+            throw new \RuntimeException('Empty source image content');
+        }
+
+        return [
+            'content'      => $content,
+            'content_type' => $contentType,
+            'extension'    => $extension,
+        ];
     }
 }

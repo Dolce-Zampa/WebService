@@ -85,9 +85,7 @@ while (true) {
             $additionalUrls = $openAIService->generateProductImages($sourceImageUrl, $productName, 4, $imagePrompt);
             $imageUrls      = array_merge($imageUrls, $additionalUrls);
         } else {
-            // No source image – generate 5 varied images from scratch
-            Log::info("ProductImageWorker: no source image for product #{$productId}, generating 5 images from scratch");
-            $imageUrls = $openAIService->generateProductImages($productName, 5, $imagePrompt);
+            Log::warning("ProductImageWorker: no source image provided for product #{$productId}, generating from scratch");
         }
     } catch (\Exception $e) {
         Log::error("ProductImageWorker: image generation failed for product #{$productId}: " . $e->getMessage());
