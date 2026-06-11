@@ -61,7 +61,7 @@ class PrestashopProductWebhookController extends Controller
         $productShortDescription = (string) ($payload['product_short_description'] ?? '');
         $textPrompt = (string) ($payload['text_prompt'] ?? '');
         $imagePrompt = (string) ($payload['image_prompt'] ?? '');
-        $sourceImageUrls = (string) ($payload['source_image_urls'] ?? '');
+        $sourceImageUrls = (array) ($payload['source_image_urls'] ?? '');
 
         // Only process products whose name contains the placeholder "n.d."
         if (stripos($productName, 'n.d.') === false) {

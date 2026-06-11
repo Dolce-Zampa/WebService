@@ -51,7 +51,7 @@ while (true) {
     $productId               = (int)   ($payload['productId']               ?? 0);
     $productName             = (string) ($payload['productName']             ?? '');
     $imagePrompt             = (string) ($payload['imagePrompt']             ?? '');
-    $sourceImageUrls          = (array) ($payload['sourceImageUrls']          ?? '');
+    $sourceImageUrls          = (array) ($payload['sourceImageUrls']          ?? []);
     $productShortDescription = (string) ($payload['productShortDescription'] ?? '');
 
     if ($productId === 0 || $productName === '') {
@@ -71,6 +71,7 @@ while (true) {
 
     try {
         if (!empty($sourceImageUrls)) {
+            Log::debug("Sourceimage ". json_encode($sourceImageUrls));
             // Edit the existing source image as the primary shot
             foreach($sourceImageUrls as $idx => $sourceImageUrl) {
                 try {
