@@ -324,7 +324,7 @@ PROMPT;
                     ['name' => 'model', 'contents' => $this->imageModel],
                     ['name' => 'prompt', 'contents' => $imagePrompt],
                     ['name' => 'size', 'contents' => '1024x1024'],
-                    ['name' => 'quality', 'contents' => 'standard'],
+                    ['name' => 'quality', 'contents' => 'medium'],
                     [
                         'name' => 'image',
                         'contents' => Utils::streamFor($sourceContent),
