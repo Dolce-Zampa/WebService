@@ -59,7 +59,7 @@ class PrestashopProductWebhookController extends Controller
         $productShortDescription = (string) ($payload['product_short_description'] ?? '');
         $textPrompt = (string) ($payload['text_prompt'] ?? '');
         $imagePrompt = (string) ($payload['image_prompt'] ?? '');
-        $sourceImageUrl = (string) ($payload['source_image_url'] ?? '');
+        $sourceImageUrls = (string) ($payload['source_image_urls'] ?? '');
 
         // Only process products whose name contains the placeholder "n.d."
         if (stripos($productName, 'n.d.') === false) {
@@ -90,7 +90,7 @@ class PrestashopProductWebhookController extends Controller
                     'productId'               => $productId,
                     'productName'             => $seoContent['name'],
                     'imagePrompt'             => $imagePrompt,
-                    'sourceImageUrl'          => $sourceImageUrl,
+                    'sourceImageUrl'          => $sourceImageUrls,
                     'productShortDescription' => $productShortDescription,
                 ]);
                 Log::info("PrestashopProductWebhook: image job queued for product #{$productId}");

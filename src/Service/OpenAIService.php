@@ -202,10 +202,19 @@ PROMPT;
      *                             When provided it is used for ALL shots (index appended for variety).
      * @return string[] Array of image URLs (expires after ~1 hour)
      */
-    public function generateProductImages(string $productName, int $count = 5, string $customPrompt = ''): array
+    public function generateProductImages(string $sourceImageUrl, string $productName, int $count = 5, string $customPrompt = ''): array
     {
         $count = max(1, min(10, $count));
         $sanitizedName = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
+
+        $sourceResponse = $this->client->get($sourceImageUrl);
+        $sourceContentType = $sourceResponse->getHeaderLine('Content-Type') ?: 'image/jpeg';
+        $extension = str_contains($sourceContentType, 'png') ? 'png' : 'jpg';
+        $sourceContent = $sourceResponse->getBody()->getContents();
+
+        if ($sourceContent === '') {
+            throw new \RuntimeException('Empty source image content');
+        }
 
         $defaultPrompts = [
             "Foto prodotto professionale per e-commerce su sfondo bianco puro, luce uniforme e alta qualità: {$sanitizedName}. Nessun testo nell'immagine.",
@@ -224,13 +233,19 @@ PROMPT;
             }
 
             try {
-                $response = $this->client->post('images/generations', [
-                    'json' => [
-                        'model'   => $this->imageModel,
-                        'prompt'  => $imagePrompt,
-                        'n'       => 1,
-                        'size'    => '1024x1024',
-                        'quality' => 'standard',
+                $response = $this->client->post('images/edits', [
+                    'multipart' => [
+                        ['name' => 'model', 'contents' => $this->imageModel],
+                        ['name' => 'prompt', 'contents' => $imagePrompt],
+                        ['name' => 'size', 'contents' => '1024x1024'],
+                        ['name' => 'quality', 'contents' => 'standard'],
+                        ['name' => 'response_format', 'contents' => 'url'],
+                        [
+                            'name' => 'image',
+                            'contents' => Utils::streamFor($sourceContent),
+                            'filename' => "source.{$extension}",
+                            'headers' => ['Content-Type' => $sourceContentType],
+                        ],
                     ],
                 ]);
 
@@ -322,6 +337,14 @@ PROMPT;
 
             $body     = json_decode($response->getBody()->getContents(), true);
             $imageUrl = (string) ($body['data'][0]['url'] ?? '');
+
+            //save image in backup folder for 1 hour
+            $backupPath = __DIR__ . storage_path('backups/images/');
+            if (!is_dir($backupPath)) {
+                mkdir($backupPath, 0755, true);
+            }
+            $backupFilename = $backupPath . 'backup_' . uniqid() . '.' . $extension;
+            file_put_contents($backupFilename, $sourceContent);
 
             if (empty($imageUrl)) {
                 throw new \RuntimeException('Empty image URL in OpenAI edit response');

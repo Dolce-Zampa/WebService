@@ -11,7 +11,7 @@ class webserviceapi extends PaymentModule
     const CONFIG_WEBSERVICE_URL = 'MLABFACTORYAPI_WEBSERVICE_URL';
     const CONFIG_WEBHOOK_SECRET = 'MLABFACTORYAPI_WEBHOOK_SECRET';
     const CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED = 'MLABFACTORYAPI_PRODUCT_SAVED_WEBHOOK_ENABLED';
-    const CONFIG_CHATGPT_TEXT_PROMPT  = 'MLABFACTORYAPI_CHATGPT_TEXT_PROMPT';
+    const CONFIG_CHATGPT_TEXT_PROMPT = 'MLABFACTORYAPI_CHATGPT_TEXT_PROMPT';
     const CONFIG_CHATGPT_IMAGE_PROMPT = 'MLABFACTORYAPI_CHATGPT_IMAGE_PROMPT';
     private static array $productWebhookDispatched = [];
     public function __construct()
@@ -60,12 +60,12 @@ class webserviceapi extends PaymentModule
         $output = '';
 
         if (Tools::isSubmit('submitMlabFactoryApi')) {
-            $paymentModule   = trim((string) Tools::getValue(self::CONFIG_PAYMENT_MODULE));
-            $webserviceUrl   = trim((string) Tools::getValue(self::CONFIG_WEBSERVICE_URL));
-            $webhookSecret   = trim((string) Tools::getValue(self::CONFIG_WEBHOOK_SECRET));
-            $webhookEnabled  = (int) Tools::getValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 0);
-            $textPrompt      = trim((string) Tools::getValue(self::CONFIG_CHATGPT_TEXT_PROMPT));
-            $imagePrompt     = trim((string) Tools::getValue(self::CONFIG_CHATGPT_IMAGE_PROMPT));
+            $paymentModule = trim((string) Tools::getValue(self::CONFIG_PAYMENT_MODULE));
+            $webserviceUrl = trim((string) Tools::getValue(self::CONFIG_WEBSERVICE_URL));
+            $webhookSecret = trim((string) Tools::getValue(self::CONFIG_WEBHOOK_SECRET));
+            $webhookEnabled = (int) Tools::getValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 0);
+            $textPrompt = trim((string) Tools::getValue(self::CONFIG_CHATGPT_TEXT_PROMPT));
+            $imagePrompt = trim((string) Tools::getValue(self::CONFIG_CHATGPT_IMAGE_PROMPT));
 
             if ($paymentModule === '') {
                 $output .= $this->displayError($this->l('Payment module technical name is required.'));
@@ -121,7 +121,7 @@ class webserviceapi extends PaymentModule
         }
 
         $webhookBaseUrl = rtrim((string) Configuration::get(self::CONFIG_WEBSERVICE_URL), '/');
-        $webhookSecret  = (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET);
+        $webhookSecret = (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET);
 
         if (empty($webhookBaseUrl) || empty($webhookSecret)) {
             PrestaShopLogger::addLog(
@@ -134,7 +134,7 @@ class webserviceapi extends PaymentModule
             return;
         }
 
-        $langId      = (int) Configuration::get('PS_LANG_DEFAULT');
+        $langId = (int) Configuration::get('PS_LANG_DEFAULT');
         $productName = (string) ($product->name[$langId] ?? '');
 
         // Only process products whose name contains the "n.d." placeholder
@@ -148,14 +148,14 @@ class webserviceapi extends PaymentModule
         }
         self::$productWebhookDispatched[$productId] = true;
 
-        $url     = $webhookBaseUrl . '/api/webhooks/prestashop/product-saved';
+        $url = $webhookBaseUrl . '/api/webhooks/prestashop/product-saved';
         $payload = json_encode([
-            'product_id'   => $productId,
+            'product_id' => $productId,
             'product_name' => $productName,
             'product_short_description' => $this->getProductShortDescription($product, $langId),
-            'text_prompt'  => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
+            'text_prompt' => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
             'image_prompt' => (string) Configuration::get(self::CONFIG_CHATGPT_IMAGE_PROMPT),
-            'source_image_url' => $this->getProductCoverImageUrl($product),
+            'source_image_urls' => $this->getProductImageUrls($product),
         ]);
 
         $ch = curl_init($url);
@@ -171,9 +171,9 @@ class webserviceapi extends PaymentModule
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
 
-        $result   = curl_exec($ch);
+        $result = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr  = curl_error($ch);
+        $curlErr = curl_error($ch);
         curl_close($ch);
 
         if ($result === false || $httpCode >= 400) {
@@ -187,25 +187,46 @@ class webserviceapi extends PaymentModule
         }
     }
 
-    private function getProductCoverImageUrl(Product $product): string
+    /**
+     * @return string[]
+     */
+    private function getProductImageUrls(Product $product): array
     {
-        $cover = Product::getCover((int) $product->id);
-        $idImage = (int) ($cover['id_image'] ?? 0);
-        if ($idImage <= 0 || !isset($this->context->link)) {
-            return '';
+        $langId = (int) Configuration::get('PS_LANG_DEFAULT');
+
+        if (!isset($this->context->link)) {
+            return [];
         }
 
-        $langId = (int) Configuration::get('PS_LANG_DEFAULT');
         $linkRewrite = '';
         if (isset($product->link_rewrite) && is_array($product->link_rewrite)) {
             $linkRewrite = (string) ($product->link_rewrite[$langId] ?? '');
         }
 
         if ($linkRewrite === '') {
-            return '';
+            return [];
         }
 
-        return (string) $this->context->link->getImageLink($linkRewrite, (string) $product->id . '-' . $idImage, 'large_default');
+        $images = Image::getImages($langId, (int) $product->id);
+        if (empty($images)) {
+            return [];
+        }
+
+        $urls = [];
+        foreach ($images as $image) {
+            $idImage = (int) ($image['id_image'] ?? 0);
+            if ($idImage <= 0) {
+                continue;
+            }
+
+            $urls[] = (string) $this->context->link->getImageLink(
+                $linkRewrite,
+                $product->id . '-' . $idImage,
+                'large_default'
+            );
+        }
+
+        return $urls;
     }
 
     private function getProductShortDescription(Product $product, int $langId): string
@@ -406,22 +427,22 @@ class webserviceapi extends PaymentModule
                         'desc' => $this->l('If disabled, the product-saved webhook evolutive flow will not run.'),
                     ),
                     array(
-                        'type'     => 'textarea',
-                        'label'    => $this->l('ChatGPT text generation prompt'),
-                        'name'     => self::CONFIG_CHATGPT_TEXT_PROMPT,
+                        'type' => 'textarea',
+                        'label' => $this->l('ChatGPT text generation prompt'),
+                        'name' => self::CONFIG_CHATGPT_TEXT_PROMPT,
                         'required' => false,
-                        'rows'     => 8,
-                        'cols'     => 60,
-                        'desc'     => $this->l('Custom prompt sent to ChatGPT for SEO text generation. Use {product_name} and {product_short_description} as placeholders. Leave empty to use the built-in default prompt.'),
+                        'rows' => 8,
+                        'cols' => 60,
+                        'desc' => $this->l('Custom prompt sent to ChatGPT for SEO text generation. Use {product_name} and {product_short_description} as placeholders. Leave empty to use the built-in default prompt.'),
                     ),
                     array(
-                        'type'     => 'textarea',
-                        'label'    => $this->l('ChatGPT image generation prompt'),
-                        'name'     => self::CONFIG_CHATGPT_IMAGE_PROMPT,
+                        'type' => 'textarea',
+                        'label' => $this->l('ChatGPT image generation prompt'),
+                        'name' => self::CONFIG_CHATGPT_IMAGE_PROMPT,
                         'required' => false,
-                        'rows'     => 4,
-                        'cols'     => 60,
-                        'desc'     => $this->l('Custom prompt sent to DALL-E for product image generation. Use {product_name} as placeholder for the product name. Leave empty to use the built-in default prompt.'),
+                        'rows' => 4,
+                        'cols' => 60,
+                        'desc' => $this->l('Custom prompt sent to DALL-E for product image generation. Use {product_name} as placeholder for the product name. Leave empty to use the built-in default prompt.'),
                     ),
                 ),
                 'submit' => array(
@@ -440,12 +461,12 @@ class webserviceapi extends PaymentModule
         $helper->allow_employee_form_lang = (int) $this->context->language->id;
         $helper->submit_action = 'submitMlabFactoryApi';
         $helper->fields_value = array(
-            self::CONFIG_PAYMENT_MODULE                 => (string) Configuration::get(self::CONFIG_PAYMENT_MODULE),
-            self::CONFIG_WEBSERVICE_URL                 => (string) Configuration::get(self::CONFIG_WEBSERVICE_URL),
-            self::CONFIG_WEBHOOK_SECRET                 => (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET),
-            self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED  => (int) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1),
-            self::CONFIG_CHATGPT_TEXT_PROMPT            => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
-            self::CONFIG_CHATGPT_IMAGE_PROMPT           => (string) Configuration::get(self::CONFIG_CHATGPT_IMAGE_PROMPT),
+            self::CONFIG_PAYMENT_MODULE => (string) Configuration::get(self::CONFIG_PAYMENT_MODULE),
+            self::CONFIG_WEBSERVICE_URL => (string) Configuration::get(self::CONFIG_WEBSERVICE_URL),
+            self::CONFIG_WEBHOOK_SECRET => (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET),
+            self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED => (int) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1),
+            self::CONFIG_CHATGPT_TEXT_PROMPT => (string) Configuration::get(self::CONFIG_CHATGPT_TEXT_PROMPT),
+            self::CONFIG_CHATGPT_IMAGE_PROMPT => (string) Configuration::get(self::CONFIG_CHATGPT_IMAGE_PROMPT),
         );
 
         return $helper->generateForm(array($fieldsForm));

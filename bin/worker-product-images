@@ -51,7 +51,7 @@ while (true) {
     $productId               = (int)   ($payload['productId']               ?? 0);
     $productName             = (string) ($payload['productName']             ?? '');
     $imagePrompt             = (string) ($payload['imagePrompt']             ?? '');
-    $sourceImageUrl          = (string) ($payload['sourceImageUrl']          ?? '');
+    $sourceImageUrls          = (array) ($payload['sourceImageUrls']          ?? '');
     $productShortDescription = (string) ($payload['productShortDescription'] ?? '');
 
     if ($productId === 0 || $productName === '') {
@@ -70,17 +70,19 @@ while (true) {
     $imageUrls = [];
 
     try {
-        if (!empty($sourceImageUrl)) {
+        if (!empty($sourceImageUrls)) {
             // Edit the existing source image as the primary shot
-            try {
-                $editedUrl   = $openAIService->editProductImage($sourceImageUrl, $productName, $imagePrompt);
-                $imageUrls[] = $editedUrl;
-            } catch (\Exception $editEx) {
-                Log::warning("ProductImageWorker: source image edit failed for product #{$productId}: " . $editEx->getMessage());
+            foreach($sourceImageUrls as $idx => $sourceImageUrl) {
+                try {
+                    $editedUrl   = $openAIService->editProductImage($sourceImageUrl, $productName, $imagePrompt);
+                    $imageUrls[] = $editedUrl;
+                } catch (\Exception $editEx) {
+                    Log::warning("ProductImageWorker: source image edit failed for product #{$productId}: " . $editEx->getMessage());
+                }
             }
 
             // Generate 4 additional detail / zoom / lifestyle images
-            $additionalUrls = $openAIService->generateProductImages($productName, 4, $imagePrompt);
+            $additionalUrls = $openAIService->generateProductImages($sourceImageUrl, $productName, 4, $imagePrompt);
             $imageUrls      = array_merge($imageUrls, $additionalUrls);
         } else {
             // No source image – generate 5 varied images from scratch
