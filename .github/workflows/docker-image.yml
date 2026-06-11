@@ -46,4 +46,4 @@ jobs:
             docker pull ghcr.io/dolce-zampa/webservice:latest
             docker stop dolcezampa_webservice || true
             docker rm dolcezampa_webservice || true
-            cd /root/infra && docker-compose up -d --build webservice
+            cd /root/infra && docker-compose up -d --build webservice && docker-compose up -d --build worker-product-images

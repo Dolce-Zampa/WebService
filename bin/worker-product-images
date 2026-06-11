@@ -25,12 +25,12 @@ require_once __DIR__ . '/../bootstrap/app.php';
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Service\OpenAIService;
-use PS\Webservice\Service\PS\Prod as ProductService;
+use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Service\RedisQueue;
 
 /** @var \DI\Container $container */
 $openAIService  = $container->get(OpenAIService::class);
-$productService = $container->get(ProductService::class);
+$productService = $container->get(Product::class);
 $queue          = $container->get(RedisQueue::class);
 
 const QUEUE_NAME  = 'product-image-jobs';
