@@ -12,11 +12,13 @@ class OpenAIService
     private Client $client;
     private string $model;
     private string $imageModel;
+    private string $baseUriImage;
 
     public function __construct(string $apiKey, string $model = 'gpt-4o', string $imageModel = 'gpt-image-1')
     {
         $this->model = $model;
         $this->imageModel = $imageModel;
+        $this->baseUriImage = 'https://' . env('PS_BASE_URL');
         $this->client = new Client([
             'base_uri' => 'https://api.openai.com/v1/',
             'headers' => [
@@ -40,7 +42,7 @@ class OpenAIService
     {
         // Sanitize the product name to prevent prompt injection
         $sanitized = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
-        $escaped   = addslashes($sanitized);
+        $escaped = addslashes($sanitized);
         $sanitizedShortDescription = trim(strip_tags((string) $productShortDescription));
         $sanitizedShortDescription = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $sanitizedShortDescription);
         $escapedShortDescription = addslashes($sanitizedShortDescription);
@@ -104,18 +106,18 @@ PROMPT;
         try {
             $response = $this->client->post('chat/completions', [
                 'json' => [
-                    'model'           => $this->model,
-                    'messages'        => [
+                    'model' => $this->model,
+                    'messages' => [
                         ['role' => 'user', 'content' => $prompt],
                     ],
                     'response_format' => ['type' => 'json_object'],
-                    'temperature'     => 0.7,
+                    'temperature' => 0.7,
                 ],
             ]);
 
-            $body    = json_decode($response->getBody()->getContents(), true);
+            $body = json_decode($response->getBody()->getContents(), true);
             $content = $body['choices'][0]['message']['content'] ?? '{}';
-            $data    = json_decode($content, true);
+            $data = json_decode($content, true);
 
             if (!is_array($data)) {
                 throw new \RuntimeException('Invalid JSON returned by OpenAI chat/completions');
@@ -124,11 +126,11 @@ PROMPT;
             Log::info('OpenAI: SEO content generated for product "' . $productName . '"');
 
             return [
-                'name'              => (string) ($data['name'] ?? $productName),
-                'description'       => (string) ($data['description'] ?? ''),
+                'name' => (string) ($data['name'] ?? $productName),
+                'description' => (string) ($data['description'] ?? ''),
                 'description_short' => (string) ($data['description_short'] ?? ''),
-                'meta_title'        => (string) ($data['meta_title'] ?? ''),
-                'meta_description'  => (string) ($data['meta_description'] ?? ''),
+                'meta_title' => (string) ($data['meta_title'] ?? ''),
+                'meta_description' => (string) ($data['meta_description'] ?? ''),
             ];
         } catch (\Exception $e) {
             Log::error('OpenAI SEO content generation failed: ' . $e->getMessage());
@@ -158,16 +160,16 @@ PROMPT;
         try {
             $response = $this->client->post('images/generations', [
                 'json' => [
-                    'model'           => $this->imageModel,
-                    'prompt'          => $imagePrompt,
-                    'n'               => 1,
-                    'size'            => '1024x1024',
-                    'quality'         => 'standard',
+                    'model' => $this->imageModel,
+                    'prompt' => $imagePrompt,
+                    'n' => 1,
+                    'size' => '1024x1024',
+                    'quality' => 'standard',
                     'response_format' => 'url',
                 ],
             ]);
 
-            $body     = json_decode($response->getBody()->getContents(), true);
+            $body = json_decode($response->getBody()->getContents(), true);
             $imageUrl = (string) ($body['data'][0]['url'] ?? '');
 
             if (empty($imageUrl)) {
@@ -207,10 +209,10 @@ PROMPT;
         $count = max(1, min(10, $count));
         $sanitizedName = preg_replace('/[^\p{L}\p{N}\p{P}\s]/u', '', $productName);
 
-        $source            = $this->fetchSourceImage($sourceImageUrl);
-        $sourceContent     = $source['content'];
+        $source = $this->fetchSourceImage($sourceImageUrl);
+        $sourceContent = $source['content'];
         $sourceContentType = $source['content_type'];
-        $extension         = $source['extension'];
+        $extension = $source['extension'];
 
         if ($sourceContent === '') {
             throw new \RuntimeException('Empty source image content');
@@ -239,7 +241,6 @@ PROMPT;
                         ['name' => 'prompt', 'contents' => $imagePrompt],
                         ['name' => 'size', 'contents' => '1024x1024'],
                         ['name' => 'quality', 'contents' => 'standard'],
-                        ['name' => 'response_format', 'contents' => 'url'],
                         [
                             'name' => 'image',
                             'contents' => Utils::streamFor($sourceContent),
@@ -249,16 +250,15 @@ PROMPT;
                     ],
                 ]);
 
-                $body     = json_decode($response->getBody()->getContents(), true);
-                $imageUrl = (string) ($body['data'][0]['url'] ?? '');
+                $body = json_decode($response->getBody()->getContents(), true);
+                $b64 = (string) ($body['data'][0]['b64_json'] ?? '');
 
-                if (empty($imageUrl)) {
-                    Log::warning("OpenAI: empty URL for product image #{$i} of \"{$productName}\"");
-                    continue;
+                if (empty($b64)) {
+                    throw new \RuntimeException('Empty image data in OpenAI edit response');
                 }
 
-                Log::info("OpenAI: image #{$i} generated for product \"{$productName}\"");
-                $urls[] = $imageUrl;
+                // Salva il base64 su disco e restituisci il path/URL locale
+                $urls[] = $this->saveImage($b64);
             } catch (\Exception $e) {
                 Log::warning("OpenAI: failed to generate image #{$i} for \"{$productName}\": " . $e->getMessage());
             }
@@ -310,10 +310,10 @@ PROMPT;
         }
 
         try {
-            $source            = $this->fetchSourceImage($sourceImageUrl);
-            $sourceContent     = $source['content'];
+            $source = $this->fetchSourceImage($sourceImageUrl);
+            $sourceContent = $source['content'];
             $sourceContentType = $source['content_type'];
-            $extension         = $source['extension'];
+            $extension = $source['extension'];
 
             if ($sourceContent === '') {
                 throw new \RuntimeException('Empty source image content');
@@ -325,7 +325,6 @@ PROMPT;
                     ['name' => 'prompt', 'contents' => $imagePrompt],
                     ['name' => 'size', 'contents' => '1024x1024'],
                     ['name' => 'quality', 'contents' => 'standard'],
-                    ['name' => 'response_format', 'contents' => 'url'],
                     [
                         'name' => 'image',
                         'contents' => Utils::streamFor($sourceContent),
@@ -335,20 +334,16 @@ PROMPT;
                 ],
             ]);
 
-            $body     = json_decode($response->getBody()->getContents(), true);
-            $imageUrl = (string) ($body['data'][0]['url'] ?? '');
+            $body = json_decode($response->getBody()->getContents(), true);
+            $body = json_decode($response->getBody()->getContents(), true);
+            $b64 = (string) ($body['data'][0]['b64_json'] ?? '');
 
-            //save image in backup folder for 1 hour
-            $backupPath = storage_path('backups/images/');
-            if (!is_dir($backupPath)) {
-                mkdir($backupPath, 0755, true);
+            if (empty($b64)) {
+                throw new \RuntimeException('Empty image data in OpenAI edit response');
             }
-            $backupFilename = $backupPath . 'backup_' . uniqid() . '.' . $extension;
-            file_put_contents($backupFilename, $sourceContent);
 
-            if (empty($imageUrl)) {
-                throw new \RuntimeException('Empty image URL in OpenAI edit response');
-            }
+            // Salva il base64 su disco e restituisci il path/URL locale
+            $imageUrl = $this->saveImage($b64);
 
             Log::info('OpenAI: image edited for product "' . $productName . '"');
             return $imageUrl;
@@ -364,17 +359,32 @@ PROMPT;
         $response = $httpClient->get($sourceImageUrl);
 
         $contentType = $response->getHeaderLine('Content-Type') ?: 'image/jpeg';
-        $extension   = str_contains($contentType, 'png') ? 'png' : 'jpg';
-        $content     = $response->getBody()->getContents();
+        $extension = str_contains($contentType, 'png') ? 'png' : 'jpg';
+        $content = $response->getBody()->getContents();
 
         if ($content === '') {
             throw new \RuntimeException('Empty source image content');
         }
 
         return [
-            'content'      => $content,
+            'content' => $content,
             'content_type' => $contentType,
-            'extension'    => $extension,
+            'extension' => $extension,
         ];
+    }
+
+    protected function saveImage($b64): string
+    {
+        $outputDir = storage_path('app/public/generated-images/');
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0755, true);
+        }
+        $filename = 'edited_' . uniqid() . '.png';
+        $outputPath = $outputDir . $filename;
+        file_put_contents($outputPath, base64_decode($b64));
+
+        // URL pubblico (adatta al tuo setup)
+        $imageUrl = $this->baseUriImage . '/storage/generated-images/' . $filename;
+        return $imageUrl;
     }
 }
