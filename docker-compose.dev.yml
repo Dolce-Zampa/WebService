@@ -11,6 +11,17 @@ services:
     restart: unless-stopped
     ports:
       - "8787:80"
+
+  worker-product-images:
+    container_name: dolcezampa_worker_product_images
+    image: mlabfactory/php8-apache:v1.4.1-xdebug
+    volumes:
+      - ./:/var/www/workdir
+    working_dir: /var/www/workdir
+    command: ["php", "bin/worker-product-images"]
+    restart: unless-stopped
+    networks:
+      - dolcezampa_default
   
   cache:
     image: redis:alpine
