@@ -33,7 +33,7 @@ class BrandController extends Controller
 
     public function categoryList(Request $request, Response $response): Response
     {
-        $categories = $this->brandService->categoriesList([
+        $categories = $this->brandService->categoriesList([ //FIXME: this should be in category controller
             'display' => 'full'
         ]);
 

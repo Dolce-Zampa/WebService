@@ -12,7 +12,7 @@ class Brand extends PrestashopService implements PrestashopServiceInterface
     {
         if (!empty($displayOptions)) {
             $queryString = http_build_query($displayOptions);
-            $this->httpService->setUrl("/manufacturers?{$queryString}");
+            $this->httpService->setUrl("/manufacturers?{$queryString}&filter[active]=1");
         } else {
             $this->httpService->setUrl('/manufacturers');
         }

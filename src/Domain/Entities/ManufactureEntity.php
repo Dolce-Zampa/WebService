@@ -50,7 +50,12 @@ class ManufactureEntity implements ObjectInterface
 
 	public function normalizeData(): void
 	{
-		$this->data['slug'] = $this->data['link_rewrite'] ?? '';	
+		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
+
+		$filename = strtolower($this->data['name']);
+		if(file_get_contents("https://" . env("PS_BASE_URL") . "/img/m/$filename.jpg")) {
+			$this->data['image'] = "https://" . env("PS_BASE_URL") . "/img/m/$filename.jpg";
+		}
 	}
 	
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
