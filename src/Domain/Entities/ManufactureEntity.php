@@ -52,7 +52,7 @@ class ManufactureEntity implements ObjectInterface
 	{
 		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
 
-		$filename = strtolower($this->data['name']);
+		$filename = str_replace(' ', '-', strtolower($this->data['name'] ?? ''));
 		if(file_get_contents("https://" . env("PS_BASE_URL") . "/img/m/$filename.jpg")) {
 			$this->data['image'] = "https://" . env("PS_BASE_URL") . "/img/m/$filename.jpg";
 		}
