@@ -383,7 +383,7 @@ PROMPT;
         file_put_contents($outputPath, base64_decode($b64));
 
         // URL pubblico (adatta al tuo setup)
-        $imageUrl = $this->baseUriImage . $outputDir . $filename;
+        $imageUrl = $this->baseUriImage . $outputPath;
         return $imageUrl;
     }
 }

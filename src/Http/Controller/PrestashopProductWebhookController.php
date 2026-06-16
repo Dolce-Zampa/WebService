@@ -98,7 +98,7 @@ class PrestashopProductWebhookController extends Controller
             }
 
             // 2. Queue product image generation (handled asynchronously by the worker)
-            if ($this->shouldNotGenerateImage($productShortDescription) !== true) {
+            if ($this->shouldGenerateImage($productShortDescription) === true) {
                 $this->queue->push('product-image-jobs', [
                     'productId'               => $productId,
                     'productName'             => $seoContent['name'],
@@ -108,7 +108,7 @@ class PrestashopProductWebhookController extends Controller
                 ]);
                 Log::info("PrestashopProductWebhook: image job queued for product #{$productId}");
             } else {
-                Log::info("PrestashopProductWebhook: #NO-IMAGE# flag set for product #{$productId}, image job skipped");
+                Log::info("PrestashopProductWebhook: #IMAGE# flag set for product #{$productId}, image job skipped");
             }
 
             // 3. Update the product content in PrestaShop (keep it inactive / unpublished)
@@ -139,9 +139,10 @@ class PrestashopProductWebhookController extends Controller
      * @param string $productShortDescription
      * @return bool
      */
-    private function shouldNotGenerateImage($productShortDescription): bool
+    private function shouldGenerateImage($productShortDescription): bool
     {
-        $key = "#NO-IMAGE#";
-        return stripos($productShortDescription, $key) !== false;
+        $key = "#IMAGE#";
+        $generate = stripos($productShortDescription, $key);
+        return $generate !== false;
     }
 }

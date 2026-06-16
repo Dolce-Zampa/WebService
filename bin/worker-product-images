@@ -34,7 +34,7 @@ $productService = $container->get(Product::class);
 $queue          = $container->get(RedisQueue::class);
 
 const QUEUE_NAME  = 'product-image-jobs';
-const NO_IMAGE_KEY = '#NO-IMAGE#';
+const OK_IMAGE_KEY = '#IMAGE#';
 
 Log::info('ProductImageWorker: started, listening on queue "' . QUEUE_NAME . '"');
 
@@ -59,9 +59,9 @@ while (true) {
         continue;
     }
 
-    // Honour the #NO-IMAGE# flag
-    if (stripos($productShortDescription, NO_IMAGE_KEY) !== false) {
-        Log::info("ProductImageWorker: #NO-IMAGE# flag set for product #{$productId}, skipping image generation");
+    // Honour the #NIMAGE# flag
+    if (stripos($productShortDescription, OK_IMAGE_KEY) === false) {
+        Log::info("ProductImageWorker: #IMAGE# flag set for product #{$productId}, skipping image generation");
         continue;
     }
 
