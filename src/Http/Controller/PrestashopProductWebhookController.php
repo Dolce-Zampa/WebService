@@ -42,15 +42,6 @@ class PrestashopProductWebhookController extends Controller
      */
     public function handleWebhook(Request $request, Response $response, array $args): Response
     {
-        // Authenticate the incoming webhook with the shared secret
-        $incomingSecret = $request->getHeaderLine('X-Webhook-Secret');
-        $expectedSecret = env('WEBHOOK_SECRET', '');
-
-        if (empty($expectedSecret) || !hash_equals($expectedSecret, $incomingSecret)) {
-            Log::warning('PrestashopProductWebhook: invalid or missing X-Webhook-Secret');
-            return response(['error' => 'Unauthorized'], 401);
-        }
-
         $payload = json_decode((string) $request->getBody(), true);
         if (!is_array($payload) || empty($payload['product_id'])) {
             return response(['error' => 'Invalid payload: product_id is required'], 400);

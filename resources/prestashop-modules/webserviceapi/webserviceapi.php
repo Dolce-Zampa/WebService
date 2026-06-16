@@ -185,6 +185,34 @@ class webserviceapi extends PaymentModule
                 (int) $product->id
             );
         }
+
+        $this->clearCacheWebhook($webhookSecret, $webhookBaseUrl);
+    }
+
+    protected function clearCacheWebhook($webhookSecret, $webhookBaseUrl)
+    {
+        $url = $webhookBaseUrl . '/api/webhooks/clear-cache';
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json',
+            'X-Webhook-Secret: ' . $webhookSecret,
+        ));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
+
+        $result = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($result === false || $httpCode >= 400) {
+            PrestaShopLogger::addLog(
+                "[webserviceapi] Webhook failed fto clear cahce",
+            );
+        }
     }
 
     /**
