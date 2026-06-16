@@ -19,9 +19,10 @@ $app->post('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http
 
 /** Stripe webhook */
 $app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
-
 /** PrestaShop product-saved webhook */
 $app->post('/api/webhooks/prestashop/product-saved', PS\Webservice\Http\Controller\PrestashopProductWebhookController::class . ':handleWebhook');
+/** clear cache webhook */
+$app->post('/api/webhooks/clear-cache', PS\Webservice\Http\Controller\PrestashopProductWebhookController::class . ':clearCache');
 
 /** Password reset */
 $app->post('/api/password-reset', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');

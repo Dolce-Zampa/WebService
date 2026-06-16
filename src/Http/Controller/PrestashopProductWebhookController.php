@@ -145,4 +145,11 @@ class PrestashopProductWebhookController extends Controller
         $generate = stripos($productShortDescription, $key);
         return $generate !== false;
     }
+
+    public function clearCache() 
+    {
+        $this->flush();
+        return response(['message' => 'All cache cleared successfully'], 200);
+
+    }
 }
