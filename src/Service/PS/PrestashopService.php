@@ -3,9 +3,11 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\AccessoryEntity;
 use PS\Webservice\Domain\Entities\CategoryEntity;
 use PS\Webservice\Domain\Entities\CombinationEntity;
+use PS\Webservice\Domain\Entities\CustomizationEntity;
 use PS\Webservice\Domain\Entities\ImageEntity;
 use PS\Webservice\Domain\Entities\OptionEntity;
 use PS\Webservice\Domain\Entities\ProductFeatureEntity;
@@ -13,7 +15,6 @@ use PS\Webservice\Domain\Entities\StockAvailableEntity;
 use PS\Webservice\Domain\Enums\ImageTail;
 use PS\Webservice\Service\HttpServiceInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
-use Illuminate\Support\Facades\Log;
 
 class PrestashopService implements PrestashopServiceInterface {
 
@@ -179,6 +180,29 @@ class PrestashopService implements PrestashopServiceInterface {
         }
         
         return $stockAvailables;
+    }
+
+
+    /**
+     * Retrieves the customization fields for a specific product.
+     * @param int $idProduct The unique identifier of the product
+     * @return array An array of customization fields associated with the product
+     */
+    public function getCustomizationFields(int $idProduct): array
+    {
+        $this->httpService->setUrl("/product_customization_fields?filter[id_product]=$idProduct&display=full");
+        $response = $this->httpService->invoke('GET');
+
+        if ($response->failed()) {
+            Log::error("Failed to retrieve customization fields for product ID {$idProduct}: HTTP " . $response->getHttpCode());
+            return [];
+        }
+
+        foreach ($response->toArray()['customization_fields'] ?? [] as $customizationData) {
+            $customizationFields[] = CustomizationEntity::create($customizationData, $this);
+        }
+
+        return $customizationFields ?? [];
     }
 
 }

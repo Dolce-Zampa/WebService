@@ -108,6 +108,7 @@ class ProductEntity implements ObjectInterface
         $this->buildCategories();
         $this->buildStockAvailables();
         $this->buildBundles();
+        $this->buildCustomizations();
 
         return $this;
     }

@@ -211,4 +211,18 @@ trait ProductBuilder
         }
     }
 
+    /**
+     * build Customizations
+     * @return void
+     */
+    protected function buildCustomizations(): void
+    {
+        $customizations = $this->service->getCustomizationFields($this->getId());
+
+        $this->data['associations']['customizations'] = [];
+        foreach ($customizations as $customizationEntity) {
+            $this->data['associations']['customizations'][] = $customizationEntity->toArray();
+        }
+    }
+
 }
