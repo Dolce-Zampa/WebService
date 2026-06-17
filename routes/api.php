@@ -94,9 +94,11 @@ $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::c
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
 
+
+/** Stripe webhook */
+$app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
+
 $app->group('/api/webhook', function () use ($app) {
-    /** Stripe webhook */
-    $app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
     /** PrestaShop product-saved webhook */
     $app->post('/api/webhooks/prestashop/product-saved', PS\Webservice\Http\Controller\PrestashopProductWebhookController::class . ':handleWebhook');
     /** clear cache webhook */
