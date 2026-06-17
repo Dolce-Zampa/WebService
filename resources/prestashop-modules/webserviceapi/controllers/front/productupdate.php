@@ -48,6 +48,9 @@ class webserviceapiproductupdateModuleFrontController extends MlabFactoryApiBase
         if (array_key_exists('meta_description', $payload)) {
             $product->meta_description[$langId] = (string) $payload['meta_description'];
         }
+        if (array_key_exists('url', $payload)) {
+            $product->link_rewrite[$langId] = (string) $payload['url'];
+        }
 
         // Default to inactive (unpublished); the caller may override with active=1
         $product->active = array_key_exists('active', $payload) ? (int) $payload['active'] : 0;

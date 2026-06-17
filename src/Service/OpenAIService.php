@@ -62,10 +62,11 @@ class OpenAIService
 Agisci come un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici. Riceverai il nome attuale del prodotto "{$escaped}" e un contesto aggiuntivo: {$shortDescriptionContext}. Il tuo compito è generare i seguenti contenuti ottimizzati per SEO, in italiano, seguendo queste istruzioni dettagliate:
 
 - Genera un nuovo nome prodotto ottimizzato SEO, conciso e descrittivo, senza la stringa “n.d.”.
-- Crea una descrizione breve del prodotto (max 250 caratteri), utilizzando solo HTML in linea (senza tag di blocco esterni, senza CSS, senza tag h1).
-- Scrivi una descrizione completa e approfondita (almeno 500 parole) in HTML: usa solo paragrafi <p> e liste <ul>.
+- Crea una descrizione breve del prodotto (minimo 100 caratteri e max 250 caratteri), utilizzando solo HTML in linea (senza tag di blocco esterni, senza CSS, senza tag h1).
+- Scrivi una descrizione completa e approfondita (almeno 600 parole) in HTML: usa solo paragrafi <p> e liste <ul>.
 - Redigi un meta title (max 70 caratteri), pertinente e attrattivo.
 - Crea una meta description (max 160 caratteri, senza HTML).
+- Crea una url SEO-friendly basata sul nuovo nome prodotto, in minuscolo, con parole separate da trattini e senza caratteri speciali.
 
 Istruzioni aggiuntive:
 
@@ -81,6 +82,7 @@ Formato output richiesto: Solo oggetto JSON senza alcun testo aggiuntivo, nel se
   "description": "...",
   "meta_title": "...",
   "meta_description": "..."
+  "url": "..."
 }
 
 Esempio di output atteso:
@@ -89,7 +91,8 @@ Esempio di output atteso:
   "description_short": "Alimento completo per cani adulti, con pollo e riso. Nutrizione bilanciata, gusto irresistibile.",
   "description": "<p>Le Crocchette Premium per Cani Adulti con Pollo e Riso offrono una nutrizione bilanciata...</p><ul><li>Alta digeribilità</li><li>Ricco di proteine animali</li><li>Ideale per tutte le razze</li></ul><p>Garantisce benessere quotidiano e supporto alle difese immunitarie.</p>",
   "meta_title": "Crocchette Pollo e Riso per Cani Adulti | Premium Nutritive",
-  "meta_description": "Crocchette per cani adulti al pollo e riso, nutrizione completa e gusto irresistibile. Scopri la qualità premium!"
+  "meta_description": "Crocchette per cani adulti al pollo e riso, nutrizione completa e gusto irresistibile. Scopri la qualità premium!",
+  "url": "pettorina-per-cani"
 }
 
 (Nota: i contenuti reali devono essere adattati alla lunghezza e al livello di dettaglio corretti, secondo la reale descrizione del prodotto.)
@@ -131,6 +134,7 @@ PROMPT;
                 'description_short' => (string) ($data['description_short'] ?? ''),
                 'meta_title' => (string) ($data['meta_title'] ?? ''),
                 'meta_description' => (string) ($data['meta_description'] ?? ''),
+                'url' => (string) ($data['url'] ?? ''),
             ];
         } catch (\Exception $e) {
             Log::error('OpenAI SEO content generation failed: ' . $e->getMessage());
