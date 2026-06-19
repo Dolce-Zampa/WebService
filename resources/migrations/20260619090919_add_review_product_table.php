@@ -29,9 +29,6 @@ final class AddReviewProductTable extends AbstractMigration
             ->addColumn('comment', 'text')
             ->addColumn('status', 'enum', ['values' => ['pending', 'approved', 'rejected'], 'default' => 'pending'])
             ->addTimestamps()
-            ->addForeignKey('id_product', env('PS_TABLE_PREFIX').'product', 'id', ['delete' => 'CASCADE'])
-            ->addForeignKey('id_order', env('PS_TABLE_PREFIX').'orders', 'id', ['delete' => 'SET_NULL'])
-            ->addForeignKey('id_customer', 'customers', 'id', ['delete' => 'CASCADE'])
             ->addIndex(['id_product'], ['name' => 'idx_product_reviews_id_product'])
             ->create();
     }
