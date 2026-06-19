@@ -1,4 +1,4 @@
-resources/*
+resources/prestashop-modules/
 storage/logs/*
 docs/*  
 Test/*
