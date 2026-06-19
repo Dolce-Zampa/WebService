@@ -28,8 +28,19 @@ final class CreatePetProfessionalServicesTable extends AbstractMigration
                 'default' => 'CURRENT_TIMESTAMP',
                 'update' => 'CURRENT_TIMESTAMP',
             ])
+            ->addColumn('latitude', 'decimal', [
+                'precision' => 10,
+                'scale' => 7,
+                'null' => true,
+            ])
+            ->addColumn('longitude', 'decimal', [
+                'precision' => 10,
+                'scale' => 7,
+                'null' => true,
+            ])
             ->addIndex(['service_type'])
             ->addIndex(['address'])
+            ->addIndex(['latitude', 'longitude'])
             ->create();
     }
 }
