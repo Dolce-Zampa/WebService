@@ -1,5 +1,7 @@
 <?php
 
+use PS\Webservice\Repositories\PrestashopRepository;
+
 // Slim Container configuration for dependency injection
 
 $container = new \DI\Container();
@@ -17,9 +19,11 @@ $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
     return new \PS\Webservice\Service\HttpService($webserviceCOnfig);
 });
 
-$container->set(\PS\Webservice\Service\PS\Product::class, function ($c) {
+$container->set(\PS\Webservice\Service\PS\Product::class, function ($c) use($capsule) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
-    return new \PS\Webservice\Service\PS\Product($httpService);
+    $service = new \PS\Webservice\Service\PS\Product($httpService);
+    $service->addRepository(new PrestashopRepository($capsule));
+    return $service;
 });
 
 $container->set(\PS\Webservice\Service\PS\Image::class, function ($c) {

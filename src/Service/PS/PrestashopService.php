@@ -24,9 +24,13 @@ class PrestashopService implements PrestashopServiceInterface {
     protected HttpServiceInterface $httpService;
     protected PrestashopRepository $productRepository;
     
-    public function __construct(HttpServiceInterface $httpService, PrestashopRepository $productRepository) {
+    public function __construct(HttpServiceInterface $httpService) {
         $this->httpService = $httpService;
-        $this->productRepository = $productRepository;
+    }
+
+    //FIXME:
+    public function addRepository(PrestashopRepository $repository): void {
+        $this->productRepository = $repository;
     }
 
 
@@ -218,7 +222,7 @@ class PrestashopService implements PrestashopServiceInterface {
             Log::critical("Failed to retrieve reviews for product ID {$productId}: " . $e->getMessage());
             return [];
         }
-        
+
         foreach ($reviews as $reviewData) {
             $reviewEntities[] = ReviewEntity::create((array) $reviewData, $this);
         }
