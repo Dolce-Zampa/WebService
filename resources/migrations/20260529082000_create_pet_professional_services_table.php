@@ -8,7 +8,7 @@ final class CreatePetProfessionalServicesTable extends AbstractMigration
 {
     public function change(): void
     {
-        $table = $this->table('pet_professional_services');
+        $table = $this->table(env('PS_TABLE_PREFIX').'pet_professional_services');
 
         $table
             ->addColumn('first_name', 'string', ['limit' => 120])

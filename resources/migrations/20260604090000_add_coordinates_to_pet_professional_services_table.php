@@ -8,7 +8,7 @@ final class AddCoordinatesToPetProfessionalServicesTable extends AbstractMigrati
 {
     public function change(): void
     {
-        $table = $this->table('pet_professional_services');
+        $table = $this->table(env('PS_TABLE_PREFIX').'pet_professional_services');
 
         $table
             ->addColumn('latitude', 'decimal', [

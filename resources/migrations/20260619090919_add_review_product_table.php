@@ -20,7 +20,7 @@ final class AddReviewProductTable extends AbstractMigration
     public function up(): void
     {
 
-        $table = $this->table('product_reviews');
+        $table = $this->table(env('PS_TABLE_PREFIX').'product_reviews');
         $table
             ->addColumn('id_product', 'integer')
             ->addColumn('id_customer', 'integer', ['null' => true])
@@ -29,8 +29,8 @@ final class AddReviewProductTable extends AbstractMigration
             ->addColumn('comment', 'text')
             ->addColumn('status', 'enum', ['values' => ['pending', 'approved', 'rejected'], 'default' => 'pending'])
             ->addTimestamps()
-            ->addForeignKey('id_product', 'products', 'id', ['delete' => 'CASCADE'])
-            ->addForeignKey('id_order', 'orders', 'id', ['delete' => 'SET_NULL'])
+            ->addForeignKey('id_product', env('PS_TABLE_PREFIX').'products', 'id', ['delete' => 'CASCADE'])
+            ->addForeignKey('id_order', env('PS_TABLE_PREFIX').'orders', 'id', ['delete' => 'SET_NULL'])
             ->addForeignKey('id_customer', 'customers', 'id', ['delete' => 'CASCADE'])
             ->addIndex(['id_product'], ['name' => 'idx_product_reviews_id_product'])
             ->create();
