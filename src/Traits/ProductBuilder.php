@@ -225,4 +225,14 @@ trait ProductBuilder
         }
     }
 
+    protected function buildReviews(): void
+    {
+        $reviews = $this->service->getProductReviews($this->getId());
+
+        $this->data['reviews'] = [];
+        foreach ($reviews as $reviewEntity) {
+            $this->data['reviews'][] = $reviewEntity->toArray();
+        }
+    }
+
 }

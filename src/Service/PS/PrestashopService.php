@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\AccessoryEntity;
 use PS\Webservice\Domain\Entities\CategoryEntity;
@@ -11,17 +12,21 @@ use PS\Webservice\Domain\Entities\CustomizationEntity;
 use PS\Webservice\Domain\Entities\ImageEntity;
 use PS\Webservice\Domain\Entities\OptionEntity;
 use PS\Webservice\Domain\Entities\ProductFeatureEntity;
+use PS\Webservice\Domain\Entities\ReviewEntity;
 use PS\Webservice\Domain\Entities\StockAvailableEntity;
 use PS\Webservice\Domain\Enums\ImageTail;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\HttpServiceInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 
 class PrestashopService implements PrestashopServiceInterface {
 
     protected HttpServiceInterface $httpService;
+    protected PrestashopRepository $productRepository;
     
-    public function __construct(HttpServiceInterface $httpService) {
+    public function __construct(HttpServiceInterface $httpService, PrestashopRepository $productRepository) {
         $this->httpService = $httpService;
+        $this->productRepository = $productRepository;
     }
 
 
@@ -203,6 +208,23 @@ class PrestashopService implements PrestashopServiceInterface {
         }
 
         return $customizationFields ?? [];
+    }
+
+    public function getProductReviews(int $productId): array {
+
+        try {
+            $reviews = $this->productRepository->getProductReviews($productId);
+        } catch (\Exception $e) {
+            Log::critical("Failed to retrieve reviews for product ID {$productId}: " . $e->getMessage());
+            return [];
+        }
+        
+        foreach ($reviews as $reviewData) {
+            $reviewEntities[] = ReviewEntity::create((array) $reviewData, $this);
+        }
+
+        return $reviewEntities ?? [];
+
     }
 
 }
