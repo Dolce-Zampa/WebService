@@ -47,4 +47,4 @@ jobs:
             docker stop dolcezampa_webservice || true
             docker rm dolcezampa_webservice || true
             cd /root/infra && docker-compose up -d --build webservice && docker-compose up -d --build worker-product-images
-            docker exec dolcezampa_webservice vendor/bin/phinx migrate -e prod
+            docker exec dolcezampa_webservice vendor/bin/phinx migrate
