@@ -1,10 +1,13 @@
 <?php
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$originEnv = explode("|",env("CORS_ALLOWED_DOMAINS", ""));
 $allowedOrigins = [
 	'http://localhost:3000',
 	'http://127.0.0.1:3000',
 ];
+
+$allowedOrigins = array_merge($allowedOrigins, $originEnv);
 
 if (in_array($origin, $allowedOrigins, true)) {
 	header('Access-Control-Allow-Origin: ' . $origin);
