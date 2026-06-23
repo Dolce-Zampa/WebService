@@ -84,7 +84,7 @@ class PrestashopService implements PrestashopServiceInterface {
      */
     public function getSpecificationsCombination(int $id): CombinationEntity 
     {
-        $this->httpService->setUrl("/combinations/{$id}?display=full");
+        $this->httpService->setUrl("/combinations/{$id}?display=full&price[original_price][use_tax]=1&price[original_price][use_reduction]=1");
         $response = $this->httpService->invoke('GET');
 
         if($response->failed()) {
