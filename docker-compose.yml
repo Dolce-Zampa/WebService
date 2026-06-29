@@ -1,7 +1,7 @@
 services:
   webservice:
     container_name: dolcezampa_webservice
-    image: ghcr.io/dolce-zampa/webservice:v1-alpha
+    image: ghcr.io/dolce-zampa/webservice:latest
     volumes:
       - .env/:/var/www/workdir/.env
       - ./configs/:/var/www/workdir/storage/configs
@@ -15,7 +15,7 @@ services:
 
   worker-product-images:
     container_name: dolcezampa_worker_product_images
-    image: ghcr.io/dolce-zampa/webservice:v1-alpha
+    image: ghcr.io/dolce-zampa/webservice:latest
     command: ["php", "bin/worker-product-images"]
     restart: unless-stopped
     networks:
