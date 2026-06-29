@@ -2,6 +2,9 @@ services:
   webservice:
     container_name: dolcezampa_webservice
     image: ghcr.io/dolce-zampa/webservice:v1-alpha
+    volumes:
+      - .env/:/var/www/workdir/.env
+      - ./configs/:/var/www/workdir/storage/configs
     networks:
       dolcezampa_default:
         aliases:
