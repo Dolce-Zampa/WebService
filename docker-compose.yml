@@ -17,6 +17,18 @@ services:
     restart: unless-stopped
     networks:
       - dolcezampa_default
+    # LIMITAZIONI DI RISORSE
+    mem_limit: 1g
+    memswap_limit: 1g  # Limita anche lo swap
+    cpus: 0.5
+    pids_limit: 100
+    # HEALTHCHECK per riavvio automatico
+    healthcheck:
+      test: ["CMD", "ps", "aux"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
   
   cache:
     image: redis:alpine

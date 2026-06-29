@@ -94,6 +94,9 @@ class ProductEntity implements ObjectInterface
             // $this->buildImageLink([ImageTail::ORIGINAL]); //FIXME: possiamo rimuovere l'immagine verrà creata tramite FRONTEND
         }
 
+        //normalize urls
+        $this->data['url'] = str_replace('aidyis-prod-backoffice', 'www', $this->data['url']);
+
         // normalize on_sale flag
         $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);
         $currentPrice = round((float)$this->data['price'], 2, PHP_ROUND_HALF_UP);
