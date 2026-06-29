@@ -2,16 +2,20 @@ services:
   webservice:
     container_name: dolcezampa_webservice
     image: ghcr.io/dolce-zampa/webservice:latest
+    restart: unless-stopped
+    ports:
+      - "8787:80"
     volumes:
       - .env/:/var/www/workdir/.env
       - ./configs/:/var/www/workdir/storage/configs
     networks:
-      dolcezampa_default:
-        aliases:
-          - demo.dolcezampa.com
-    restart: unless-stopped
-    ports:
-      - "8787:80"
+      - dolcezampa_default
+    # LIMITI RISORSE (Applicati anche qui per sicurezza)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 1024M
 
   worker-product-images:
     container_name: dolcezampa_worker_product_images
@@ -20,12 +24,12 @@ services:
     restart: unless-stopped
     networks:
       - dolcezampa_default
-    # LIMITAZIONI DI RISORSE
-    mem_limit: 1g
-    memswap_limit: 1g  # Limita anche lo swap
-    cpus: 0.5
-    pids_limit: 100
-    # HEALTHCHECK per riavvio automatico
+    # SINTASSI MODERNA PER I LIMITI DI RISORSE
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 1024M
     healthcheck:
       test: ["CMD", "ps", "aux"]
       interval: 30s
@@ -39,9 +43,86 @@ services:
     restart: unless-stopped
     networks:
       - dolcezampa_default
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  mysql:
+    image: mysql:8.0
+    container_name: dolcezampa_db
+    restart: unless-stopped
+    ports:
+     - "3301:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - /root/dolcezampa/bin/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+    networks:
+      - dolcezampa_default
+    # LIMITI RISORSE: MySQL è esigente, gli diamo più margine
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 2048M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  prestashop:
+    build: /root/dolcezampa
+    container_name: dolcezampa_prestashop
+    restart: unless-stopped
+    depends_on:
+      - mysql
+      - cache
+    volumes:
+       - /root/dolcezampa/:/var/www/workdir/public
+    networks:
+      - dolcezampa_default
+    # LIMITI RISORSE: Prestashop (PHP-FPM/Apache) può essere pesante
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1536M
+
+  proxy:
+    image: nginx:stable-alpine
+    container_name: dolcezampa_proxy
+    restart: unless-stopped
+    depends_on:
+      - prestashop
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /root/dolcezampa/bin/nginx/conf.d:/etc/nginx/conf.d
+      - /root/dolcezampa/bin/certbot/conf:/etc/letsencrypt
+      - /root/dolcezampa/bin/certbot/www:/var/www/certbot
+      - /root/dolcezampa/public:/var/www/html:ro
+    networks:
+      - dolcezampa_default
+    # LIMITI RISORSE: Nginx è leggerissimo
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
 
 networks:
   dolcezampa_default:
     external: true
     name: dolcezampa_default
-    
+
+# AGGIUNTI I VOLUMI DICHIARATI (Evita l'errore in fase di avvio)
+volumes:
+  mysql_data:
