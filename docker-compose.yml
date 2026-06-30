@@ -22,6 +22,8 @@ services:
     image: ghcr.io/dolce-zampa/webservice:latest
     command: ["php", "bin/worker-product-images"]
     restart: unless-stopped
+    volumes:
+      - .env/:/var/www/workdir/.env
     networks:
       - dolcezampa_default
     # SINTASSI MODERNA PER I LIMITI DI RISORSE
@@ -117,6 +119,13 @@ services:
         limits:
           cpus: '0.25'
           memory: 128M
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: dolcezampa_certbot
+    volumes:
+      - /root/dolcezampa/bin/certbot/conf/:/etc/letsencrypt/
+      - /root/dolcezampa/bin/certbot/www/:/var/www/certbot/
 
 networks:
   dolcezampa_default:
