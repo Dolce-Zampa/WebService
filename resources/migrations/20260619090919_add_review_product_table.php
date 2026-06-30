@@ -25,6 +25,7 @@ final class AddReviewProductTable extends AbstractMigration
             ->addColumn('id_product', 'integer')
             ->addColumn('id_customer', 'integer', ['null' => true])
             ->addColumn('id_order', 'integer', ['null' => true])
+            ->addColumn('id_manufacturer', 'integer', ['null' => true])
             ->addColumn('rating', 'integer')
             ->addColumn('comment', 'text')
             ->addColumn('status', 'enum', ['values' => ['pending', 'approved', 'rejected'], 'default' => 'pending'])

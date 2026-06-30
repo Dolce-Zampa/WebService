@@ -4,13 +4,14 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
+use PS\Webservice\Service\PS\Brand;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 
 class ManufactureEntity implements ObjectInterface
 {
 	/** @var array<string, mixed> */
 	private array $data;
-    private PrestashopServiceInterface $service;
+    private Brand $service;
     
     private function __construct(array $data, PrestashopServiceInterface $service)
     {
@@ -61,5 +62,15 @@ class ManufactureEntity implements ObjectInterface
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
 	{
 		return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray());
+	}
+
+	public function buildReviews(): void
+	{
+		$reviews = $this->service->getReviews($this->getId());
+		
+        $this->data['reviews'] = [];
+        foreach ($reviews as $reviewEntity) {
+            $this->data['reviews'][] = $reviewEntity->toArray();
+        }
 	}
 }
