@@ -1,137 +1,110 @@
+version: '3.8'
+
 services:
   webservice:
-    container_name: dolcezampa_webservice
     image: ghcr.io/dolce-zampa/webservice:latest
-    restart: unless-stopped
-    ports:
-      - "8787:80"
-    volumes:
-      - .env/:/var/www/workdir/.env
-      - ./configs/:/var/www/workdir/storage/configs
     networks:
       - dolcezampa_default
-    # LIMITI RISORSE (Applicati anche qui per sicurezza)
+    volumes:
+      # NOTA: Per Swarm, i path relativi come "./" non sono raccomandati a meno che
+      # la cartella non sia identica e presente su TUTTI i nodi.
+      - /opt/dolcezampa/.env:/var/www/workdir/.env
+      - /opt/dolcezampa/configs:/var/www/workdir/storage/configs
     deploy:
+      replicas: 2  # Alta affidabilità: se un nodo cade, l'altro risponde
       resources:
         limits:
           cpus: '0.50'
           memory: 1024M
+      restart_policy:
+        condition: on-failure
 
   worker-product-images:
-    container_name: dolcezampa_worker_product_images
     image: ghcr.io/dolce-zampa/webservice:latest
     command: ["php", "bin/worker-product-images"]
-    restart: unless-stopped
-    volumes:
-      - .env/:/var/www/workdir/.env
     networks:
       - dolcezampa_default
-    # SINTASSI MODERNA PER I LIMITI DI RISORSE
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 1024M
+    volumes:
+      - /opt/dolcezampa/.env:/var/www/workdir/.env
     healthcheck:
       test: ["CMD", "ps", "aux"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      replicas: 1 # Di solito i worker non hanno bisogno di repliche parallele a meno di alta coda
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 1024M
+      restart_policy:
+        condition: on-failure
   
   cache:
     image: redis:alpine
-    container_name: dolcezampa_rediscache
-    restart: unless-stopped
     networks:
       - dolcezampa_default
     deploy:
+      replicas: 1
       resources:
         limits:
           cpus: '0.25'
           memory: 256M
 
-  mysql:
-    image: mysql:8.0
-    container_name: dolcezampa_db
-    restart: unless-stopped
-    ports:
-     - "3301:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - /root/dolcezampa/bin/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
-    networks:
-      - dolcezampa_default
-    # LIMITI RISORSE: MySQL è esigente, gli diamo più margine
-    deploy:
-      resources:
-        limits:
-          cpus: '1.00'
-          memory: 2048M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   prestashop:
-    build: /root/dolcezampa
-    container_name: dolcezampa_prestashop
-    restart: unless-stopped
-    depends_on:
-      - mysql
-      - cache
-    volumes:
-       - /root/dolcezampa/:/var/www/workdir/public
+    image: ghcr.io/dolce-zampa/prestashop:latest
+    # depends_on non è pienamente supportato in Swarm per l'ordine di avvio, usiamo i vincoli
     networks:
       - dolcezampa_default
-    # LIMITI RISORSE: Prestashop (PHP-FPM/Apache) può essere pesante
+    volumes:
+       - /opt/dolcezampa/public:/var/www/workdir/public
     deploy:
+      replicas: 1
       resources:
         limits:
           cpus: '1.00'
           memory: 1536M
+      placement:
+        constraints:
+          # Vincoliamo Prestashop al Manager (o a un nodo specifico) se usi file locali
+          - node.role == manager 
 
   proxy:
     image: nginx:stable-alpine
-    container_name: dolcezampa_proxy
-    restart: unless-stopped
-    depends_on:
-      - prestashop
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - /root/dolcezampa/bin/nginx/conf.d:/etc/nginx/conf.d
-      - /root/dolcezampa/bin/certbot/conf:/etc/letsencrypt
-      - /root/dolcezampa/bin/certbot/www:/var/www/certbot
-      - /root/dolcezampa/public:/var/www/html:ro
     networks:
       - dolcezampa_default
-    # LIMITI RISORSE: Nginx è leggerissimo
+    volumes:
+      - /opt/dolcezampa/bin/nginx/conf.d:/etc/nginx/conf.d
+      - /opt/dolcezampa/bin/certbot/conf:/etc/letsencrypt
+      - /opt/dolcezampa/bin/certbot/www:/var/www/certbot
+      - /opt/dolcezampa/public:/var/www/html:ro
     deploy:
+      replicas: 2 # Swarm farà routing automatico (Ingress) su qualsiasi VPS riceva il traffico
       resources:
         limits:
           cpus: '0.25'
           memory: 128M
+      placement:
+        constraints:
+          - node.role == manager
 
   certbot:
     image: certbot/certbot:latest
-    container_name: dolcezampa_certbot
     volumes:
-      - /root/dolcezampa/bin/certbot/conf/:/etc/letsencrypt/
-      - /root/dolcezampa/bin/certbot/www/:/var/www/certbot/
+      - /opt/dolcezampa/bin/certbot/conf/:/etc/letsencrypt/
+      - /opt/dolcezampa/bin/certbot/www/:/var/www/certbot/
+    deploy:
+      restart_policy:
+        condition: none # Certbot deve girare solo al bisogno o via cron, non all'infinito
 
 networks:
   dolcezampa_default:
-    external: true
-    name: dolcezampa_default
+    driver: overlay # FONDAMENTALE: l'overlay network permette ai container su VPS diverse di parlarsi
+    attachable: true
 
-# AGGIUNTI I VOLUMI DICHIARATI (Evita l'errore in fase di avvio)
 volumes:
-  mysql_data:
+  mysql_data: # Definito ma non usato (visto che usi un DB esterno gestito, puoi anche rimuoverlo)
