@@ -72,13 +72,13 @@ class ProductController extends Controller
                 'message' => 'Category or Manufacturer query parameter is required'
             ], 400);
         }
+        $pagination = $this->getPaginationParams($queryParams);
 
         //fix provvisoria perchè non riusciamo a recuperare i prodotti se sono filtrati
         if($filters && is_array($filters) && count($filters) > 0){
             $pagination['per_page'] = 30; // Set a high limit to retrieve all products
         }
 
-        $pagination = $this->getPaginationParams($queryParams);
         $paginationOptions = [
             'limit' => $pagination['per_page'],
             'page' => $pagination['page'],
