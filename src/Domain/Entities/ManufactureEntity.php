@@ -55,7 +55,7 @@ class ManufactureEntity implements ObjectInterface
 
 		$filename = str_replace(' ', '-', strtolower($this->data['name'] ?? ''));
 		if(file_get_contents("https://" . env("PS_BASE_URL") . "/img/m/$filename.jpg")) {
-			$this->data['image'] = "https://" . env("PS_BASE_URL") . "/img/m/$filename.jpg";
+			$this->data['image'] = "/img/m/$filename.jpg";
 		}
 	}
 	
