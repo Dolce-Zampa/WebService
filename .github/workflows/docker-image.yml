@@ -28,7 +28,7 @@ jobs:
     
     - name: Push the Docker image
       run: |
-        docker push ghcr.io/dolce-zampa/webservice:latest
+        docker push ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
 
   deploy:
       needs: build
@@ -43,7 +43,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.TOKEN }}
-            docker pull ghcr.io/dolce-zampa/webservice:latest
+            docker pull ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
             docker stop dolcezampa_webservice || true
             docker rm dolcezampa_webservice || true
             cd /root/infra && docker-compose up -d --build webservice && docker-compose up -d --build worker-product-images
