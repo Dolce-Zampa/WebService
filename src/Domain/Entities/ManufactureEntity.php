@@ -51,11 +51,17 @@ class ManufactureEntity implements ObjectInterface
 
 	public function normalizeData(): void
 	{
+		$extensions = ['jpg', 'png', 'jpeg', 'gif'];
 		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
 
-		$filename = str_replace(' ', '-', strtolower($this->data['name'] ?? ''));
-		if(file_get_contents("https://" . env("PS_BASE_URL") . "/img/m/$filename.jpg")) {
-			$this->data['image'] = "/img/m/$filename.jpg";
+		$filename = $this->data['slug'];
+		foreach ($extensions as $ext) {
+			$domanin = "https://www.dolcezampa.com";
+			$imageUrl = "{$domanin}/img/m/{$filename}.{$ext}";
+			if (@file_get_contents($imageUrl)) {
+				$this->data['image'] = $imageUrl;
+				break;
+			}
 		}
 	}
 	
