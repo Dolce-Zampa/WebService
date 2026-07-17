@@ -1,28 +1,29 @@
 <?php
 
-use PS\Webservice\Repositories\PrestashopRepository;
-
-// Slim Container configuration for dependency injection
-
 $container = new \DI\Container();
 
 $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
-    $webserviceCOnfig = new \PS\Webservice\Domain\Object\WebserviceConfig(
+    $webserviceConfig = new \PS\Webservice\Domain\Object\WebserviceConfig(
         apiKey: env('PS_API_KEY'),
         domain: env('PS_BASE_URL'),
         headers: [
             "Output-Format" => "JSON"
-
         ]
     );
-    $webserviceCOnfig->authToken(env('WEBSERVICE_KEY'));
-    return new \PS\Webservice\Service\HttpService($webserviceCOnfig);
+    $webserviceConfig->authToken(env('WEBSERVICE_KEY'));
+    return new \PS\Webservice\Service\HttpService($webserviceConfig);
 });
 
-$container->set(\PS\Webservice\Service\PS\Product::class, function ($c) use($capsule) {
+$container->set(\PS\Webservice\Repositories\PrestashopRepository::class, function($c) use($capsule) {
+    return new \PS\Webservice\Repositories\PrestashopRepository($capsule);
+});
+
+$container->set(\PS\Webservice\Service\PS\Product::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
     $service = new \PS\Webservice\Service\PS\Product($httpService);
-    $service->addRepository(new PrestashopRepository($capsule));
+    $service->addRepository(
+        $c->get(\PS\Webservice\Repositories\PrestashopRepository::class)
+    );
     return $service;
 });
 
@@ -71,6 +72,21 @@ $container->set(\PS\Webservice\Service\PS\PsModule::class, function ($c) {
     return new \PS\Webservice\Service\PS\PsModule($httpService);
 });
 
+$container->set(\PS\Webservice\Service\PS\PrestashopService::class, function ($c) {
+    $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
+    return new \PS\Webservice\Service\PS\PrestashopService($httpService);
+});
+
+// CORREZIONE: da get() a set()
+$container->set(\PS\Webservice\Service\Auth\AuthService::class, function($c) {
+    return new \PS\Webservice\Service\Auth\AuthService();
+});
+
+// CORREZIONE: da get() a set()
+$container->set(\PS\Webservice\Service\PS\Mailer::class, function($c) {
+    return new \PS\Webservice\Service\PS\Mailer($c->get(\PS\Webservice\Service\HttpService::class));
+});
+
 /** CONTROLLERS */
 $container->set(\PS\Webservice\Http\Controller\ProductController::class, function ($c) {
     $productService = $c->get(\PS\Webservice\Service\PS\Product::class);
@@ -89,7 +105,8 @@ $container->set(\PS\Webservice\Http\Controller\BrandController::class, function 
 
 $container->set(\PS\Webservice\Http\Controller\CustomerController::class, function ($c) {
     $customerService = $c->get(\PS\Webservice\Service\PS\Customer::class);
-    return new \PS\Webservice\Http\Controller\CustomerController($customerService);
+    $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
+    return new \PS\Webservice\Http\Controller\CustomerController($customerService, $authService);
 });
 
 $container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {
@@ -97,14 +114,24 @@ $container->set(\PS\Webservice\Http\Controller\OrderController::class, function 
     return new \PS\Webservice\Http\Controller\OrderController($orderService);
 });
 
+$container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, function ($c) {
+    $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
+    $prestashopService = $c->get(\PS\Webservice\Service\PS\PrestashopService::class);
+    $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
+    $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
+    $product = $c->get(\PS\Webservice\Service\PS\Product::class);
+    return new \PS\Webservice\Http\Controller\Seller\SellerController($authService, $prestashopService,$mailer, $repository, $product);
+});
+
 
 $container->set(\PS\Webservice\Service\Payments\PaymentService::class, function ($c) {
     return new \PS\Webservice\Service\Payments\PaymentService();
 });
 
+// CORREZIONE: $currierService → $carrierService
 $container->set(\PS\Webservice\Http\Controller\CarrierController::class, function ($c) {
-    $currierService = $c->get(\PS\Webservice\Service\PS\Carrier::class);
-    return new \PS\Webservice\Http\Controller\CarrierController($currierService);
+    $carrierService = $c->get(\PS\Webservice\Service\PS\Carrier::class);
+    return new \PS\Webservice\Http\Controller\CarrierController($carrierService);
 });
 
 $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, function ($c) {
@@ -138,7 +165,6 @@ $container->set(\PS\Webservice\Service\RedisQueue::class, function ($c) {
         [
             'parameters' => [
                 'password' => env('CACHE_REDIS_PASSWORD', ''),
-                // Use a separate DB from the cache (DB 10) to avoid key collisions
                 'database' => (int) env('QUEUE_REDIS_DATABASE', 11),
             ],
         ]

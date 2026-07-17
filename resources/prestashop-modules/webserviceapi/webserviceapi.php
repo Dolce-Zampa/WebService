@@ -358,6 +358,12 @@ class webserviceapi extends PaymentModule
                 'controller' => 'productupdate',
                 'params' => $params,
             ),
+            'module-webserviceapi-mailer' => array(
+                'rule' => 'api/mailer',
+                'keywords' => array(),
+                'controller' => 'mailer',
+                'params' => $params,
+            ),
         );
     }
 

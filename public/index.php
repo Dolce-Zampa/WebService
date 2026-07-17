@@ -8,7 +8,7 @@ $allowedOrigins = [
 ];
 
 if (in_array($origin, $allowedOrigins, true)) {
-	header('Access-Control-Allow-Origin: *');
+	header('Access-Control-Allow-Origin: ' . $origin);
 	header('Vary: Origin');
 	header('Access-Control-Allow-Credentials: true');
 }

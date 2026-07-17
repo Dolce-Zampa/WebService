@@ -33,6 +33,8 @@ RewriteRule ^api/customers(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&modu
 RewriteRule ^api/account(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=account&ws_key=$1 [QSA,L]
 RewriteRule ^api/addresses(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=addresses&ws_key=$1 [QSA,L]
 RewriteRule ^api/logout(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=logout&ws_key=$1 [QSA,L]
+RewriteRule ^api/mailer(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=mailer&ws_key=$1 [QSA,L]
+
 
 # Modules
 RewriteRule ^api/module/welcome-coupon$ %{ENV:REWRITEBASE}index.php?fc=module&module=dolcezampa_subscription_coupon&controller=ajax&action=subscriptionCoupon [QSA,L]
