@@ -25,6 +25,16 @@ $capsule->addConnection($connections['mysql']);
 $capsule->bootEloquent();
 $capsule->setAsGlobal();
 
+// validator laravel
+$validator = new \Illuminate\Validation\Validator(
+    new \Illuminate\Translation\Translator(
+        new \Illuminate\Translation\ArrayLoader(),
+        'en'
+    ),
+    [],
+    []
+);
+
 // Set up the logger
 require_once __DIR__ . '/../config/logger.php';
 
@@ -33,9 +43,14 @@ require_once __DIR__ . '/../config/container-di.php';
 
 require_once __DIR__ . '/../config/cache.php';
 
+// cognito
+require_once __DIR__ . '/../config/cognito-client.php';
+
 // Set up the Facade application
 Facade::setFacadeApplication([
     'log' => $logger,
     'date' => new Date(),
     'cache' => $cache,
-]);
+    'aws-cognito-client' => $awsCognitoClient,
+    'validator' => $validator,
+    ]);

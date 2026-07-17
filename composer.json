@@ -8,6 +8,10 @@
         "mdf/json-database-storage": {
             "type": "vcs",
             "url": "https://github.com/marcodefelice/JsonDatabase-storage.git"
+        },
+        "malirobot/aws-cognito": {
+            "type": "vcs",
+            "url": "https://github.com/MaliRobot/aws-cognito.git"
         }
     },
     "require": {
@@ -37,7 +41,9 @@
         "hashids/hashids": "^5.0",
         "mdf/json-database-storage": "~v1.0.1",
         "sentry/sentry": "^4.27",
-        "predis/predis": "^3.4"
+        "predis/predis": "~3.4",
+        "malirobot/aws-cognito": "v1.0.2",
+        "illuminate/validation": "^11.51"
     },
     "require-dev": {
         "nikic/php-parser": "^5.0",

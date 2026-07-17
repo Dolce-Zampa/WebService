@@ -5,7 +5,7 @@ namespace PS\Webservice\Repositories;
 
 use Illuminate\Support\Collection;
 
-class PrestashopRepository
+class PrestashopRepository extends ManufacturerRepository
 {
     protected \Illuminate\Database\Capsule\Manager $db;
 
