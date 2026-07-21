@@ -11,7 +11,7 @@ class ManufactureEntity implements ObjectInterface
 {
 	/** @var array<string, mixed> */
 	private array $data;
-    private Brand $service;
+    private PrestashopServiceInterface $service;
     
     private function __construct(array $data, PrestashopServiceInterface $service)
     {

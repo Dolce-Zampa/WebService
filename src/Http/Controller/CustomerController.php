@@ -91,7 +91,7 @@ class CustomerController extends Controller
 
         try {
             $cognitoAuth = $this->authService->authenticate($request);
-            if (($cognitoAuth['error'] ?? false) !== false) {
+            if (($cognitoAuth['error'] ?? false) !== false || $cognitoAuth === false) {
                 return response(['message' => 'Invalid credentials'], 401);
             }
         } catch (\Throwable $e) {
