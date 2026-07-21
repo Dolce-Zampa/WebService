@@ -50,10 +50,10 @@ class SignUpService extends UserService
         $data = $collection->only('name', 'email', 'password','is_seller');
 
         //check if user already exist
-        // if (Manufacturer::where('email', $params["email"])->exists()) {
-        //     Log::info("User already exists");
-        //     return false;
-        // }
+        if (Manufacturer::where('email', $params["email"])->exists()) {
+            Log::info("User already exists");
+            return false;
+        }
 
         try {
             $cognito = $this->createCognitoUser($data);

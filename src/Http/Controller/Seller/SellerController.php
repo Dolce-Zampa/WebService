@@ -67,9 +67,13 @@ class SellerController
                 'avatar' => 'file|mimes:jpeg,png,jpg,gif|max:2048',
             ]);
 
-            // if (Manufacturer::query()->where('email', $bodyParams['email'])->exists()) {
-            //     return response(['error' => 'Validation error: email already exists'], 400);
-            // }
+            //forse seller to true
+            $bodyParams['is_seller'] = true;
+
+            if (Manufacturer::query()->where('email', $bodyParams['email'])->exists()) {
+                return response(['error' => 'Validation error: email already exists'], 400);
+            }
+
         } catch (\Throwable $e) {
             Log::error("Validation error: " . $e->getMessage());
             return response(['error' => 'Validation error: ' . $e->getMessage()], 400);
@@ -133,7 +137,6 @@ class SellerController
             AwsCognitoClient::deleteUser($bodyParams['email']);
             return response(['error' => 'Failed to save seller profile'], 500);
         }
-
 
         return response(
         [
