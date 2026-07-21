@@ -67,10 +67,16 @@ class SellerController
                 'avatar' => 'file|mimes:jpeg,png,jpg,gif|max:2048',
             ]);
 
-            //forse seller to true
-            $bodyParams['is_seller'] = true;
+            $collection = collect([
+                'name' => $bodyParams["name"],
+                'email' => $bodyParams["email"],
+                'password' => $bodyParams["password"],
+                'is_seller' => $bodyParams["is_seller"] ?? false
+            ]);
 
-            if (Manufacturer::query()->where('email', $bodyParams['email'])->exists()) {
+            $data = $collection->only('name', 'email', 'password', 'is_seller');
+
+            if (Manufacturer::query()->where('email', $data->get('email'))->exists()) {
                 return response(['error' => 'Validation error: email already exists'], 400);
             }
 
@@ -79,15 +85,21 @@ class SellerController
             return response(['error' => 'Validation error: ' . $e->getMessage()], 400);
         }
 
-        $signup = $this->authService->signUp($request->withParsedBody($bodyParams));
-        if (!is_array($signup)) {
-            Log::error("Sign up failed");
-            return response(['error' => 'Sign up failed'], 400);
-        }
-
-        if(is_array($signup) && empty($signup)) {
-            // we should login
+        // se l'utente è già loggato eseguiamo il login automatico
+        $token = $request->getHeaderLine('Authorization');
+        if (!empty($token)) {
+            $signup = $this->authService->signUp($data);
+            if ($signup === false) {
+                Log::error("Sign up failed");
+                return response(['error' => 'Sign up failed'], 400);
+            }
+        } else {
+            // eseguiamo login
             $signup = $this->authService->authenticate($request);
+            if($signup === false) {
+                Log::error("Authentication failed");
+                return response(['error' => 'Authentication failed'], 401);
+            }
         }
 
         $sub = $this->extractCognitoAttribute($signup['access_token'], 'sub');
@@ -100,7 +112,7 @@ class SellerController
         $uuid = Uuid::uuid4()->toString();
 
         //save avatar file in blob if provided
-        if(isset($bodyParams['avatar']) && is_array($bodyParams['avatar']) && isset($bodyParams['avatar']['tmp_name'])) {
+        if (isset($bodyParams['avatar']) && is_array($bodyParams['avatar']) && isset($bodyParams['avatar']['tmp_name'])) {
             $avatarPath = $bodyParams['avatar']['tmp_name'];
             $avatarContent = file_get_contents($avatarPath);
         }
@@ -115,15 +127,26 @@ class SellerController
         // save user in prestashop database
         try {
             $entity = ManufactureEntity::create(
-                    [
-                        'name' => $name,
-                        'email' => $bodyParams['email'],
-                        'sub' => $sub,
-                        'link_rewrite' => slugify($name),
-                        'uuid' => $uuid,
-                        'avatar' => $avatarContent ?? null,
-                    ], $this->prestashopService
-                );
+                [
+                    'name' => $name,
+                    'email' => $data['email'],
+                    'sub' => $sub,
+                    'link_rewrite' => slugify($name),
+                    'uuid' => $uuid,
+                    'avatar' => $avatarContent ?? null,
+                    'first_name' => $data['first_name'] ?? null,
+                    'last_name' => $data['last_name'] ?? null,
+                    'fiscal_code' => $data['fiscal_code'] ?? null,
+                    'vat_number' => $data['vat_number'] ?? null,
+                    'address' => $data['address'] ?? null,
+                    'city' => $data['city'] ?? null,
+                    'state' => $data['state'] ?? null,
+                    'country' => $data['country'] ?? null,
+                    'zip_code' => $data['zip_code'] ?? null,
+                    'phone_number' => $data['phone_number'] ?? null,
+                ],
+                $this->prestashopService
+            );
             $this->prestashopRepository->signupNewManufacturer(
                 $entity
             );
@@ -139,12 +162,14 @@ class SellerController
         }
 
         return response(
-        [
-            'access_token' => $signup['access_token'] ?? null,
-            'refresh_token' => $signup['refresh_token'] ?? null,
-            'seller' => ''
-        ]    
-        , 201);
+            [
+                'access_token' => $signup['access_token'] ?? null,
+                'refresh_token' => $signup['refresh_token'] ?? null,
+                'seller' => ''
+            ]
+            ,
+            201
+        );
     }
 
     public function confirmToken(Request $request): ResponseInterface
@@ -522,7 +547,7 @@ class SellerController
     private function extractCognitoAttribute(string $accessToken, string $attributeName): ?string
     {
         $attributes = AwsCognitoClient::decodeAccessToken($accessToken);
-        if(isset($attributes[$attributeName])) {
+        if (isset($attributes[$attributeName])) {
             return $attributes[$attributeName];
         }
 
