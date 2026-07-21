@@ -12,6 +12,7 @@ namespace PS\Webservice\Service\Auth;
  * - 4. create default settings
  */
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use malirobot\AwsCognito\Exception\UsernameExistsException;
 use PS\Webservice\Domain\Models\Manufacturer;
@@ -35,22 +36,10 @@ class SignUpService extends UserService
      * @param Request $request The HTTP request object.
      * @return array|bool
      */
-    public function signUp(Request $request): array|bool
+    public function signUp(Collection $data): array|bool
     {
-        $params = $request->getParsedBody();
-
-        //save in cache user password
-        $collection = collect([
-            'name' => $params["name"],
-            'email' => $params["email"],
-            'password' => $params["password"],
-            'is_seller' => $params["is_seller"] ?? false
-        ]);
-
-        $data = $collection->only('name', 'email', 'password','is_seller');
-
         //check if user already exist
-        if (Manufacturer::where('email', $params["email"])->exists()) {
+        if (Manufacturer::where('email', $data->get('email'))->exists()) {
             Log::info("User already exists");
             return false;
         }
@@ -61,32 +50,31 @@ class SignUpService extends UserService
                 Log::error("Cognito user creation failed: " . json_encode($cognito));
                 return false;
             }
+
+            $this->updateUserSellerAttributes($data);
+
         } catch (UsernameExistsException $e) {
             Log::info("User already exists in Cognito: " . $e->getMessage());
-            //eseguiamo il login per aggiornare le informazioni dell'utente
-            $cognito = [];
+            return false;
 
         } catch (\Exception $e) {
             Log::critical($e->getMessage());
-            AwsCognitoClient::deleteUser($params["email"]);
+            AwsCognitoClient::deleteUser($data->get('email'));
             //Redirect to view
             return false;
         }
 
-        try {
-            AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
-            AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
-            AwsCognitoClient::updateUserAttributes($data->get('email'), [
-                'custom:seller' => (int) ($data->get('is_seller')),
-                'name' => $data->get('name'),
-            ]);
-
-        } catch (\Throwable $e) {
-            Log::critical($e->getMessage());
-            return false;
-        }
-
         return $cognito;
+    }
+
+    public function updateUserSellerAttributes(Collection $data): void
+    {
+        AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
+        AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
+        AwsCognitoClient::updateUserAttributes($data->get('email'), [
+            'custom:seller' => (int) ($data->get('is_seller')),
+            'name' => $data->get('name'),
+        ]);
     }
 
 
