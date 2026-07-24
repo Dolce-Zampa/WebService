@@ -12,17 +12,22 @@ namespace PS\Webservice\Service\Auth;
  * - 4. create default settings
  */
 
-use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use malirobot\AwsCognito\Exception\UsernameExistsException;
 use PS\Webservice\Domain\Models\Manufacturer;
+use PS\Webservice\Domain\Models\ManufacturerDetail;
+use PS\Webservice\Domain\Models\ManufacturerLang;
+use PS\Webservice\Domain\Models\ManufacturerShop;
+use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Traits\AuthFlow;
 use PS\Webservice\Traits\RegistersUsers;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Ramsey\Uuid\Nonstandard\Uuid;
 
 class SignUpService extends UserService
 {
@@ -58,6 +63,20 @@ class SignUpService extends UserService
             }
             $this->updateUserSellerAttributes($payload);
 
+            //create user in DB
+            try {
+                User::create([
+                    'email' => $payload->get('email'),
+                    'id_lang' => 1,
+                    'active' => 1,
+                    'firstname' => $payload->get('first_name'),
+                    'lastname' => $payload->get('last_name'),
+                ]);
+            } catch (\Exception $e) {
+                Log::critical("User creation in DB failed: " . $e->getMessage());
+                return false;
+            }
+
         } catch (UsernameExistsException $e) {
             Log::info("User already exists in Cognito: " . $e->getMessage());
 
@@ -74,6 +93,7 @@ class SignUpService extends UserService
             $payload = $this->mergeIdentityIntoPayload($payload, $resolvedAuth);
 
             $this->updateUserSellerAttributes($payload);
+            $this->saveManufacturer($payload);
 
         } catch (\Exception $e) {
             Log::critical($e->getMessage());
@@ -258,5 +278,61 @@ class SignUpService extends UserService
         $this->tags(['user-signup'])->removeFromCache($token);
 
         return true;
+    }
+
+    protected function saveManufacturer(Collection $payload): void
+    {
+        $manufacturer = Manufacturer::updateOrCreate(
+            ['email' => $payload->get('email')],
+            [
+                'name' => $payload->get('name'),
+                'uuid' => Uuid::uuid4()->toString(),
+                'active' => 0,
+                'link_rewrite' => slugify($payload->get('name')),
+                'date_add' => Carbon::now(),
+                'date_upd' => Carbon::now(),
+                'sub' => $payload->get('sub'),
+            ]
+        );
+
+        ManufacturerDetail::updateOrCreate(
+            ['id_manufacturer' => $manufacturer->ufacturer],
+            [
+                'id_manufacturer' => $manufacturer->id_manufacturer,
+                'first_name' => $payload->get('first_name'),
+                'last_name' => $payload->get('last_name'),
+                'fiscal_code' => $payload->get('fiscal_code', null),
+                'vat_number' => $payload->get('vat_number', null),
+                'address' => $payload->get('address', null),
+                'city' => $payload->get('city', ''),
+                'zip_code' => $payload->get('postcode', null),
+                'country' => $payload->get('country', null),
+                'state' => $payload->get('state', null),
+                'phone_number' => $payload->get('phone_number', null),
+                'avatar' => $payload->get('avatar', null)
+            ]
+        );
+
+        ManufacturerShop::updateOrCreate(
+            ['id_manufacturer' => $manufacturer->id_manufacturer],
+            [
+                'id_manufacturer' => $manufacturer->id_manufacturer,
+                'id_shop' => 1,
+            ]
+        );
+
+        ManufacturerLang::updateOrCreate(
+            ['id_manufacturer' => $manufacturer->id_manufacturer],
+            [
+                'id_manufacturer' => $manufacturer->id_manufacturer,
+                'id_lang' => 1,
+                'description' => $payload->get('description', null),
+                'short_description' => $payload->get('short_description', null),
+                'meta_title' => $payload->get('meta_title', null),
+                'meta_description' => $payload->get('meta_description', null),
+                'meta_keywords' => $payload->get('meta_keywords', null),
+            ]
+        );
+
     }
 }
