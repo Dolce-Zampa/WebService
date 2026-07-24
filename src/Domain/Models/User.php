@@ -5,7 +5,7 @@ namespace PS\Webservice\Domain\Models;
 
 class User extends PsTable
 {
-	protected $table = 'users';
+	protected $table = 'customer';
 	protected $primaryKey = 'id_user';
 	public $timestamps = false;
 	protected $guarded = [];
