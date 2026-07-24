@@ -5,6 +5,7 @@ namespace PS\Webservice\Service\Auth;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Exceptions\AuthException;
 use PS\Webservice\Facades\AwsCognitoClient;
 use Psr\Http\Message\ServerRequestInterface as Request;
