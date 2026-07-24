@@ -123,7 +123,7 @@ class CustomerController extends Controller
         return response([
             'token' => $cognitoAuth['access_token'] ?? null,
             'message' => 'Login successful',
-            'customer' => array_merge($customer['data']['customer'] ?? [], ['is_seller' => $isSeller]),
+            'customer' => array_merge($customer['data']['customer'], ['is_seller' => $isSeller], ['addresses' => $customer['data']['addresses'] ]),
         ]);
     }
 
@@ -145,6 +145,13 @@ class CustomerController extends Controller
         }
 
         $serviceResponse = $this->customerService->getAccount($customerId);
+        try {
+            $getAccountFromCognito = $this->authService->check($request);
+        } catch (\Throwable $e) {
+            Log::error('Customer Cognito check failed: ' . $e->getMessage());
+            return response(['message' => 'Unable to retrieve customer account'], 401);
+        }
+
         return $this->buildServiceResponse($serviceResponse);
     }
 
@@ -168,7 +175,13 @@ class CustomerController extends Controller
         }
 
         $serviceResponse = $this->customerService->getAddresses($customerId);
-        return $this->buildServiceResponse($serviceResponse);
+        $data = $serviceResponse->toArray();
+
+        //FIXME: delivery_address and invoice_address are hardcoded to the first two addresses. This should be improved to select the correct addresses based on the customer's preferences or default settings.
+        return response([
+            'delivery_address' => $data['data']['addresses'][0],
+            'invoice_address' => $data['data']['addresses'][1] ?? $data['data']['addresses'][0],
+        ]);
     }
 
     public function updateAddresses(Request $request, Response $response, array $argv): Response
@@ -359,7 +372,7 @@ class CustomerController extends Controller
     {
         $statusCode = $serviceResponse->failed() ? $serviceResponse->getHttpCode() : $successCode;
 
-        return response($serviceResponse->toArray(), $statusCode);
+        return response($serviceResponse->toArray()['data'], $statusCode);
     }
 
     private function extractCognitoAttribute(string $accessToken, string $attributeName): ?string
@@ -376,17 +389,27 @@ class CustomerController extends Controller
     {
         $bodyParams = $request->getParsedBody();
         Validator::validate($bodyParams, [
-                'email' => 'required|email|max:64',
-                'password' => 'required|confirmed|min:8|max:64|regex:' . self::PASSWORD_VALIDATION,
+                'new_password' => 'required|confirmed|min:8|max:64|regex:' . self::PASSWORD_VALIDATION,
+                'token' => 'required|string|max:255',
             ]);
 
-        try {
-            $this->authService->resetPassword($bodyParams['email'], $bodyParams['password']);
-        } catch (\Throwable $e) {
-            Log::error('Customer Cognito reset password failed: ' . $e->getMessage());
+        $reset = $this->authService->resetPasswordWithToken($bodyParams['new_password'], $bodyParams['token']);
+        if($reset === false) {
             return response(['message' => 'Unable to reset password'], 400);
         }
 
         return response(['message' => 'Password reset successful'], 200);
+    }
+
+    public function sendResetPassword(Request $request, Response $response, array $argv): Response
+    {
+        $bodyParams = $request->getParsedBody();
+        Validator::validate($bodyParams, [
+            'email' => 'required|email|max:64',
+        ]);
+
+        $this->authService->sendResetPasswordMail($bodyParams['email']);
+      
+        return response(['message' => 'Reset password email sent successfully'], 200);
     }
 }

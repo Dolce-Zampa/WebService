@@ -2,23 +2,24 @@
 
 namespace PS\Webservice\Service\Auth;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
 use League\Container\Exception\NotFoundException;
 use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Exceptions\AuthException;
 use PS\Webservice\Facades\AwsCognitoClient;
-use PS\Webservice\Service\Auth\AuthServiceInterface;
+use PS\Webservice\Service\AuthServiceInterface;
 use PS\Webservice\Traits\AuthFlow;
+use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class AuthService extends LoginService implements AuthServiceInterface
 {
-    use AuthFlow;
+    use AuthFlow, UseCache;
 
     public function check(Request $request): string
     {
@@ -35,7 +36,7 @@ class AuthService extends LoginService implements AuthServiceInterface
         // Check if the token has expired
         if (isset($decodedToken['exp']) && $decodedToken['exp'] < time()) {
             try {
-                $refresh_token = Cache::get($decodedToken['sub'] . 'refresh_token');
+                $refresh_token = Cache::get($this->refreshTokenCacheKey($decodedToken['sub']));
                 $tokens = AwsCognitoClient::refreshAuthentication($decodedToken['username'], $refresh_token);
                 $authToken = $tokens['AccessToken'];
             } catch (\Throwable $e) {
@@ -61,7 +62,7 @@ class AuthService extends LoginService implements AuthServiceInterface
 
         Log::debug('Decoded token: ' . json_encode($decodedToken));
 
-        $idToken = Cache::get($decodedToken['sub'] . 'id_token');
+        $idToken = Cache::get($this->idTokenCacheKey($decodedToken['sub']));
         $username = $decodedToken['username'];
 
         if (empty($idToken)) {
@@ -91,24 +92,23 @@ class AuthService extends LoginService implements AuthServiceInterface
      * @param array $args The route parameters.
      * @return bool True if the password reset was successful, false otherwise.
      */
-    public function resetPasswordWithToken(Request $request, string $token): bool
+    public function resetPasswordWithToken(string $password, string $token): bool
     {
-        $newPassword = $request->getParsedBody()['password'];
 
-        if (!Cache::has($token)) {
-            throw new AuthException('Invalid token', 401);
+        if ($this->existsInCache($token) === false) {
+            Log::warning('Token has expired or is invalid: ' . $token);
+            return false;
         }
 
-        // retrive email from cache
-        $tokenInCache = Cache::get($token);
-        $email = $tokenInCache->email;
-
-        $user = User::where('email', Crypt::encrypt($email))->first();
-        if ($user) {
-            AwsCognitoClient::setUserPassword($email, $newPassword, true);
-            $user->password = $newPassword;
-            $user->save();
+        $email = $this->getFromCache($token);
+        try {
+            AwsCognitoClient::setUserPassword($email, $password, true);
+        } catch (\Throwable $e) {
+            Log::error('Cognito reset password failed: ' . $e->getMessage());
+            return false;
         }
+
+        $this->mailer->sendResetPasswordConfirmationMail($email);
 
         return true;
     }
@@ -132,7 +132,9 @@ class AuthService extends LoginService implements AuthServiceInterface
         $email = $request->getParsedBody()['email'];
         $user = User::where('email', Crypt::encrypt($email))->first();
         if ($user) {
-            $token = $this->generateToken(['email' => $email, 'password' => ''], $user->id, 'verify_email');
+            $token = $this->generateToken(['email' => $email, 'password' => '',  $user->id]);
+            $this->setToCache($token, $email, 3600); // Cache for 1 hour
+
             $mail = new \MDF\CognitoIntegration\Service\MailService();
             $mail->send_signUpMail($email, $user->name, $token);
         }
@@ -145,19 +147,16 @@ class AuthService extends LoginService implements AuthServiceInterface
     /**
      * Sends a reset password email.
      *
-     * @param Request $request The HTTP request object.
-     * @param Response $response The HTTP response object.
-     * @param array $args The route parameters.
+     * @param string $email
      * @return Response The updated HTTP response object.
      */
-    public function sendResetPasswordMail(Request $request)
+    public function sendResetPasswordMail(string $email)
     {
-        $email = $request->getParsedBody()['email'];
-        $user = User::where('email', Crypt::encrypt($email))->first();
 
-            $token = $this->generateToken(['email' => "email", 'password' => ''], 1, 'reset_password');
-            $mail = new \MDF\CognitoIntegration\Service\MailService();
-            $mail->send_resetPassowrdMail("tech@email.it", "sss", $token);
+        $token = $this->generateToken(['email' => $email, 'password' => '']);
+        $this->setToCache($token, $email, 3600); // Cache for 1 hour
+
+        $this->mailer->sendResetPasswordMail($email, $token);
 
         return response([
             'message' => 'Email sent'

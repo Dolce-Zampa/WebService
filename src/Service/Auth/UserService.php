@@ -6,7 +6,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Stringable;
 
-class UserService extends ServiceProvider {
+class UserService extends AuthServiceProvider {
 
     /**
      * Deletes a user.

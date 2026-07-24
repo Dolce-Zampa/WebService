@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller\Seller;
 
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -13,7 +12,7 @@ use PS\Webservice\Domain\Models\ManufacturerDetail;
 use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Auth\AuthService;
-use PS\Webservice\Service\Auth\AuthServiceInterface;
+use PS\Webservice\Service\AuthServiceInterface;
 use PS\Webservice\Service\PS\Mailer;
 use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Service\PS\PrestashopService;
@@ -47,6 +46,22 @@ class SellerController
     public function register(Request $request): ResponseInterface
     {
         $bodyParams = $this->requireArrayPayload($request->getParsedBody());
+        $authorizationHeader = $request->getHeaderLine('Authorization');
+
+        if ($authorizationHeader !== '') {
+            try {
+                $authToken = $this->authService->check($request);
+                $identity = $this->extractAuthenticatedIdentity($authToken);
+
+                $bodyParams['email'] = $bodyParams['email'] ?? ($identity['email'] ?? null);
+                $bodyParams['first_name'] = $bodyParams['first_name'] ?? ($identity['first_name'] ?? null);
+                $bodyParams['last_name'] = $bodyParams['last_name'] ?? ($identity['last_name'] ?? null);
+                $bodyParams['auth_token'] = $authToken;
+            } catch (\Throwable $e) {
+                Log::error('Unable to resolve authenticated user during seller conversion: ' . $e->getMessage());
+                return response(['error' => 'Invalid authenticated user'], 401);
+            }
+        }
 
         if (!empty($bodyParams['shop_name'])) {
             $name = trim((string) $bodyParams['shop_name']);
@@ -58,10 +73,9 @@ class SellerController
 
         try {
             Validator::validate($bodyParams, [
-                'first_name' => 'required|max:255',
-                'last_name' => 'required|max:255',
-                'email' => 'required|email|max:64',
-                'password' => 'required|confirmed|min:8|max:64|regex:' . self::PASSWORD_VALIDATION,
+                'first_name' => 'max:255',
+                'last_name' => 'max:255',
+                'email' => 'email|max:64',
                 'shop_name' => 'required|max:255',
                 'address' => 'required|max:255',
                 'avatar' => 'file|mimes:jpeg,png,jpg,gif|max:2048',
@@ -69,12 +83,39 @@ class SellerController
 
             $collection = collect([
                 'name' => $bodyParams["name"],
-                'email' => $bodyParams["email"],
-                'password' => $bodyParams["password"],
-                'is_seller' => $bodyParams["is_seller"] ?? false
+                'email' => $bodyParams['email'] ?? null,
+                'password' => $bodyParams['password'] ?? null,
+                'is_seller' => true,
+                'first_name' => $bodyParams['first_name'] ?? null,
+                'last_name' => $bodyParams['last_name'] ?? null,
+                'fiscal_code' => $bodyParams['fiscal_code'] ?? null,
+                'vat_number' => $bodyParams['vat_number'] ?? null,
+                'address' => $bodyParams['address'] ?? null,
+                'city' => $bodyParams['city'] ?? null,
+                'state' => $bodyParams['state'] ?? null,
+                'country' => $bodyParams['country'] ?? null,
+                'zip_code' => $bodyParams['zip_code'] ?? null,
+                'phone_number' => $bodyParams['phone_number'] ?? null,
+                'auth_token' => $bodyParams['auth_token'] ?? null,
             ]);
 
-            $data = $collection->only('name', 'email', 'password', 'is_seller');
+            $data = $collection->only(
+                'name',
+                'email',
+                'password',
+                'is_seller',
+                'first_name',
+                'last_name',
+                'fiscal_code',
+                'vat_number',
+                'address',
+                'city',
+                'state',
+                'country',
+                'zip_code',
+                'phone_number',
+                'auth_token'
+            );
 
             if (Manufacturer::query()->where('email', $data->get('email'))->exists()) {
                 return response(['error' => 'Validation error: email already exists'], 400);
@@ -85,27 +126,18 @@ class SellerController
             return response(['error' => 'Validation error: ' . $e->getMessage()], 400);
         }
 
-        // se l'utente è già loggato eseguiamo il login automatico
-        $token = $request->getHeaderLine('Authorization');
-        if (!empty($token)) {
-            $signup = $this->authService->signUp($data);
-            if ($signup === false) {
-                Log::error("Sign up failed");
-                return response(['error' => 'Sign up failed'], 400);
-            }
-        } else {
-            // eseguiamo login
-            $signup = $this->authService->authenticate($request);
-            if($signup === false) {
-                Log::error("Authentication failed");
-                return response(['error' => 'Authentication failed'], 401);
-            }
+        $signup = $this->authService->signUp($data);
+        if ($signup === false) {
+            Log::error("Sign up failed");
+            return response(['error' => 'Sign up failed'], 400);
         }
 
         $sub = $this->extractCognitoAttribute($signup['access_token'], 'sub');
         if ($sub === null) {
             Log::error('Missing Cognito sub after sign up');
-            AwsCognitoClient::deleteUser($bodyParams['email']);
+            if (($signup['is_new_user'] ?? false) === true) {
+                AwsCognitoClient::deleteUser($bodyParams['email']);
+            }
             return response(['error' => 'Sign up failed'], 500);
         }
 
@@ -157,7 +189,9 @@ class SellerController
             }
         } catch (\Throwable $e) {
             Log::error("Failed to save user in Prestashop database: " . $e->getMessage());
-            AwsCognitoClient::deleteUser($bodyParams['email']);
+            if (($signup['is_new_user'] ?? false) === true) {
+                AwsCognitoClient::deleteUser($bodyParams['email']);
+            }
             return response(['error' => 'Failed to save seller profile'], 500);
         }
 
@@ -201,12 +235,17 @@ class SellerController
         }
 
         try {
-            $userAuth = AwsCognitoClient::setBoolClientSecret()->authenticate($payload['email'], $payload['password']);
-            if (!empty($userAuth['error'])) {
+            $userAuth = $this->authService->authenticate($request);
+            if (!is_array($userAuth) || !empty($userAuth['error'])) {
                 return response(['success' => false, 'message' => 'User not authenticated'], 401);
             }
 
-            $decodedToken = AwsCognitoClient::decodeAccessToken($userAuth['AccessToken']);
+            $isSeller = (bool) $this->extractCognitoAttribute((string) ($userAuth['id_token'] ?? ''), 'custom:seller');
+            if ($isSeller !== true) {
+                return response(['success' => false, 'message' => 'Seller not found'], 404);
+            }
+
+            $decodedToken = AwsCognitoClient::decodeAccessToken((string) $userAuth['access_token']);
             $sub = $decodedToken['sub'] ?? null;
             if ($sub === null) {
                 return response(['success' => false, 'message' => 'User not authenticated'], 401);
@@ -222,15 +261,12 @@ class SellerController
                 $manufacturer->save();
             }
 
-            Cache::put($sub . 'refresh_token', $userAuth['RefreshToken'], Carbon::now()->addDays(30));
-            Cache::put($sub . 'id_token', $userAuth['IdToken'], Carbon::now()->addDays(30));
-
             return response([
                 'success' => true,
                 'message' => 'Seller authenticated',
-                'refresh_token' => $userAuth['RefreshToken'],
-                'id_token' => $userAuth['IdToken'],
-                'access_token' => $userAuth['AccessToken'],
+                'refresh_token' => $userAuth['refresh_token'] ?? null,
+                'id_token' => $userAuth['id_token'] ?? null,
+                'access_token' => $userAuth['access_token'] ?? null,
                 'seller' => $this->serializeManufacturer($manufacturer->fresh('details')),
             ]);
         } catch (\Throwable $e) {
@@ -552,6 +588,40 @@ class SellerController
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function extractAuthenticatedIdentity(string $accessToken): array
+    {
+        $decodedAccessToken = AwsCognitoClient::decodeAccessToken($accessToken);
+        $sub = $decodedAccessToken['sub'] ?? null;
+        if (!is_string($sub) || $sub === '') {
+            throw new \RuntimeException('Invalid access token', 401);
+        }
+
+        $idToken = Cache::get($sub . 'id_token');
+        if (!is_string($idToken) || $idToken === '') {
+            throw new \RuntimeException('Missing id token for authenticated user', 401);
+        }
+
+        $decodedIdToken = AwsCognitoClient::decodeAccessToken($idToken);
+        $firstName = trim((string) ($decodedIdToken['given_name'] ?? ''));
+        $lastName = trim((string) ($decodedIdToken['family_name'] ?? ''));
+        $name = trim((string) ($decodedIdToken['name'] ?? ''));
+
+        if (($firstName === '' || $lastName === '') && $name !== '') {
+            $nameParts = preg_split('/\s+/', $name, 2) ?: [];
+            $firstName = $firstName !== '' ? $firstName : (string) ($nameParts[0] ?? '');
+            $lastName = $lastName !== '' ? $lastName : (string) ($nameParts[1] ?? '');
+        }
+
+        return [
+            'email' => (string) ($decodedIdToken['email'] ?? $decodedAccessToken['username'] ?? ''),
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+        ];
     }
 
     /**

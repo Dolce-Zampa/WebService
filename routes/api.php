@@ -40,12 +40,13 @@ $app->group('/api', function () use ($app) {
     $app->post('/api/logout', PS\Webservice\Http\Controller\CustomerController::class . ':logout');
     $app->post('/api/contact', PS\Webservice\Http\Controller\CustomerController::class . ':contact');
     $app->post('/api/customers', PS\Webservice\Http\Controller\CustomerController::class . ':createCustomer');
+    $app->post('/api/password-reset', PS\Webservice\Http\Controller\CustomerController::class . ':sendResetPassword');
     $app->patch('/api/password-reset', PS\Webservice\Http\Controller\CustomerController::class . ':resetPassword');
 
-    $app->get('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':getAccount');
-    $app->put('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':updateAccount');
-    $app->get('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':getAddresses');
-    $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses');
+    $app->get('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':getAccount')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->put('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':updateAccount')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->get('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':getAddresses')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
     /** Order api */
     $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder');
@@ -67,12 +68,9 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/pet-services/categories', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':categories');
     $app->get('/api/pet-services/categores', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':categories');
     $app->get('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':show');
-    $app->post('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':save')
-        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->put('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':update')
-        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->delete('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':destroy')
-        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->post('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':save');
+    $app->put('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':update');
+    $app->delete('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':destroy');
 
     /** CMS */
     $app->get('/api/cms', PS\Webservice\Http\Controller\CmsController::class . ':cmsList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('cmslist'));
@@ -86,12 +84,12 @@ $app->group('/api', function () use ($app) {
 
 });
 
+$app->post('/api/seller/auth/register', PS\Webservice\Http\Controller\Seller\SellerController::class . ':register');
+$app->post('/api/seller/auth/login', PS\Webservice\Http\Controller\Seller\SellerController::class . ':login');
 $app->group('/api/seller', function() use ($app) {
 
     /** Sellet api */
-    $app->post('/api/seller/auth/register', PS\Webservice\Http\Controller\Seller\SellerController::class . ':register');
     $app->post('/api/seller/auth/confirm-token', PS\Webservice\Http\Controller\Seller\SellerController::class . ':confirmToken');
-    $app->post('/api/seller/auth/login', PS\Webservice\Http\Controller\Seller\SellerController::class . ':login');
     $app->post('/api/seller/auth/refresh', PS\Webservice\Http\Controller\Seller\SellerController::class . ':refresh');
     $app->get('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':me');
     $app->patch('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateMe');
@@ -104,7 +102,7 @@ $app->group('/api/seller', function() use ($app) {
     $app->put('/api/seller/products/{id}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProductDiscount');
     $app->delete('/api/seller/products/{id}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProductDiscount');
 
-});
+})->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
 

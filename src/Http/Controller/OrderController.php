@@ -322,14 +322,14 @@ class OrderController extends CartController
         }
     }
 
-    private function initializePaymentService(string $paymentMethod): \PS\Webservice\Service\Payments\PaymentGatewayInterface
+    private function initializePaymentService(string $paymentMethod): \PS\Webservice\Service\Auth\Payments\PaymentGatewayInterface
     {
         switch ($paymentMethod) {
             case 'stripe':
                 $apiKey = $_ENV['STRIPE_API_KEY'] ?? throw new \RuntimeException('STRIPE_API_KEY not configured');
-                return \PS\Webservice\Service\Payments\PaymentService::setApiKey($apiKey);
+                return \PS\Webservice\Service\Auth\Payments\PaymentService::setApiKey($apiKey);
             case 'cod':
-                return \PS\Webservice\Service\Payments\CodPaymentService::setApiKey('');
+                return \PS\Webservice\Service\Auth\Payments\CodPaymentService::setApiKey('');
             default:
                 throw new \InvalidArgumentException('Unsupported payment method: ' . $paymentMethod);
         }

@@ -5,15 +5,12 @@ namespace PS\Webservice\Service\Auth;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Exceptions\AuthException;
 use PS\Webservice\Facades\AwsCognitoClient;
-use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use PS\Webservice\Domain\Models\User;
 
 class LoginService extends SignUpService
 {
-    use UseCache;
-
     public function authenticate(Request $request): bool|array
     {
         $user = $request->getParsedBody()['email'];
@@ -50,7 +47,7 @@ class LoginService extends SignUpService
             $decodedToken = AwsCognitoClient::decodeAccessToken($userAuth['AccessToken']);
             $sub = $decodedToken['sub'];
 
-            \Illuminate\Support\Facades\Log::debug('Decoded token: ' . json_encode($decodedToken));
+            Log::debug('Decoded token: ' . json_encode($decodedToken));
 
             if (!empty($userAuth['error'])) {
                 Log::error('Authentication error: ' . $userAuth['error'], [
@@ -66,23 +63,23 @@ class LoginService extends SignUpService
             ]);
             return false;
         }
-        // $user = User::where('email', $user)->first();
+        $user = User::where('email', $user)->first();
 
-        // if(is_null($user)) {
-        //     Log::info('User not found in database');
-        //     return false;
-        // }
+        if(is_null($user)) {
+            Log::info('User not found in database');
+            return false;
+        }
 
-        // $user->sub = $sub;
-        // $user->save();
+        $user->sub = $sub;
+        $user->save();
 
         // put refresh token in cache
         $refreshToken = $userAuth['RefreshToken'];
         $idToken = $userAuth['IdToken'];
         $accessToken = $userAuth['AccessToken'];
 
-        $this->setToCache($sub.$accessToken.'refres_htoken', $refreshToken, Carbon::now()->addDays(30)->timestamp);
-        $this->setToCache($sub.$accessToken.'id_token', $idToken, Carbon::now()->addDays(30)->timestamp);
+        Cache::put($this->refreshTokenCacheKey($sub), $refreshToken, Carbon::now()->addDays(30));
+        Cache::put($this->idTokenCacheKey($sub), $idToken, Carbon::now()->addDays(30));
         
         return [
             'access_token' => $accessToken,
@@ -106,9 +103,9 @@ class LoginService extends SignUpService
         $authToken = str_replace('Bearer ', '', $authToken);
         $decodedToken = AwsCognitoClient::decodeAccessToken($authToken);
         
-        Cache::forget($decodedToken['sub'].'refresh_token');
-        Cache::forget($decodedToken['sub'].'id_token');
-        Cache::forget($decodedToken['sub'].'user_info');
+        Cache::forget($this->refreshTokenCacheKey($decodedToken['sub']));
+        Cache::forget($this->idTokenCacheKey($decodedToken['sub']));
+        Cache::forget($decodedToken['sub'] . 'user_info');
         
         return response([
             'success' => true,
