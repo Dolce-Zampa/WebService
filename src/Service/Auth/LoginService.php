@@ -8,10 +8,13 @@ use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Exceptions\AuthException;
 use PS\Webservice\Facades\AwsCognitoClient;
+use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class LoginService extends SignUpService
 {
+    use UseCache;
+
     public function authenticate(Request $request): bool|array
     {
         $user = $request->getParsedBody()['email'];
@@ -79,8 +82,8 @@ class LoginService extends SignUpService
         $idToken = $userAuth['IdToken'];
         $accessToken = $userAuth['AccessToken'];
 
-        Cache::put($this->refreshTokenCacheKey($sub), $refreshToken, Carbon::now()->addDays(30));
-        Cache::put($this->idTokenCacheKey($sub), $idToken, Carbon::now()->addDays(30));
+        $this->setToCache($this->refreshTokenCacheKey($sub), $refreshToken, Carbon::now()->addDays(30)->diffInSeconds());
+        $this->setToCache($this->idTokenCacheKey($sub), $idToken, Carbon::now()->addDays(30)->diffInSeconds());
         
         return [
             'access_token' => $accessToken,
