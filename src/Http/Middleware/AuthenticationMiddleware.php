@@ -22,16 +22,29 @@ class AuthenticationMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        // check if exist the auth header
-        // at the moment the token is a static token getting from env variable, in future we can implement a more complex authentication system
-        //FIXME: implement a more complex authentication system
         $authHeader = $request->getHeaderLine('Authorization');
-        $token = str_replace('Bearer ', '', $authHeader);
-        $expectedToken = env('API_AUTH_TOKEN', 'secret-token');
-        if ($token !== $expectedToken) {
-            return response(['error' => 'Unauthorized'], 401);
+        if (!$authHeader) {
+            return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Missing Authorization header']));
         }
-        
+
+        $authToken = str_replace('Bearer ', '', $authHeader);
+        if (empty($authToken)) {
+            return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Empty token']));
+        }
+
+        try {
+            $decodedToken = \PS\Webservice\Facades\AwsCognitoClient::decodeAccessToken($authToken);
+            if (isset($decodedToken['sub'])) {
+                $userId = $decodedToken['sub'];
+                $request = $request->withAttribute('user_id', $userId);
+            } else {
+                return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Invalid token']));
+            }
+        } catch (\Throwable $e) {
+            Log::error('Authentication error: ' . $e->getMessage(), ['exception' => $e]);
+            return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Invalid token']));
+        }
+
         return $handler->handle($request);
 
     }

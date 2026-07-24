@@ -1,6 +1,6 @@
 <?php
 
-namespace PS\Webservice\Service\Auth;
+namespace PS\Webservice\Service;
 
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Stringable;
@@ -29,7 +29,7 @@ interface AuthServiceInterface
 
     public function sendVerifyEmail(Request $request);
 
-    public function sendResetPasswordMail(Request $request);
+    public function sendResetPasswordMail(string $request);
 
     public function userInfoByEmail(string $email);
 }

@@ -83,7 +83,7 @@ class webserviceapimailerModuleFrontController extends MlabFactoryApiBaseModuleF
                 null, // Mittente nome (default)
                 $attachments,
                 null, // SMTP personalizzato
-                $this->getTemplatePath() // Percorso personalizzato
+                $this->getTemplatePath('') // Percorso personalizzato
             );
 
             if (!$mailSent) {
@@ -155,7 +155,7 @@ class webserviceapimailerModuleFrontController extends MlabFactoryApiBaseModuleF
     protected function templateExists(string $templateName): bool
     {
         $idLang = (int) Tools::getValue('id_lang', Configuration::get('PS_LANG_DEFAULT'));
-        $path = $this->getTemplatePath();
+        $path = $this->getTemplatePath('');
         
         // Verifica l'esistenza dei file HTML e TXT
         $htmlFile = $path . $this->getLanguageIso($idLang) . '/' . $templateName . '.html';
@@ -168,10 +168,10 @@ class webserviceapimailerModuleFrontController extends MlabFactoryApiBaseModuleF
     /**
      * Ottiene il percorso dei template
      */
-    protected function getTemplatePath(): string
+    public function getTemplatePath($template)
     {
         // Puoi personalizzare il percorso base
-        return _PS_MODULE_DIR_ . 'tuomodulo/mails/';
+        return _PS_ROOT_DIR_ . '/mails/';
     }
 
     /**

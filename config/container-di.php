@@ -79,7 +79,9 @@ $container->set(\PS\Webservice\Service\PS\PrestashopService::class, function ($c
 
 // CORREZIONE: da get() a set()
 $container->set(\PS\Webservice\Service\Auth\AuthService::class, function($c) {
-    return new \PS\Webservice\Service\Auth\AuthService();
+    return new \PS\Webservice\Service\Auth\AuthService(
+        $c->get(\PS\Webservice\Service\PS\Mailer::class)
+    );
 });
 
 // CORREZIONE: da get() a set()

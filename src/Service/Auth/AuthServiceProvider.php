@@ -4,11 +4,32 @@ namespace PS\Webservice\Service\Auth;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Facade;
+use PS\Webservice\Domain\Models\User;
+use PS\Webservice\Facades\AwsCognitoClient;
+use PS\Webservice\Service\MailerInterface;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
-class ServiceProvider {
+class AuthServiceProvider {
+
+    protected MailerInterface $mailer;
+
+    public function __construct(MailerInterface $mailer)
+    {
+        $this->mailer = $mailer;
+    }
+
+    protected function refreshTokenCacheKey(string $sub): string
+    {
+        return $sub . 'refresh_token';
+    }
+
+    protected function idTokenCacheKey(string $sub): string
+    {
+        return $sub . 'id_token';
+    }
 
     /**
      * Authenticates the provider.
@@ -123,8 +144,8 @@ class ServiceProvider {
         //retrive user workspaces
         $user = User::where('email', Crypt::encrypt($userEmail))->with('workspaces')->first();
 
-        Cache::put($sub.'refresh_token', $tokens->refresh_token, Carbon::now()->addDays(30));
-        Cache::put($sub.'id_token', $tokens->id_token, Carbon::now()->addDays(30));
+        Cache::put($this->refreshTokenCacheKey($sub), $tokens->refresh_token, Carbon::now()->addDays(30));
+        Cache::put($this->idTokenCacheKey($sub), $tokens->id_token, Carbon::now()->addDays(30));
             
         return [
             'token' => $tokens->access_token,

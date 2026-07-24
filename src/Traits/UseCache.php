@@ -57,6 +57,7 @@ trait UseCache
     protected function existsInCache(string $key): bool
     {
         $key = sha1($key);
+
         return Cache::tags($this->tags)->has($key);
     }
 }

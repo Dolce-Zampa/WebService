@@ -71,4 +71,13 @@ if(!function_exists('slugify')) {
     }
 }
 
+if(!function_exists('generate_token')) {
+    function generate_token(array $params) {
+        //convert param to string
+        $paramsString = json_encode($params);
+        //generate token
+        return hash('sha256', $paramsString . time());
+    }
+}
+
 // More functions...
