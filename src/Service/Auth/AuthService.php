@@ -63,8 +63,6 @@ class AuthService extends LoginService implements AuthServiceInterface
         Log::debug('Decoded token: ' . json_encode($decodedToken));
 
         $idToken = Cache::get($this->idTokenCacheKey($decodedToken['sub']));
-        $username = $decodedToken['username'];
-
         if (empty($idToken)) {
             throw new AuthException('Invalid id token token', 401);
         }
