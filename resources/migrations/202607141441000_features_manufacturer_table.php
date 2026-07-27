@@ -55,6 +55,12 @@ final class FeaturesManufacturerTable extends AbstractMigration
             $table->addColumn('avatar', 'string', ['limit' => 255, 'null' => true, 'after' => 'phone_number']);
         }
 
+        $table = $this->table(env('PS_TABLE_PREFIX').'customer');
+        $table
+            ->addColumn('uuid', 'string', ['limit' => 36, 'null' => true, 'after' => 'id_customer'])
+            ->addColumn('sub', 'string', ['limit' => 255, 'null' => true, 'after' => 'uuid'])
+            ->update();
+
         $table->update();
     }
 
