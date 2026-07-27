@@ -58,6 +58,7 @@ class SellerController
                 $bodyParams['last_name'] = $bodyParams['last_name'] ?? ($identity['last_name'] ?? null);
                 $bodyParams['auth_token'] = $authToken;
             } catch (\Throwable $e) {
+                //FIXME IT'S A BUG
                 Log::error('Unable to resolve authenticated user during seller conversion: ' . $e->getMessage());
                 return response(['error' => 'Invalid authenticated user'], 401);
             }
