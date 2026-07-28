@@ -43,7 +43,7 @@ class ManufactureEntity implements ObjectInterface
 	public function __get(string $name): mixed
 	{
 		if (!array_key_exists($name, $this->data)) {
-			throw new \InvalidArgumentException('No argument found with ' . $name);
+			return null;
 		}
 
 		return $this->data[$name];

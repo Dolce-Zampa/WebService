@@ -111,6 +111,7 @@ class CustomerController extends Controller
 
         $customer = $this->customerService->getAccount(3)->toArray();
         $isSeller = (bool) $this->extractCognitoAttribute($cognitoAuth['id_token'], 'custom:seller');
+        $sub = $this->extractCognitoAttribute($cognitoAuth['access_token'], 'sub');
 
         if($customer['success'] === false) {
             Log::error('Customer PrestaShop account retrieval failed after Cognito login', [
@@ -123,7 +124,7 @@ class CustomerController extends Controller
         return response([
             'token' => $cognitoAuth['access_token'] ?? null,
             'message' => 'Login successful',
-            'customer' => array_merge($customer['data']['customer'], ['is_seller' => $isSeller], ['addresses' => $customer['data']['addresses'] ]),
+            'customer' => array_merge($customer['data']['customer'], ['is_seller' => $isSeller], ['addresses' => $customer['data']['addresses'], 'sub' => $sub]),
         ]);
     }
 

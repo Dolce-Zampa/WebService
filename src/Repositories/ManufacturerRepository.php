@@ -5,49 +5,73 @@ namespace PS\Webservice\Repositories;
 
 use Carbon\Carbon;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
+use PS\Webservice\Domain\Models\Manufacturer;
+use PS\Webservice\Domain\Models\ManufacturerDetail;
+use PS\Webservice\Domain\Models\ManufacturerLang;
+use PS\Webservice\Domain\Models\ManufacturerShop;
+use Ramsey\Uuid\Uuid;
 
 class ManufacturerRepository
 {
-    protected string $tablePrefix;
     protected \Illuminate\Database\Capsule\Manager $db;
 
     public function signupNewManufacturer(ManufactureEntity $manufacture): void
     {
-        $this->db->table($this->tablePrefix . 'manufacturer')
-            ->insert([
-                'uuid' => $manufacture->uuid,
-                'email' => $manufacture->email,
-                'sub' => $manufacture->sub,
+        $manufacturer = Manufacturer::updateOrCreate(
+            ['email' => $manufacture->email],
+            [
                 'name' => $manufacture->name,
-                'date_add' => Carbon::now()->toDateTimeString(),
-                'date_upd' => Carbon::now()->toDateTimeString(),
+                'uuid' => Uuid::uuid4()->toString(),
                 'active' => 0,
-                'link_rewrite' => $manufacture->link_rewrite,
-            ]);
+                'link_rewrite' => slugify($manufacture->name),
+                'date_add' => Carbon::now(),
+                'date_upd' => Carbon::now(),
+                'sub' => $manufacture->sub,
+            ]
+        );
+
+        ManufacturerDetail::updateOrCreate(
+            ['id_manufacturer' => $manufacturer->id_manufacturer],
+            [
+                'id_manufacturer' => $manufacturer->id_manufacturer,
+                'first_name' => $manufacture->first_name,
+                'last_name' => $manufacture->last_name,
+                'fiscal_code' => $manufacture->fiscal_code,
+                'vat_number' => $manufacture->vat_number,
+                'address' => $manufacture->address,
+                'city' => $manufacture->city,
+                'zip_code' => $manufacture->postcode,
+                'country' => $manufacture->country,
+                'state' => $manufacture->state,
+                'phone_number' => $manufacture->phone_number,
+                'avatar' => $manufacture->avatar
+            ]
+        );
+
+        ManufacturerShop::updateOrCreate(
+            ['id_manufacturer' => $manufacturer->id_manufacturer],
+            [
+                'id_manufacturer' => $manufacturer->id_manufacturer,
+                'id_shop' => 1,
+            ]
+        );
+
+        ManufacturerLang::updateOrCreate(
+            ['id_manufacturer' => $manufacturer->id_manufacturer],
+            [
+                'id_manufacturer' => $manufacturer->id_manufacturer,
+                'id_lang' => 1,
+                'description' => $manufacture->description,
+                'short_description' => $manufacture->short_description,
+                'meta_title' => $manufacture->meta_title,
+                'meta_description' => $manufacture->meta_description,
+            ]
+        );
     }
 
     public function getTotalAddToCart(int $idManufacturer): int
     {
-        $query = '
-        SELECT 
-            p.`id_product`,
-            pl.`name` AS product_name,
-            p.`reference`,
-            p.`id_manufacturer`,
-            m.`name` AS manufacturer_name,
-            SUM(cp.`quantity`) AS total_quantity_added_to_cart,
-            COUNT(DISTINCT cp.`id_cart`) AS number_of_carts
-        FROM `fy8ie_cart_product` cp
-        LEFT JOIN `fy8ie_product` p ON cp.`id_product` = p.`id_product`
-        LEFT JOIN `fy8ie_product_lang` pl ON p.`id_product` = pl.`id_product`
-        LEFT JOIN `fy8ie_manufacturer` m ON p.`id_manufacturer` = m.`id_manufacturer`
-        WHERE p.`id_manufacturer` = :idManufacturer
-        GROUP BY p.`id_product`, pl.`name`, p.`reference`, p.`id_manufacturer`, m.`name`
-        ORDER BY total_quantity_added_to_cart DESC;
-        ';
-
-        $results = $this->db->query($query, [$idManufacturer]);
-
+        $results = $this->db->table('v_manufacturer_cart_products_stats')->where('id_manufacturer', $idManufacturer)->get();
         $count = 0;
         foreach ($results as $row) {
             $count += (int) $row->total_quantity_added_to_cart;
@@ -58,47 +82,13 @@ class ManufacturerRepository
 
     public function getTotalRevenue(int $idManufacturer): float
     {
-        $query = '
-        SELECT 
-            m.`id_manufacturer`,
-            m.`name` AS manufacturer_name,
-            COUNT(DISTINCT od.`id_order`) AS total_orders,
-            SUM(od.`product_quantity`) AS total_units_sold,
-            ROUND(SUM(od.`total_price_tax_incl`), 2) AS total_revenue_tax_incl,
-            ROUND(SUM(od.`total_price_tax_excl`), 2) AS total_revenue_tax_excl,
-            ROUND(AVG(od.`total_price_tax_incl`), 2) AS avg_order_value
-        FROM `fy8ie_order_detail` od
-        LEFT JOIN `fy8ie_product` p ON od.`product_id` = p.`id_product`
-        LEFT JOIN `fy8ie_manufacturer` m ON p.`id_manufacturer` = m.`id_manufacturer`
-        WHERE p.`id_manufacturer` = :idManufacturer
-        GROUP BY m.`id_manufacturer`, m.`name`
-        ORDER BY total_revenue_tax_incl DESC;
-        ';
-
-        $results = $this->db->query($query, [$idManufacturer]);
-
+        $results = $this->db->table('v_manufacturer_sales_stats')->where('id_manufacturer', $idManufacturer)->get();
         return $results->first()->total_revenue_tax_incl ?? 0.0;
     }
 
     public function getTotalNumberOfOrders(int $idManufacturer): int
     {
-        $query = '
-        SELECT 
-            m.`id_manufacturer`,
-            m.`name` AS manufacturer_name,
-            COUNT(DISTINCT o.`id_order`) AS total_orders,
-            ROUND(SUM(o.`total_paid_tax_incl`), 2) AS total_revenue,
-            ROUND(AVG(o.`total_paid_tax_incl`), 2) AS avg_order_value
-        FROM `fy8ie_orders` o
-        INNER JOIN `fy8ie_order_detail` od ON o.`id_order` = od.`id_order`
-        INNER JOIN `fy8ie_product` p ON od.`product_id` = p.`id_product`
-        INNER JOIN `fy8ie_manufacturer` m ON p.`id_manufacturer` = m.`id_manufacturer`
-        WHERE m.`id_manufacturer` = :idManufacturer
-        GROUP BY m.`id_manufacturer`, m.`name`;
-        ';
-
-        $results = $this->db->query($query, [$idManufacturer]);
-
+        $results = $this->db->table('v_manufacturer_orders_stats')->where('id_manufacturer', $idManufacturer)->get();
         return $results->first()->total_orders ?? 0;
     }
 

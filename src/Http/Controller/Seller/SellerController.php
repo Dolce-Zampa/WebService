@@ -14,17 +14,19 @@ use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\AuthServiceInterface;
 use PS\Webservice\Service\PS\Mailer;
-use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Service\PS\PrestashopService;
+use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Traits\PaginationTrait;
+use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Psr\Http\Message\UploadedFileInterface;
 use Ramsey\Uuid\Uuid;
-
+use PS\Webservice\Traits\FileResource;
 
 class SellerController
 {
-    use PaginationTrait;
+    use PaginationTrait, UseCache, FileResource;
 
     protected AuthServiceInterface $authService;
     protected Mailer $mailer;
@@ -46,6 +48,7 @@ class SellerController
     public function register(Request $request): ResponseInterface
     {
         $bodyParams = $this->requireArrayPayload($request->getParsedBody());
+        $avatarUpload = $request->getUploadedFiles()['avatar'] ?? null;
         $authorizationHeader = $request->getHeaderLine('Authorization');
 
         if ($authorizationHeader !== '') {
@@ -79,7 +82,6 @@ class SellerController
                 'email' => 'email|max:64',
                 'shop_name' => 'required|max:255',
                 'address' => 'required|max:255',
-                'avatar' => 'file|mimes:jpeg,png,jpg,gif|max:2048',
             ]);
 
             $collection = collect([
@@ -98,6 +100,8 @@ class SellerController
                 'zip_code' => $bodyParams['zip_code'] ?? null,
                 'phone_number' => $bodyParams['phone_number'] ?? null,
                 'auth_token' => $bodyParams['auth_token'] ?? null,
+                'avatar' => $bodyParams['avatar'] ?? null,
+                'premium' => $bodyParams['premium'] ?? 0,
             ]);
 
             $data = $collection->only(
@@ -115,7 +119,8 @@ class SellerController
                 'country',
                 'zip_code',
                 'phone_number',
-                'auth_token'
+                'auth_token',
+                'premium',
             );
 
             if (Manufacturer::query()->where('email', $data->get('email'))->exists()) {
@@ -133,7 +138,7 @@ class SellerController
             return response(['error' => 'Sign up failed'], 400);
         }
 
-        $sub = $this->extractCognitoAttribute($signup['access_token'], 'sub');
+        $sub = $signup['sub'] ?? null;
         if ($sub === null) {
             Log::error('Missing Cognito sub after sign up');
             if (($signup['is_new_user'] ?? false) === true) {
@@ -144,14 +149,12 @@ class SellerController
 
         $uuid = Uuid::uuid4()->toString();
 
-        //save avatar file in blob if provided
-        if (isset($bodyParams['avatar']) && is_array($bodyParams['avatar']) && isset($bodyParams['avatar']['tmp_name'])) {
-            $avatarPath = $bodyParams['avatar']['tmp_name'];
-            $avatarContent = file_get_contents($avatarPath);
-        }
-
         try {
             $this->mailer->sendSignUpMail($bodyParams['email'], $name);
+            if(($bodyParams['premium'] ?? 0) == 1){
+                $this->mailer->sendPremiumSignUpMail($bodyParams['email'], $name);
+            }
+
         } catch (\Throwable $e) {
             Log::error("Failed to send sign up email: " . $e->getMessage());
             return response(['error' => 'Failed to send sign up email'], 500);
@@ -159,6 +162,27 @@ class SellerController
 
         // save user in prestashop database
         try {
+            //upload avatar
+            if ($avatarUpload instanceof UploadedFileInterface && $avatarUpload->getError() === UPLOAD_ERR_OK) {
+                $clientFilename = (string) $avatarUpload->getClientFilename();
+                $extension = strtolower(pathinfo($clientFilename, PATHINFO_EXTENSION));
+                $allowedExtensions = ['jpeg', 'jpg', 'png', 'gif'];
+
+                if ($extension !== '' && !in_array($extension, $allowedExtensions, true)) {
+                    throw new \InvalidArgumentException('Invalid avatar file type', 400);
+                }
+
+                $size = $avatarUpload->getSize();
+                if ($size !== null && $size > 2 * 1024 * 1024) {
+                    throw new \InvalidArgumentException('Avatar file too large', 400);
+                }
+
+                $avatarDirectory = storage_path('avatars');
+                $avatarFileName = ($clientFilename !== '' ? $clientFilename : 'avatar') . '-' . $uuid;
+                $avatar = $this->uploadUploadedFile($avatarUpload, $avatarDirectory, $avatarFileName);
+            } else {
+                $avatar = null;
+            }
             $entity = ManufactureEntity::create(
                 [
                     'name' => $name,
@@ -166,7 +190,7 @@ class SellerController
                     'sub' => $sub,
                     'link_rewrite' => slugify($name),
                     'uuid' => $uuid,
-                    'avatar' => $avatarContent ?? null,
+                    'avatar' => $avatar,
                     'first_name' => $data['first_name'] ?? null,
                     'last_name' => $data['last_name'] ?? null,
                     'fiscal_code' => $data['fiscal_code'] ?? null,
@@ -205,6 +229,36 @@ class SellerController
             ,
             201
         );
+    }
+
+    public function sellerProucts(Request $request, mixed $response = null, array $args = []): ResponseInterface
+    {
+        try {
+            $sellerId = $this->resolveManufacturerIdBySellerIdentifier($args['sellerid'] ?? null);
+            if ($sellerId === null) {
+                return response(['success' => false, 'message' => 'Seller ID is required'], 400);
+            }
+
+            $pagination = $this->getPaginationParams($request->getQueryParams());
+            $products = $this->productService->getProductByManufacture(
+                (string) $sellerId,
+                null,
+                ['limit' => min($pagination['per_page'], 50), 'page' => $pagination['page']]
+            );
+
+            $totalProducts = $this->productService->countProducts([
+                'filter[id_manufacturer]' => '[' . $sellerId . ']'
+            ]);
+
+            return response($this->paginatedResponse(
+                $products->toArray(),
+                $pagination['page'],
+                $pagination['per_page'],
+                $totalProducts
+            ));
+        } catch (\Throwable $e) {
+            return response(['success' => false, 'message' => $e->getMessage()], 400);
+        }
     }
 
     public function confirmToken(Request $request): ResponseInterface
@@ -602,7 +656,7 @@ class SellerController
             throw new \RuntimeException('Invalid access token', 401);
         }
 
-        $idToken = Cache::get($sub . 'id_token');
+        $idToken = $this->getFromCache($sub);
         if (!is_string($idToken) || $idToken === '') {
             throw new \RuntimeException('Missing id token for authenticated user', 401);
         }
@@ -632,7 +686,37 @@ class SellerController
     {
         $data = $manufacturer->toArray();
         $data['shop_name'] = $data['name'] ?? null;
+        $data['seller_id'] = $data['sub'] ?? null;
 
         return $data;
+    }
+
+    private function resolveManufacturerIdBySellerIdentifier(mixed $sellerIdentifier): ?int
+    {
+        if (!is_string($sellerIdentifier) && !is_int($sellerIdentifier)) {
+            return null;
+        }
+
+        $value = trim((string) $sellerIdentifier);
+        if ($value === '') {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            $sellerId = (int) $value;
+            return $sellerId > 0 ? $sellerId : null;
+        }
+
+        $manufacturer = Manufacturer::query()
+            ->select('id_manufacturer')
+            ->where('sub', $value)
+            ->first();
+
+        if ($manufacturer === null) {
+            return null;
+        }
+
+        $sellerId = (int) ($manufacturer->id_manufacturer ?? 0);
+        return $sellerId > 0 ? $sellerId : null;
     }
 }

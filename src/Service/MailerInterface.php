@@ -9,4 +9,6 @@ interface MailerInterface
     public function sendResetPasswordMail(string $email, string $token): void;
 
     public function sendResetPasswordConfirmationMail(string $email): void;
+
+    public function sendPremiumSignUpMail(string $email, string $username): void;
 }

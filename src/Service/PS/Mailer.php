@@ -76,5 +76,23 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
             throw new PrestashopConnectorException($this->httpService, $e);
         }
     }
+
+    public function sendPremiumSignUpMail(string $email, string $username): void
+    {
+        try {
+            $this->httpService->setUrl('/mailer?debug=true');
+            $this->httpService->invoke('POST',
+                new PayloadServiceData(
+                    [
+                        'subject' => 'Benvenuto nel programma Premium di Dolce & Zampa!',
+                        'to_email' => $email,
+                        'to_name' => $username,
+                        'template' => TemplateMail::PREMIUM_SIGNUP->value,
+                    ]
+                ));
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
    
 }

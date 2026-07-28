@@ -82,8 +82,8 @@ class LoginService extends SignUpService
         $idToken = $userAuth['IdToken'];
         $accessToken = $userAuth['AccessToken'];
 
-        $this->setToCache($this->refreshTokenCacheKey($sub), $refreshToken, Carbon::now()->addDays(30)->diffInSeconds());
-        $this->setToCache($this->idTokenCacheKey($sub), $idToken, Carbon::now()->addDays(30)->diffInSeconds());
+        $this->setToCache($sub, $refreshToken, 2592000 ); // Cache for 30 days
+        $this->setToCache($sub, $idToken, 2592000 ); // Cache for 30 days
         
         return [
             'access_token' => $accessToken,
