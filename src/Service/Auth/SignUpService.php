@@ -18,16 +18,12 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use malirobot\AwsCognito\Exception\UsernameExistsException;
 use PS\Webservice\Domain\Models\Manufacturer;
-use PS\Webservice\Domain\Models\ManufacturerDetail;
-use PS\Webservice\Domain\Models\ManufacturerLang;
-use PS\Webservice\Domain\Models\ManufacturerShop;
 use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Traits\AuthFlow;
 use PS\Webservice\Traits\RegistersUsers;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use Ramsey\Uuid\Nonstandard\Uuid;
 
 class SignUpService extends UserService
 {
@@ -61,7 +57,6 @@ class SignUpService extends UserService
 
                 $isNewUser = true;
             }
-            $this->updateUserSellerAttributes($payload);
 
             //create user in DB
             try {
@@ -71,6 +66,10 @@ class SignUpService extends UserService
                     'active' => 1,
                     'firstname' => $payload->get('first_name'),
                     'lastname' => $payload->get('last_name'),
+                    'id_gender' => 1,
+                    'passwd' => $payload->get('password'),
+                    'date_add' => Carbon::now(),
+                    'date_upd' => Carbon::now(),
                 ]);
             } catch (\Exception $e) {
                 Log::critical("User creation in DB failed: " . $e->getMessage());
@@ -92,9 +91,6 @@ class SignUpService extends UserService
 
             $payload = $this->mergeIdentityIntoPayload($payload, $resolvedAuth);
 
-            $this->updateUserSellerAttributes($payload);
-            $this->saveManufacturer($payload);
-
         } catch (\Exception $e) {
             Log::critical($e->getMessage());
             if ($isNewUser === true) {
@@ -102,6 +98,8 @@ class SignUpService extends UserService
             }
             return false;
         }
+
+        $this->updateUserSellerAttributes($payload);
 
         $decodedToken = AwsCognitoClient::decodeAccessToken((string) $authToken);
         $sub = $decodedToken['sub'] ?? null;
@@ -112,8 +110,8 @@ class SignUpService extends UserService
             return false;
         }
 
-        $this->setToCache($this->refreshTokenCacheKey($sub), $resolvedAuth['RefreshToken'] ?? null, Carbon::now()->addDays(30)->diffInSeconds());
-        $this->setToCache($this->idTokenCacheKey($sub), $resolvedAuth['IdToken'] ?? null, Carbon::now()->addDays(30)->diffInSeconds());
+        $this->setToCache($sub, $resolvedAuth['RefreshToken'] ?? null, 2592000);
+        $this->setToCache($sub, $resolvedAuth['IdToken'] ?? null, 2592000);
 
         return [
             'access_token' => $auth['AccessToken'] ?? null,
@@ -133,6 +131,7 @@ class SignUpService extends UserService
 
         AwsCognitoClient::updateUserAttributes($data->get('email'), [
             'custom:seller' => (int) ($data->get('is_seller')),
+            'custom:premium' => (int) ($data->get('premium', 0)),
             'name' => $data->get('name'),
         ]);
     }
@@ -278,61 +277,5 @@ class SignUpService extends UserService
         $this->tags(['user-signup'])->removeFromCache($token);
 
         return true;
-    }
-
-    protected function saveManufacturer(Collection $payload): void
-    {
-        $manufacturer = Manufacturer::updateOrCreate(
-            ['email' => $payload->get('email')],
-            [
-                'name' => $payload->get('name'),
-                'uuid' => Uuid::uuid4()->toString(),
-                'active' => 0,
-                'link_rewrite' => slugify($payload->get('name')),
-                'date_add' => Carbon::now(),
-                'date_upd' => Carbon::now(),
-                'sub' => $payload->get('sub'),
-            ]
-        );
-
-        ManufacturerDetail::updateOrCreate(
-            ['id_manufacturer' => $manufacturer->ufacturer],
-            [
-                'id_manufacturer' => $manufacturer->id_manufacturer,
-                'first_name' => $payload->get('first_name'),
-                'last_name' => $payload->get('last_name'),
-                'fiscal_code' => $payload->get('fiscal_code', null),
-                'vat_number' => $payload->get('vat_number', null),
-                'address' => $payload->get('address', null),
-                'city' => $payload->get('city', ''),
-                'zip_code' => $payload->get('postcode', null),
-                'country' => $payload->get('country', null),
-                'state' => $payload->get('state', null),
-                'phone_number' => $payload->get('phone_number', null),
-                'avatar' => $payload->get('avatar', null)
-            ]
-        );
-
-        ManufacturerShop::updateOrCreate(
-            ['id_manufacturer' => $manufacturer->id_manufacturer],
-            [
-                'id_manufacturer' => $manufacturer->id_manufacturer,
-                'id_shop' => 1,
-            ]
-        );
-
-        ManufacturerLang::updateOrCreate(
-            ['id_manufacturer' => $manufacturer->id_manufacturer],
-            [
-                'id_manufacturer' => $manufacturer->id_manufacturer,
-                'id_lang' => 1,
-                'description' => $payload->get('description', null),
-                'short_description' => $payload->get('short_description', null),
-                'meta_title' => $payload->get('meta_title', null),
-                'meta_description' => $payload->get('meta_description', null),
-                'meta_keywords' => $payload->get('meta_keywords', null),
-            ]
-        );
-
     }
 }

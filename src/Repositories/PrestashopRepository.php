@@ -9,11 +9,8 @@ class PrestashopRepository extends ManufacturerRepository
 {
     protected \Illuminate\Database\Capsule\Manager $db;
 
-    protected string $tablePrefix;
-
     public function __construct(\Illuminate\Database\Capsule\Manager $db)
     {
-        $this->tablePrefix = env('PS_TABLE_PREFIX', 'ps_');
         $this->db = $db;
     }
 
@@ -24,7 +21,7 @@ class PrestashopRepository extends ManufacturerRepository
      */
     public function getProductReviews(int $idProduct): Collection
     {
-        $reviews = $this->db->table($this->tablePrefix.'product_reviews')
+        $reviews = $this->db->table('product_reviews')
             ->where('id_product', $idProduct)
             ->get();
 
@@ -38,7 +35,7 @@ class PrestashopRepository extends ManufacturerRepository
      */
     public function getManufacturertReviews(int $idmanufacturer): Collection
     {
-        $reviews = $this->db->table($this->tablePrefix.'product_reviews')
+        $reviews = $this->db->table('product_reviews')
             ->where('id_manufacturer', $idmanufacturer)
             ->get();
 

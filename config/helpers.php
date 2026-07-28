@@ -41,6 +41,16 @@ if(!function_exists('response')) {
             return __DIR__ . '/../storage/' . ltrim($path, '/');
         }
     }
+
+    if(!function_exists('image_path')) {
+        function image_path(string $path = ''): string {
+            if(env('APP_IMAGE_PATH')) {
+                return env('APP_IMAGE_PATH') . '/' . ltrim($path, '/');
+            }
+
+            return __DIR__ . '/../storage/' . ltrim($path, '/');
+        }
+    }
 }
 
 if(!function_exists('slugify')) {

@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Cache;
 trait UseCache
 {
 
-    private array $tags = [];
+    private array $tags = [
+        'dolcezampa'
+    ];
 
     protected function getFromCache(string $key): mixed
     {
@@ -20,7 +22,7 @@ trait UseCache
 
         return null;
     }
-
+    // "c275d4f4-2011-7091-eb17-87e208e05738" "57f6dd7f7506f497933045377e718d257a0b9006"
     protected function setToCache(string $key, mixed $value, ?int $ttl = 1440): void
     {
         $key = sha1($key);

@@ -96,6 +96,7 @@ $app->group('/api/seller', function() use ($app) {
     $app->get('/api/seller/dashboard/summary', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardSummary');
     $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics');
     $app->post('/api/seller/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':products');
+    $app->post('/api/seller/products/{sellerid}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':sellerProucts');
     $app->get('/api/seller/products/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':productDetail');
     $app->patch('/api/seller/products/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProduct');
     $app->delete('/api/seller/products/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProduct');
