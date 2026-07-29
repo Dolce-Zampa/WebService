@@ -3,8 +3,11 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
+use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Enums\TemplateMail;
 use PS\Webservice\Domain\Object\PayloadServiceData;
+use PS\Webservice\Facades\PaymentService;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Traits\UseCache;
 
@@ -80,6 +83,20 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
     public function sendPremiumSignUpMail(string $email, string $username): void
     {
         try {
+            $paymentLink = PaymentService::getPaymentUrl(
+                env('STRIPE_PREMIUM_PRICE_ID'),
+                ManufactureEntity::create([
+                    'username' => $username,
+                    'email' => $email,
+                    'product' => 'premium'
+                ], new PrestashopService($this->httpService))
+            );
+        } catch (\Throwable $e) {
+            Log::critical("Failed to generate payment link for premium signup: " . $e->getMessage());
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+
+        try {
             $this->httpService->setUrl('/mailer?debug=true');
             $this->httpService->invoke('POST',
                 new PayloadServiceData(
@@ -90,7 +107,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                         'template' => TemplateMail::PREMIUM_SIGNUP->value,
                         'template_vars' => [
                             'name' => $username,
-                            'payment_url' => '',
+                            'payment_url' => $paymentLink,
                         ]
                     ]
                 ));
