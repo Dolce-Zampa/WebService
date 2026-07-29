@@ -4,8 +4,8 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
-use PS\Webservice\Service\PS\Brand;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Domain\Models\ManufacturerDetail;
 
 class ManufactureEntity implements ObjectInterface
 {
@@ -51,18 +51,16 @@ class ManufactureEntity implements ObjectInterface
 
 	public function normalizeData(): void
 	{
-		$extensions = ['jpg', 'png', 'jpeg', 'gif'];
 		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
 
 		$filename = $this->data['slug'];
-		foreach ($extensions as $ext) {
-			$domanin = "https://www.dolcezampa.com";
-			$imageUrl = "{$domanin}/img/m/{$filename}.{$ext}";
-			if (@file_get_contents($imageUrl)) {
-				$this->data['image'] = $imageUrl;
-				break;
-			}
-		}
+		$this->data['image'] = $this->getAvatar();
+	}
+
+	private function getAvatar(): ?string
+	{
+		$avatar = ManufacturerDetail::getAvatar($this->getId());
+		return $this->data['image'] ?? null;
 	}
 	
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData

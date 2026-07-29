@@ -16,9 +16,9 @@ $logLevels = [
 $logLevel = $logLevels[strtolower(env('APP_LOG_LEVEL', 'debug'))] ?? \Monolog\Level::Debug;
 
 // Inizializzazione logger con controllo più robusto sul nome dell'app
-$appName = env("APP_NAME", "BudgetControl");
+$appName = env("APP_NAME", "DolceZampa");
 if (empty(trim($appName))) {
-    $appName = "BudgetControl";
+    $appName = "DolceZampa";
 }
 $logger = new \Monolog\Logger($appName);
 

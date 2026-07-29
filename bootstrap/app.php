@@ -53,4 +53,5 @@ Facade::setFacadeApplication([
     'cache' => $cache,
     'aws-cognito-client' => $awsCognitoClient,
     'validator' => $validator,
+    'public-repositories' => $container->get(\PS\Webservice\Repositories\PrestashopRepository::class),
     ]);

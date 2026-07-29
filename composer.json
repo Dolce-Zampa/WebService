@@ -42,7 +42,7 @@
         "mdf/json-database-storage": "~v1.0.1",
         "sentry/sentry": "^4.27",
         "predis/predis": "~3.4",
-        "malirobot/aws-cognito": "v1.0.2",
+        "malirobot/aws-cognito": "~v1.0.3",
         "illuminate/validation": "^11.51"
     },
     "require-dev": {
