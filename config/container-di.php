@@ -127,7 +127,9 @@ $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, f
 
 
 $container->set(\PS\Webservice\Service\Payments\PaymentService::class, function ($c) {
-    return new \PS\Webservice\Service\Payments\PaymentService();
+    $payment = new \PS\Webservice\Service\Payments\PaymentService();
+    $payment->setApiKey(env('STRIPE_API_KEY'));
+    return $payment;
 });
 
 // CORREZIONE: $currierService → $carrierService
