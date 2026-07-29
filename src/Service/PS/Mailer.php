@@ -88,6 +88,10 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                         'to_email' => $email,
                         'to_name' => $username,
                         'template' => TemplateMail::PREMIUM_SIGNUP->value,
+                        'template_vars' => [
+                            'name' => $username,
+                            'payment_url' => '',
+                        ]
                     ]
                 ));
         } catch (\Throwable $e) {
