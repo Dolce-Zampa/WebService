@@ -687,7 +687,7 @@ class SellerController
         $data = $manufacturer->toArray();
         $data['shop_name'] = $data['name'] ?? null;
         $data['seller_id'] = $data['sub'] ?? null;
-
+        $data['avatar'] = ManufacturerDetail::getAvatar($data['id_manufacturer']);
         return $data;
     }
 

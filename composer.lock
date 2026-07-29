@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "68af93a977a6b1b294a65961a15fd5d5",
+    "content-hash": "65c50813215ca014de6adc5a153f4178",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -2747,16 +2747,16 @@
         },
         {
             "name": "malirobot/aws-cognito",
-            "version": "v1.0.2",
+            "version": "v1.0.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/MaliRobot/aws-cognito.git",
-                "reference": "f1783444ea95e998172ec1a60103916d62ee0c38"
+                "reference": "2afa7227db3e78ca791f0d0661c7770d5609281c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/MaliRobot/aws-cognito/zipball/f1783444ea95e998172ec1a60103916d62ee0c38",
-                "reference": "f1783444ea95e998172ec1a60103916d62ee0c38",
+                "url": "https://api.github.com/repos/MaliRobot/aws-cognito/zipball/2afa7227db3e78ca791f0d0661c7770d5609281c",
+                "reference": "2afa7227db3e78ca791f0d0661c7770d5609281c",
                 "shasum": ""
             },
             "require": {
@@ -2796,9 +2796,9 @@
                 "php"
             ],
             "support": {
-                "source": "https://github.com/MaliRobot/aws-cognito/tree/v1.0.2"
+                "source": "https://github.com/MaliRobot/aws-cognito/tree/v1.0.3"
             },
-            "time": "2024-09-06T15:15:11+00:00"
+            "time": "2026-07-29T10:15:07+00:00"
         },
         {
             "name": "mdf/json-database-storage",
