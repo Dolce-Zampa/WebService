@@ -101,6 +101,7 @@ class ProductEntity implements ObjectInterface
         $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);
         $currentPrice = round((float)$this->data['price'], 2, PHP_ROUND_HALF_UP);
         $this->data['on_sale'] = $originalePrice < $currentPrice;
+        $this->data['shipping_cost'] = '6.99'; //FIXME: remove this on production, shipping cost will be calculated on checkout
     }
 
     public function withFeatures(): self
