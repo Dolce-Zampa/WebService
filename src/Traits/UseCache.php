@@ -65,7 +65,7 @@ trait UseCache
         $cacheKey = json_encode($data);
         $cachedData = $this->getFromCache($cacheKey);
         if ($cachedData !== null) {
-            return $cachedData;
+            // return $cachedData;
         }
 
         $data = $function();
