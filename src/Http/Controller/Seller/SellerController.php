@@ -150,7 +150,7 @@ class SellerController
         $uuid = Uuid::uuid4()->toString();
 
         try {
-            $this->mailer->sendSignUpMail($bodyParams['email'], $name);
+            $this->mailer->sendSignupSellerMail($bodyParams['email'], $name);
             if(($bodyParams['premium'] ?? 0) == 1){
                 $this->mailer->sendPremiumSignUpMail($bodyParams['email'], $name);
             }

@@ -42,6 +42,24 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         
     }
 
+    public function sendSignupSellerMail(string $email, string $username): void
+    {
+        try {
+            $this->httpService->setUrl('/mailer?debug=true');
+            $this->httpService->invoke('POST',
+                new PayloadServiceData(
+                    [
+                        'subject' => 'Benvenuto su Dolce & Zampa come artigiano!',
+                        'to_email' => $email,
+                        'to_name' => $username,
+                        'template' => TemplateMail::SIGNUP_SELLER->value,
+                    ]
+                ));
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
     public function sendResetPasswordMail(string $email, string $token): void
     {
         try {
