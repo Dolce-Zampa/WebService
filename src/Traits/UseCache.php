@@ -59,4 +59,17 @@ trait UseCache
         $key = sha1($key);
         return Cache::tags($this->tags)->has($key);
     }
+
+    protected function getOrSet(callable $function, array $data): void
+    {
+        $cacheKey = json_encode($data);
+        $cachedData = $this->getFromCache($cacheKey);
+        if ($cachedData !== null) {
+            return $cachedData;
+        }
+
+        $data = $function();
+        $this->setToCache($cacheKey, $data);
+
+    }
 }
