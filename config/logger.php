@@ -38,6 +38,7 @@ if ($logChannel === 'logtail' && env('APP_ENV') === 'production') {
     if (!empty($logtailApiKey)) {
         $streamHandler = \Logtail\Monolog\LogtailHandlerBuilder::withSourceToken($logtailApiKey)
             ->withEndpoint(env('LOGTAIL_ENDPOINT', 'https://in.logtail.com'))
+            ->withLevel($logLevel)
             ->build();
     } else {
         $logger->warning('Logtail API key is missing - skipping Logtail integration');
