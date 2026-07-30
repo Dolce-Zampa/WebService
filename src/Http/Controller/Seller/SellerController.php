@@ -201,6 +201,7 @@ class SellerController
                     'country' => $data['country'] ?? null,
                     'zip_code' => $data['zip_code'] ?? null,
                     'phone_number' => $data['phone_number'] ?? null,
+                    'premium' => (bool) $data['premium'] ?? false,
                 ],
                 $this->prestashopService
             );

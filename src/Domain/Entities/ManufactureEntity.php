@@ -52,9 +52,11 @@ class ManufactureEntity implements ObjectInterface
 	public function normalizeData(): void
 	{
 		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
-
-		$filename = $this->data['slug'];
 		$this->data['image'] = $this->getAvatar();
+
+		if($this->data['premium'] == true) {
+			$this->data['link_domain'] = "https://". $this->data['link_rewrite'] . 'dolcezampa.com';
+		}
 	}
 
 	private function getAvatar(): ?string
