@@ -8,7 +8,7 @@ final class CreatePetProfessionalServicesTable extends AbstractMigration
 {
     public function change(): void
     {
-        $table = $this->table('pet_professional_services');
+        $table = $this->table(env('PS_TABLE_PREFIX').'pet_professional_services');
 
         $table
             ->addColumn('first_name', 'string', ['limit' => 120])
@@ -28,8 +28,19 @@ final class CreatePetProfessionalServicesTable extends AbstractMigration
                 'default' => 'CURRENT_TIMESTAMP',
                 'update' => 'CURRENT_TIMESTAMP',
             ])
+            ->addColumn('latitude', 'decimal', [
+                'precision' => 10,
+                'scale' => 7,
+                'null' => true,
+            ])
+            ->addColumn('longitude', 'decimal', [
+                'precision' => 10,
+                'scale' => 7,
+                'null' => true,
+            ])
             ->addIndex(['service_type'])
             ->addIndex(['address'])
+            ->addIndex(['latitude', 'longitude'])
             ->create();
     }
 }

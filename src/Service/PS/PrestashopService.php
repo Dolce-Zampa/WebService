@@ -3,24 +3,34 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\AccessoryEntity;
 use PS\Webservice\Domain\Entities\CategoryEntity;
 use PS\Webservice\Domain\Entities\CombinationEntity;
+use PS\Webservice\Domain\Entities\CustomizationEntity;
 use PS\Webservice\Domain\Entities\ImageEntity;
 use PS\Webservice\Domain\Entities\OptionEntity;
 use PS\Webservice\Domain\Entities\ProductFeatureEntity;
+use PS\Webservice\Domain\Entities\ReviewEntity;
 use PS\Webservice\Domain\Entities\StockAvailableEntity;
 use PS\Webservice\Domain\Enums\ImageTail;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\HttpServiceInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
-use Illuminate\Support\Facades\Log;
 
 class PrestashopService implements PrestashopServiceInterface {
 
     protected HttpServiceInterface $httpService;
+    protected PrestashopRepository $productRepository;
     
     public function __construct(HttpServiceInterface $httpService) {
         $this->httpService = $httpService;
+    }
+
+    //FIXME:
+    public function addRepository(PrestashopRepository $repository): void {
+        $this->productRepository = $repository;
     }
 
 
@@ -74,7 +84,7 @@ class PrestashopService implements PrestashopServiceInterface {
      */
     public function getSpecificationsCombination(int $id): CombinationEntity 
     {
-        $this->httpService->setUrl("/combinations/{$id}?display=full");
+        $this->httpService->setUrl("/combinations/{$id}?display=full&price[original_price][use_tax]=1&price[original_price][use_reduction]=1");
         $response = $this->httpService->invoke('GET');
 
         if($response->failed()) {
@@ -179,6 +189,46 @@ class PrestashopService implements PrestashopServiceInterface {
         }
         
         return $stockAvailables;
+    }
+
+
+    /**
+     * Retrieves the customization fields for a specific product.
+     * @param int $idProduct The unique identifier of the product
+     * @return array An array of customization fields associated with the product
+     */
+    public function getCustomizationFields(int $idProduct): array
+    {
+        $this->httpService->setUrl("/product_customization_fields?filter[id_product]=$idProduct&display=full");
+        $response = $this->httpService->invoke('GET');
+
+        if ($response->failed()) {
+            Log::error("Failed to retrieve customization fields for product ID {$idProduct}: HTTP " . $response->getHttpCode());
+            return [];
+        }
+
+        foreach ($response->toArray()['customization_fields'] ?? [] as $customizationData) {
+            $customizationFields[] = CustomizationEntity::create($customizationData, $this);
+        }
+
+        return $customizationFields ?? [];
+    }
+
+    public function getProductReviews(int $productId): array {
+
+        try {
+            $reviews = $this->productRepository->getProductReviews($productId);
+        } catch (\Exception $e) {
+            Log::critical("Failed to retrieve reviews for product ID {$productId}: " . $e->getMessage());
+            return [];
+        }
+
+        foreach ($reviews as $reviewData) {
+            $reviewEntities[] = ReviewEntity::create((array) $reviewData, $this);
+        }
+
+        return $reviewEntities ?? [];
+
     }
 
 }

@@ -16,9 +16,9 @@ $logLevels = [
 $logLevel = $logLevels[strtolower(env('APP_LOG_LEVEL', 'debug'))] ?? \Monolog\Level::Debug;
 
 // Inizializzazione logger con controllo più robusto sul nome dell'app
-$appName = env("APP_NAME", "BudgetControl");
+$appName = env("APP_NAME", "DolceZampa");
 if (empty(trim($appName))) {
-    $appName = "BudgetControl";
+    $appName = "DolceZampa";
 }
 $logger = new \Monolog\Logger($appName);
 
@@ -36,7 +36,10 @@ if($logChannel === 'stderr') {
 if ($logChannel === 'logtail' && env('APP_ENV') === 'production') {
     $logtailApiKey = env('LOGTAIL_API_KEY');
     if (!empty($logtailApiKey)) {
-        $streamHandler = new \Logtail\Monolog\LogtailHandler($logtailApiKey, $logLevel);
+        $streamHandler = \Logtail\Monolog\LogtailHandlerBuilder::withSourceToken($logtailApiKey)
+            ->withEndpoint(env('LOGTAIL_ENDPOINT', 'https://in.logtail.com'))
+            ->withLevel($logLevel)
+            ->build();
     } else {
         $logger->warning('Logtail API key is missing - skipping Logtail integration');
     }

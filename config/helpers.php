@@ -41,6 +41,53 @@ if(!function_exists('response')) {
             return __DIR__ . '/../storage/' . ltrim($path, '/');
         }
     }
+
+    if(!function_exists('image_path')) {
+        function image_path(string $path = ''): string {
+            if(env('APP_IMAGE_PATH')) {
+                return env('APP_IMAGE_PATH') . '/' . ltrim($path, '/');
+            }
+
+            return __DIR__ . '/../storage/' . ltrim($path, '/');
+        }
+    }
+}
+
+if(!function_exists('slugify')) {
+    function slugify(string $text): string {
+        // replace non letter or digits by -
+        $text = preg_replace('~[^\pL\d]+~u', '-', $text);
+
+        // transliterate
+        $text = iconv('utf-8', 'us-ascii//TRANSLIT', $text);
+
+        // remove unwanted characters
+        $text = preg_replace('~[^-\w]+~', '', $text);
+
+        // trim
+        $text = trim($text, '-');
+
+        // remove duplicate -
+        $text = preg_replace('~-+~', '-', $text);
+
+        // lowercase
+        $text = strtolower($text);
+
+        if (empty($text)) {
+            return 'n-a';
+        }
+
+        return $text;
+    }
+}
+
+if(!function_exists('generate_token')) {
+    function generate_token(array $params) {
+        //convert param to string
+        $paramsString = json_encode($params);
+        //generate token
+        return hash('sha256', $paramsString . time());
+    }
 }
 
 // More functions...

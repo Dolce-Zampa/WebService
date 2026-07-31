@@ -50,20 +50,20 @@
     <priority>0.5</priority>
   </url>
 
-    <url>
-    <loc><![CDATA[https://www.dolcezampa.com/artigiani/teresa-ciotola]]></loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-
-    <url>
+  <url>
     <loc><![CDATA[https://www.dolcezampa.com/artigiani/claudia-cascioli]]></loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
 
-    <url>
+  <url>
     <loc><![CDATA[https://www.dolcezampa.com/artigiani/pet-cherie]]></loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc><![CDATA[https://www.dolcezampa.com/artigiani/gvresin]]></loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>

@@ -5,6 +5,7 @@ namespace PS\Webservice\Service\PS;
 
 use Illuminate\Support\Collection;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
+use PS\Webservice\Domain\Entities\ReviewEntity;
 
 class Brand extends PrestashopService implements PrestashopServiceInterface
 {
@@ -12,7 +13,7 @@ class Brand extends PrestashopService implements PrestashopServiceInterface
     {
         if (!empty($displayOptions)) {
             $queryString = http_build_query($displayOptions);
-            $this->httpService->setUrl("/manufacturers?{$queryString}");
+            $this->httpService->setUrl("/manufacturers?{$queryString}&filter[active]=1");
         } else {
             $this->httpService->setUrl('/manufacturers');
         }
@@ -29,5 +30,22 @@ class Brand extends PrestashopService implements PrestashopServiceInterface
         }
 
         return $collection;
+    }
+
+    public function getReviews(int $id): array
+    {
+        try {
+            $reviews = $this->productRepository->getManufacturertReviews($id);
+        } catch (\Exception $e) {
+            Log::critical("Failed to retrieve reviews for product ID {$id}: " . $e->getMessage());
+            return [];
+        }
+
+        foreach ($reviews as $reviewData) {
+            $reviewEntities[] = ReviewEntity::create((array) $reviewData, $this);
+        }
+
+        return $reviewEntities ?? [];
+        
     }
 }

@@ -78,5 +78,125 @@
                 "reduction_type": "percentage"
             }
         ]
+    },
+    {
+        "product_id": 155,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 127,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 123,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 104,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 103,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 102,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 100,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 95,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 99,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 94,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 93,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
+    },
+    {
+        "product_id": 86,
+        "bundle": [
+            {
+                "product_id": 160,
+                "reduction": 16,
+                "reduction_type": "amount"
+            }
+        ]
     }
 ]

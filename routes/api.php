@@ -17,14 +17,7 @@ $app->get('/api/cart-rules/coupon/featured', PS\Webservice\Http\Controller\CartC
 $app->get('/api/cart-rules/coupon/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');
 $app->post('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':validateCoupon');
 
-/** Stripe webhook */
-$app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
-
 /** Password reset */
-$app->post('/api/password-reset', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
-$app->put('/api/password-reset', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
-$app->patch('/api/password-reset', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
-
 $app->group('/api', function () use ($app) {
 
     $app->get('/api/categories', PS\Webservice\Http\Controller\CategoryController::class . ':categoryList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('categories'));
@@ -47,10 +40,13 @@ $app->group('/api', function () use ($app) {
     $app->post('/api/logout', PS\Webservice\Http\Controller\CustomerController::class . ':logout');
     $app->post('/api/contact', PS\Webservice\Http\Controller\CustomerController::class . ':contact');
     $app->post('/api/customers', PS\Webservice\Http\Controller\CustomerController::class . ':createCustomer');
-    $app->get('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':getAccount');
-    $app->put('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':updateAccount');
-    $app->get('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':getAddresses');
-    $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses');
+    $app->post('/api/password-reset', PS\Webservice\Http\Controller\CustomerController::class . ':sendResetPassword');
+    $app->patch('/api/password-reset', PS\Webservice\Http\Controller\CustomerController::class . ':resetPassword');
+
+    $app->get('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':getAccount')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->put('/api/customers/{customerId}', PS\Webservice\Http\Controller\CustomerController::class . ':updateAccount')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->get('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':getAddresses')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
     /** Order api */
     $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder');
@@ -72,12 +68,9 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/pet-services/categories', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':categories');
     $app->get('/api/pet-services/categores', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':categories');
     $app->get('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':show');
-    $app->post('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':save')
-        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->put('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':update')
-        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->delete('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':destroy')
-        ->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->post('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':save');
+    $app->put('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':update');
+    $app->delete('/api/pet-services/{id}', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':destroy');
 
     /** CMS */
     $app->get('/api/cms', PS\Webservice\Http\Controller\CmsController::class . ':cmsList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('cmslist'));
@@ -89,10 +82,40 @@ $app->group('/api', function () use ($app) {
     /** MODULES */
     $app->post('/api/modules/welcome-coupon', PS\Webservice\Http\Controller\PrestashopController::class . ':welcomeCoupon');  
 
-
 });
+
+$app->post('/api/seller/auth/register', PS\Webservice\Http\Controller\Seller\SellerController::class . ':register');
+$app->post('/api/seller/auth/login', PS\Webservice\Http\Controller\Seller\SellerController::class . ':login');
+$app->group('/api/seller', function() use ($app) {
+
+    /** Sellet api */
+    $app->post('/api/seller/auth/confirm-token', PS\Webservice\Http\Controller\Seller\SellerController::class . ':confirmToken');
+    $app->post('/api/seller/auth/refresh', PS\Webservice\Http\Controller\Seller\SellerController::class . ':refresh');
+    $app->get('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':me')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',10));
+    $app->patch('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateMe');
+    $app->get('/api/seller/dashboard/summary', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardSummary')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
+    $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
+    $app->post('/api/seller/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':products');
+    $app->get('/api/seller/products/{sellerid}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':sellerProucts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 15));
+    $app->get('/api/seller/product/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',5));
+    $app->patch('/api/seller/products/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProduct');
+    $app->delete('/api/seller/products/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProduct');
+    $app->put('/api/seller/products/{id}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProductDiscount');
+    $app->delete('/api/seller/products/{id}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProductDiscount');
+
+})->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
 
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
+
+/** Stripe webhook */
+$app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
+
+$app->group('/api/webhook', function () use ($app) {
+    /** PrestaShop product-saved webhook */
+    $app->post('/api/webhooks/prestashop/product-saved', PS\Webservice\Http\Controller\PrestashopProductWebhookController::class . ':handleWebhook');
+    /** clear cache webhook */
+    $app->post('/api/webhooks/clear-cache', PS\Webservice\Http\Controller\PrestashopProductWebhookController::class . ':clearCache');
+})->addMiddleware(new \PS\Webservice\Http\Middleware\AuthenticationWebhookMiddleware());

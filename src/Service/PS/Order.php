@@ -62,7 +62,7 @@ class Order extends Cart implements PrestashopServiceInterface
     public function getOrderListFromUserId(?string $customerId = null): ?array
     {
         $queryString = http_build_query([
-            'id_customer' => $this->decodeId($customerId, 'customer'),
+            'id_customer' => $customerId,
         ]);
 
         $this->httpService->setUrl("/orders?{$queryString}");

@@ -211,4 +211,28 @@ trait ProductBuilder
         }
     }
 
+    /**
+     * build Customizations
+     * @return void
+     */
+    protected function buildCustomizations(): void
+    {
+        $customizations = $this->service->getCustomizationFields($this->getId());
+
+        $this->data['associations']['customizations'] = [];
+        foreach ($customizations as $customizationEntity) {
+            $this->data['associations']['customizations'][] = $customizationEntity->toArray();
+        }
+    }
+
+    protected function buildReviews(): void
+    {
+        $reviews = $this->service->getProductReviews($this->getId());
+
+        $this->data['reviews'] = [];
+        foreach ($reviews as $reviewEntity) {
+            $this->data['reviews'][] = $reviewEntity->toArray();
+        }
+    }
+
 }

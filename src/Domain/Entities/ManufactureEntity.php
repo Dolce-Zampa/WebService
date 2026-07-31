@@ -5,6 +5,7 @@ namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
+use PS\Webservice\Domain\Models\ManufacturerDetail;
 
 class ManufactureEntity implements ObjectInterface
 {
@@ -42,7 +43,7 @@ class ManufactureEntity implements ObjectInterface
 	public function __get(string $name): mixed
 	{
 		if (!array_key_exists($name, $this->data)) {
-			throw new \InvalidArgumentException('No argument found with ' . $name);
+			return null;
 		}
 
 		return $this->data[$name];
@@ -50,11 +51,32 @@ class ManufactureEntity implements ObjectInterface
 
 	public function normalizeData(): void
 	{
-		$this->data['slug'] = $this->data['link_rewrite'] ?? '';	
+		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
+		$this->data['image'] = $this->getAvatar();
+
+		if($this->data['premium'] == true) {
+			$this->data['link_domain'] = "https://". $this->data['link_rewrite'] . 'dolcezampa.com';
+		}
+	}
+
+	private function getAvatar(): ?string
+	{
+		$avatar = ManufacturerDetail::getAvatar($this->getId());
+		return $this->data['image'] ?? null;
 	}
 	
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
 	{
 		return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray());
+	}
+
+	public function buildReviews(): void
+	{
+		$reviews = $this->service->getReviews($this->getId());
+		
+        $this->data['reviews'] = [];
+        foreach ($reviews as $reviewEntity) {
+            $this->data['reviews'][] = $reviewEntity->toArray();
+        }
 	}
 }
