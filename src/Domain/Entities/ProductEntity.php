@@ -90,12 +90,12 @@ class ProductEntity implements ObjectInterface
             }
         } else {
             unset($this->data['associations']['product_option_values']);
-            $this->data['url'] = isset($this->data['url']) ? str_replace('https://www.dolcezampa.com', '', $this->data['url']) : null; //FIXME: remove these on production
+            $this->data['url'] = isset($this->data['url']) ? str_replace('http://www.dolcezampa.com', '', $this->data['url']) : null; //FIXME: remove these on production
             // $this->buildImageLink([ImageTail::ORIGINAL]); //FIXME: possiamo rimuovere l'immagine verrà creata tramite FRONTEND
         }
 
         //normalize urls
-        $this->data['url'] = str_replace('aidyis-prod-backoffice', 'www', $this->data['url']);
+        $this->data['url'] = str_replace('http://aidyis-prod-backoffice.dolcezampa.com', '', $this->data['url']);
 
         // normalize on_sale flag
         $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);

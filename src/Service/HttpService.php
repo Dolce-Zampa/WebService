@@ -53,6 +53,9 @@ class HttpService implements HttpServiceInterface
             $options = [
                 'verify' => false, //FIXME: Riattiva sempre in produzione!
                 'timeout' => 30,   // È buona norma impostare un timeout
+                'headers' => [
+                    'Host' => 'aidyis-prod-backoffice.dolcezampa.com',
+                ],
             ];
 
             if (!empty($data)) {
