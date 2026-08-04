@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\AccessoryEntity;
 use PS\Webservice\Domain\Entities\CategoryEntity;

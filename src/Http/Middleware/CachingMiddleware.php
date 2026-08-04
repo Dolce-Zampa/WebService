@@ -30,10 +30,15 @@ class CachingMiddleware implements MiddlewareInterface
         }
 
         $uri = $request->getUri()->getPath();
+        $tags = $this->extractTagsFromParams($request->getQueryParams());
+        $tags[] = 'api';
+        
+        $this->tag = array_merge($this->tag, $tags);
+
         $queryParams = http_build_query($request->getQueryParams());
         $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
 
-        $this->tags($this->tag);
+        $this->tags($tags);
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
@@ -75,5 +80,22 @@ class CachingMiddleware implements MiddlewareInterface
         }
 
         return $response;
+    }
+
+    private function extractTagsFromParams(array $params): array
+    {
+        $tags = [];
+        if(isset($params['manufacturer']) || isset($params['id_manufacturer'])) {
+            $tags[] = 'manufacturer:' . $params['manufacturer'];
+        }
+
+        if(isset($params['category']) || isset($params['id_category'])) {
+            $categories = explode('|', $params['category'] ?? $params['id_category']);
+            foreach($categories as $category) {
+                $tags[] = 'category:' . $category;
+            }
+        }
+
+        return $tags;
     }
 }

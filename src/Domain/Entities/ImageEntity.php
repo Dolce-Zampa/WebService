@@ -6,18 +6,11 @@ namespace PS\Webservice\Domain\Entities;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 
-class ImageEntity implements ObjectInterface {
+class ImageEntity extends Entity implements ObjectInterface {
 
-	private array $data;
-    private PrestashopServiceInterface $service;
-
-	public function __construct(array $data, PrestashopServiceInterface $service)
-	{
-        $this->service = $service;
-		$this->data = $data;
-		$this->normalizeData();
-
-	}
+	protected array $data;
+    protected PrestashopServiceInterface $service;
+	protected $tagsCache = 'image:';
 
     public static function create(array $data, PrestashopServiceInterface $service): self
     {

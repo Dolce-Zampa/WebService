@@ -26,6 +26,10 @@ trait UseCache
     protected function setToCache(string $key, mixed $value, ?int $ttl = 1440): void
     {
         $key = sha1($key);
+        if(env("APP_DISABLE_CACHE", false)) {
+            return;
+        }
+
         if ($ttl === null) {
             Cache::tags($this->tags)->forever($key, $value);
         } else {

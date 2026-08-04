@@ -6,18 +6,13 @@ namespace PS\Webservice\Domain\Entities;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 
-class AccessoryEntity implements ObjectInterface
+class AccessoryEntity extends Entity implements ObjectInterface
 {
 	/** @var array<string, mixed> */
-	private array $data;
-    private PrestashopServiceInterface $service;
-    
-    private function __construct(array $data, PrestashopServiceInterface $service)
-    {
-        $this->service = $service;
-        $this->data = $data;
-        $this->normalizeData();
-	}
+	protected array $data;
+    protected PrestashopServiceInterface $service;
+
+	protected $tagsCache = 'accessory:';
 
 	public static function create(array $data, PrestashopServiceInterface $service): self
 	{

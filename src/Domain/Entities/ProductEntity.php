@@ -7,26 +7,20 @@ use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
-use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Traits\ProductBuilder;
 use PS\Webservice\Traits\ProductManipulation;
 
-class ProductEntity implements ObjectInterface
+class ProductEntity extends Entity implements ObjectInterface
 {
     use ProductManipulation, ProductBuilder;
 
     /** @var array<string, mixed> */
-    private array $data;
-    private Product $service;
+    protected array $data;
+    protected PrestashopServiceInterface $service;
+
+    protected $tagsCache = 'product:';
 
     private static $filters = [];
-
-    private function __construct(array $data, PrestashopServiceInterface $service)
-    {
-        $this->service = $service;
-        $this->data = $data;
-        $this->normalizeData();
-    }
 
     public static function create(array $data, PrestashopServiceInterface $service): self
     {

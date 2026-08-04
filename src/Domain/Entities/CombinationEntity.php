@@ -3,25 +3,19 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
-use PS\Webservice\Domain\Enums\ImageTail;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\ProductBuilder;
 
-class CombinationEntity implements ObjectInterface
+class CombinationEntity extends Entity implements ObjectInterface
 {
     use ProductBuilder;
 
 	/** @var array<string, mixed> */
-	private array $data;
-    private PrestashopServiceInterface $service;
+	protected array $data;
+    protected PrestashopServiceInterface $service;
 
-	private function __construct(array $data, PrestashopServiceInterface $service)
-	{
-		$this->service = $service;
-        $this->data = $data;
-		$this->normalizeData();
-	}
+	protected $tagsCache = 'combination:';
 
 	public static function create(array $data, PrestashopServiceInterface $service): self
 	{

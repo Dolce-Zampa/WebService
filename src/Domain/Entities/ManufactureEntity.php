@@ -7,18 +7,13 @@ use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Domain\Models\ManufacturerDetail;
 
-class ManufactureEntity implements ObjectInterface
+class ManufactureEntity extends Entity implements ObjectInterface
 {
 	/** @var array<string, mixed> */
-	private array $data;
-    private PrestashopServiceInterface $service;
-    
-    private function __construct(array $data, PrestashopServiceInterface $service)
-    {
-        $this->service = $service;
-        $this->data = $data;
-        $this->normalizeData();
-	}
+	protected array $data;
+    protected PrestashopServiceInterface $service;
+
+	protected $tagsCache = 'manufacturer:';
 
 	public static function create(array $data, PrestashopServiceInterface $service): self
 	{
@@ -62,7 +57,7 @@ class ManufactureEntity implements ObjectInterface
 	private function getAvatar(): ?string
 	{
 		$avatar = ManufacturerDetail::getAvatar($this->getId());
-		return $this->data['image'] ?? null;
+		return $avatar;
 	}
 	
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
