@@ -18,7 +18,7 @@ class OpenAIService
     {
         $this->model = $model;
         $this->imageModel = $imageModel;
-        $this->baseUriImage = 'https://' . env('PS_BASE_URL');
+        $this->baseUriImage = env('PS_BASE_URL');
         $this->client = new Client([
             'base_uri' => 'https://api.openai.com/v1/',
             'headers' => [
