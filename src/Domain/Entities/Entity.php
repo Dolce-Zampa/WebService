@@ -24,12 +24,13 @@ class Entity
         $tagsCache = [$this->tagsCache . $this->data['id'] ?? ''];
         $tagsCache[] = 'entity:all';
         $tagsCache[] = $this->tagsCache . 'all';
-        
-        if($this->tags($tagsCache)->existsInCache(self::KEY_CACHE)) {
-            $this->data = $this->tags($tagsCache)->getFromCache(self::KEY_CACHE);
+
+        $this->tags($tagsCache);
+        if($this->existsInCache(self::KEY_CACHE)) {
+            $this->data = $this->getFromCache(self::KEY_CACHE);
         } else {
             $this->normalizeData();
-            $this->tags($tagsCache)->setToCache(self::KEY_CACHE, $this->data);
+            $this->setToCache(self::KEY_CACHE, $this->data);
         }
     }
 
