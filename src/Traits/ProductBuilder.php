@@ -16,6 +16,7 @@ trait ProductBuilder
      * @param array $imageTails An array of image tail identifiers or configurations for association
      *
      * @return void
+     * @deprecated This method is deprecated and will be removed in future versions. Use buildImageLink() instead.
      */
     protected function buildImageLink(array $imageTails = []): void
     {
