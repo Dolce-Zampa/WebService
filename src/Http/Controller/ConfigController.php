@@ -69,25 +69,14 @@ class ConfigController extends CartController
                 "key" => $value['key'] ?? null
             ];
 
-            $cacheLey = 'api_cache:' . $params['key'];
             if(empty($params['tags'])) {
                 throw new \InvalidArgumentException("The 'tags' parameter is mandatory for each cache entry to clear.");
             }
             
             if(empty($params['key'])) {
                 $this->tags($params['tags'])->flushTag();
-            }
-
-            // invoke key for generate the cache with the new value
-            if ($params['key']) {
-                Log::debug("Clearing cache for key: " . $params['key']);
-                $client = new \GuzzleHttp\Client();
-                $client->request('GET', env('PS_BASE_URL') . $params['key'], [
-                    'headers' => [
-                        'Authorization' => 'Bearer ' . env('API_AUTH_TOKEN'),
-                        'Accept' => 'application/json',
-                    ],
-                ]);
+            } else {
+                $this->tags($params['tags'])->removeFromCache($params['key']);
             }
 
         }
