@@ -2,8 +2,9 @@
 declare(strict_types=1);
 namespace PS\Webservice\Traits;
 
-use PS\Webservice\Domain\Enums\ImageTail;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\EntityExceptions;
+use PS\Webservice\Domain\Enums\ImageTail;
 
 
 trait ProductBuilder
@@ -114,8 +115,14 @@ trait ProductBuilder
                     throw new \InvalidArgumentException("Each combination association must have an 'id' field");
                 }
 
-                $combination = $this->service->getSpecificationsCombination((int) $combination['id']);
-                $this->data['associations']['combinations'][$i] = $combination->toArray();
+                try {
+                    $combination = $this->service->getSpecificationsCombination((int) $combination['id']);
+                    $this->data['associations']['combinations'][$i] = $combination->toArray();
+                } catch (\RuntimeException $e) {
+                    Log::critical("Failed to retrieve combination with id {$combination['id']} for product {$this->getId()}: " . $e->getMessage());
+                    throw EntityExceptions::entityCreationFailed($this->getId());
+                }
+                
             }
         }   
 

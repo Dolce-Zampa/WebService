@@ -163,7 +163,7 @@ class ProductEntity extends Entity implements ObjectInterface
 
     public function withFeatures(): self
     {
-        $this->buildCombinations();
+        $this->withCombinations();
         $this->buildProductFeatures();
         $this->buildAccessories();
         $this->buildCategories();

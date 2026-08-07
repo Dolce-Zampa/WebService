@@ -3,10 +3,11 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
-use PS\Webservice\Domain\Entities\FilterEntity;
-use PS\Webservice\Domain\Entities\ProductEntity;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\EntityExceptions;
+use PS\Webservice\Domain\Entities\FilterEntity;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Filter;
 
 class Product extends PrestashopService implements PrestashopServiceInterface
@@ -60,9 +61,15 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             if(!is_null($filter) && $filter->match($productData) !== true) {
                 continue; // Skip products that do not match the filter criteria
             }
-            $product = ProductEntity::create($filter->productData, $this);
-            $product->withCombinations();
-            $collection->push($product);
+            try {
+                $product = ProductEntity::create($filter->productData, $this);
+                $product->withCombinations();
+                $collection->push($product);
+            } catch (EntityExceptions $e) {
+                Log::error("Failed to create ProductEntity for product ID {$productData['id']}: " . $e->getMessage());
+                continue; // Skip this product but continue processing others
+            }
+            
         }
 
         return $collection;
