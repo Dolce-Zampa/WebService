@@ -23,6 +23,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\UploadedFileInterface;
 use Ramsey\Uuid\Uuid;
 use PS\Webservice\Traits\FileResource;
+use PS\Webservice\Facades\S3Service;
 
 class SellerController
 {
@@ -177,9 +178,9 @@ class SellerController
                     throw new \InvalidArgumentException('Avatar file too large', 400);
                 }
 
-                $avatarDirectory = storage_path('avatars');
-                $avatarFileName = ($clientFilename !== '' ? $clientFilename : 'avatar') . '-' . $uuid;
-                $avatar = $this->uploadUploadedFile($avatarUpload, $avatarDirectory, $avatarFileName);
+                $avatarFileName = $this->buildAvatarFileName($clientFilename, $extension, $uuid);
+                Log::debug("Uploading avatar for user {$bodyParams['email']} to S3 with key {$avatarFileName}");
+                $avatar = S3Service::uploadAvatarToS3($avatarUpload, $avatarFileName);
             } else {
                 $avatar = null;
             }
@@ -719,5 +720,19 @@ class SellerController
 
         $sellerId = (int) ($manufacturer->id_manufacturer ?? 0);
         return $sellerId > 0 ? $sellerId : null;
+    }
+
+
+    private function buildAvatarFileName(string $clientFilename, string $extension, string $uuid): string
+    {
+        $baseName = pathinfo($clientFilename, PATHINFO_FILENAME);
+        $slugBaseName = slugify((string) $baseName);
+        $safeBaseName = $slugBaseName !== 'n-a' ? $slugBaseName : 'avatar';
+
+        if ($extension === '') {
+            return $safeBaseName . '-' . $uuid;
+        }
+
+        return $safeBaseName . '-' . $uuid . '.' . $extension;
     }
 }

@@ -1,6 +1,6 @@
 <?php
 $config = [
-    'region' => env('AWS_COGNITO_REGION','eu-west-1'),
+    'region' => env('AWS_DEFAULT_REGION','eu-west-1'),
     'version' => env('AWS_COGNITO_VERSION','latest'),
     'app_client_id' => env('AWS_COGNITO_CLIENT_ID', ''),
     'app_client_secret' => env('AWS_COGNITO_CLIENT_SECRET', ''),
@@ -8,10 +8,10 @@ $config = [
     'redirect_uri' => env('AWS_COGNITO_REDIRECT_URI', ''),
 ];
 
-if(env('AWS_COGNITO_ACCESS_KEY_ID') && env('AWS_COGNITO_SECRET_ACCESS_KEY')) {
+if(env('AWS_ACCESS_KEY_ID') && env('AWS_SECRET_ACCESS_KEY')) {
     $config['credentials'] = [
-        'key' => env('AWS_COGNITO_ACCESS_KEY_ID'),
-        'secret' => env('AWS_COGNITO_SECRET_ACCESS_KEY'),
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
     ];
 }
 

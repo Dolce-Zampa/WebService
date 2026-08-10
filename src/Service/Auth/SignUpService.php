@@ -89,7 +89,6 @@ class SignUpService extends UserService
             }
 
             $resolvedAuth = $this->resolveExistingUserAuth($payload);
-
             $payload = $this->mergeIdentityIntoPayload($payload, $resolvedAuth);
 
         } catch (\Exception $e) {
@@ -101,7 +100,6 @@ class SignUpService extends UserService
         }
 
         $this->updateUserSellerAttributes($payload);
-
         
         if (!is_string($sub) || $sub === '') {
             Log::error('Missing Cognito sub after signup authentication', [

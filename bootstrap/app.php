@@ -44,7 +44,10 @@ require_once __DIR__ . '/../config/container-di.php';
 require_once __DIR__ . '/../config/cache.php';
 
 // cognito
-require_once __DIR__ . '/../config/cognito-client.php';
+require_once __DIR__ . '/../config/AWS/cognito-client.php';
+
+// s3
+require_once __DIR__ . '/../config/AWS/s3-client.php';
 
 // Set up the Facade application
 Facade::setFacadeApplication([
@@ -55,4 +58,5 @@ Facade::setFacadeApplication([
     'validator' => $validator,
     'public-repositories' => $container->get(\PS\Webservice\Repositories\PrestashopRepository::class),
     'payment-service' => $container->get(\PS\Webservice\Service\Payments\PaymentService::class),
+    'aws-s3-service' => $container->get(\PS\Webservice\Service\AWS\S3ManagerService::class),
     ]);

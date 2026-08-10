@@ -41,4 +41,13 @@ class PrestashopRepository extends ManufacturerRepository
 
         return $reviews;
     }
+
+    public function findUserIdFromSub(string $sub): ?int
+    {
+        $user = $this->db->table('customer')
+            ->where('sub', $sub)
+            ->first();
+
+        return $user ? (int) $user->id_customer : null;
+    }
 }

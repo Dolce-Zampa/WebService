@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Facades\AwsCognitoClient;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\PS\Customer;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -18,13 +19,15 @@ class CustomerController extends Controller
 {
     private Customer $customerService;
     private AuthService $authService;
+    private PrestashopRepository $prestashopRepository;
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
     private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
 
-    public function __construct(Customer $customerService, AuthService $authService)
+    public function __construct(Customer $customerService, AuthService $authService, PrestashopRepository $prestashopRepository)
     {
         $this->customerService = $customerService;
         $this->authService = $authService;
+        $this->prestashopRepository = $prestashopRepository;
     }
 
     public function register(Request $request, Response $response, array $argv): Response
@@ -109,13 +112,14 @@ class CustomerController extends Controller
             ], 200);
         }
 
-        $customer = $this->customerService->getAccount(3)->toArray();
+        $customerId = $this->prestashopRepository->findUserIdFromSub($cognitoAuth['sub']);
+        $customer = $this->customerService->getAccount($customerId)->toArray();
         $isSeller = (bool) $this->extractCognitoAttribute($cognitoAuth['id_token'], 'custom:seller');
         $sub = $this->extractCognitoAttribute($cognitoAuth['access_token'], 'sub');
 
         if($customer['success'] === false) {
             Log::error('Customer PrestaShop account retrieval failed after Cognito login', [
-                'customer_id' => 3,
+                'customer_id' => $customerId,
                 'error' => $customer['message'] ?? 'Unknown error',
             ]);
             return response(['message' => 'Unable to retrieve customer account'], 500);
