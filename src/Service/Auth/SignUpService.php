@@ -54,7 +54,7 @@ class SignUpService extends UserService
                     Log::error("Cognito user creation failed: " . json_encode($cognito));
                     return false;
                 }
-
+                $authToken = $cognito['AccessToken'] ?? null;
                 $isNewUser = true;
             }
 
@@ -85,9 +85,6 @@ class SignUpService extends UserService
             }
 
             $resolvedAuth = $this->resolveExistingUserAuth($payload);
-            if ($resolvedAuth === false) {
-                return false;
-            }
 
             $payload = $this->mergeIdentityIntoPayload($payload, $resolvedAuth);
 
