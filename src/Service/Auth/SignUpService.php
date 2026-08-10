@@ -54,8 +54,12 @@ class SignUpService extends UserService
                     Log::error("Cognito user creation failed: " . json_encode($cognito));
                     return false;
                 }
-                $authToken = $cognito['AccessToken'] ?? null;
-                $isNewUser = true;
+                $sub = $cognito['User']['Username'];
+                $isNewUser = true; // FIXME: This should be determined based on the response from Cognito, not just the presence of an auth token.
+            } else {
+                // If auth token is provided, we assume the user already exists in Cognito and we skip the creation step.
+                $decodedToken = AwsCognitoClient::decodeAccessToken((string) $authToken);
+                $sub = $decodedToken['sub'];
             }
 
             //create user in DB
@@ -98,8 +102,7 @@ class SignUpService extends UserService
 
         $this->updateUserSellerAttributes($payload);
 
-        $decodedToken = AwsCognitoClient::decodeAccessToken((string) $authToken);
-        $sub = $decodedToken['sub'] ?? null;
+        
         if (!is_string($sub) || $sub === '') {
             Log::error('Missing Cognito sub after signup authentication', [
                 'email' => $payload->get('email'),
