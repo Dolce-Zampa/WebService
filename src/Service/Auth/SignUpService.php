@@ -131,7 +131,7 @@ class SignUpService extends UserService
 
         AwsCognitoClient::updateUserAttributes($data->get('email'), [
             'custom:seller' => (int) ($data->get('is_seller')),
-            'custom:premium' => (int) ($data->get('premium', 0)),
+            'custom:is_premium' => (int) ($data->get('premium', 0)),
             'name' => $data->get('name'),
         ]);
     }
