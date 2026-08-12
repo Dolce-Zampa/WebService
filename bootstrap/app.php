@@ -58,5 +58,5 @@ Facade::setFacadeApplication([
     'validator' => $validator,
     'public-repositories' => $container->get(\PS\Webservice\Repositories\PrestashopRepository::class),
     'payment-service' => $container->get(\PS\Webservice\Service\Payments\PaymentService::class),
-    'aws-s3-service' => $container->get(\PS\Webservice\Service\AWS\S3ManagerService::class),
+    'aws-s3-service' => $s3Service,
     ]);
