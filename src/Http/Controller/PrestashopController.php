@@ -16,6 +16,15 @@ class PrestashopController
         $this->service = $prestashopService;
     }
 
+    public function healthCheck(Request $request, Response $response): Response
+    {
+        $isConnected = $this->service->checkConnection();
+        $status = $isConnected ? 'ok' : 'error';
+        $responseData = ['status' => $status];
+
+        return response($responseData, 200);
+    }
+
     public function welcomeCoupon(Request $request, Response $response): Response
     {
         $payload = (array) ($request->getParsedBody() ?? []);

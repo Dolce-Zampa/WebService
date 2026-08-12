@@ -1,7 +1,4 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $allowedOrigins = [
 	'http://localhost:3000',

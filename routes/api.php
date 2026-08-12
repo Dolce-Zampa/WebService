@@ -5,6 +5,7 @@
 
 
 /** CLIENT APIs */
+$app->get('/api/health', PS\Webservice\Http\Controller\PrestashopController::class . ':healthCheck');
 
 /** Carts api */
 $app->get('/api/cart/list/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':cartList');
@@ -87,6 +88,8 @@ $app->group('/api', function () use ($app) {
 $app->post('/api/seller/auth/register', PS\Webservice\Http\Controller\Seller\SellerController::class . ':register');
 $app->post('/api/seller/auth/login', PS\Webservice\Http\Controller\Seller\SellerController::class . ':login');
 $app->group('/api/seller', function() use ($app) {
+    //healtcheck seller
+    $app->get('/api/seller/health', PS\Webservice\Http\Controller\Seller\SellerController::class . ':healthCheck');
 
     /** Sellet api */
     $app->post('/api/seller/auth/confirm-token', PS\Webservice\Http\Controller\Seller\SellerController::class . ':confirmToken');

@@ -46,6 +46,19 @@ class SellerController
         $this->productService = $productService;
     }
 
+    public function healthCheck(Request $request): ResponseInterface
+    {
+        //check connection to DB
+        try {
+            $this->prestashopRepository->checkConnection();
+        } catch (\Throwable $e) {
+            Log::error('Database connection failed: ' . $e->getMessage());
+            return response(['status' => 'error', 'message' => 'Database connection failed'], 500);
+        }
+        
+        return response(['status' => 'ok'], 200);
+    }
+
     public function register(Request $request): ResponseInterface
     {
         $bodyParams = $this->requireArrayPayload($request->getParsedBody());

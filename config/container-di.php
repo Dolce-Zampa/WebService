@@ -108,7 +108,7 @@ $container->set(\PS\Webservice\Http\Controller\BrandController::class, function 
 $container->set(\PS\Webservice\Http\Controller\CustomerController::class, function ($c) {
     $customerService = $c->get(\PS\Webservice\Service\PS\Customer::class);
     $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
-    $repository = $c->get(\PS\Webservice\Service\Auth\PrestashopRepository::class);
+    $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
     return new \PS\Webservice\Http\Controller\CustomerController($customerService, $authService, $repository);
 });
 

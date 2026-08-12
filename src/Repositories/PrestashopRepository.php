@@ -50,4 +50,14 @@ class PrestashopRepository extends ManufacturerRepository
 
         return $user ? (int) $user->id_customer : null;
     }
+
+    public function checkConnection(): bool
+    {
+        try {
+            $this->db->getConnection()->getPdo();
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
 }
