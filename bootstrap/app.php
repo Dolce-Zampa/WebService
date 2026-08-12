@@ -47,7 +47,7 @@ require_once __DIR__ . '/../config/cache.php';
 require_once __DIR__ . '/../config/AWS/cognito-client.php';
 
 // s3
-require_once __DIR__ . '/../config/AWS/s3-client.php';
+require_once __DIR__ . '/../config/AWS/s3.php';
 
 // Set up the Facade application
 Facade::setFacadeApplication([
