@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Models;
 
-use PS\Webservice\Domain\Models\PsTable;
+use PS\Webservice\Domain\Models\PS\PsTable;
 
 
 final class ProductLangTable extends PsTable

@@ -5,7 +5,7 @@ namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
-use PS\Webservice\Domain\Models\ManufacturerDetail;
+use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 
 class ManufactureEntity extends Entity implements ObjectInterface
 {

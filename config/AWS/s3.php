@@ -10,3 +10,6 @@ $s3Client = new \Aws\S3\S3Client([
 ]);
 
 $s3Service = new \PS\Webservice\Service\AWS\S3ManagerService($s3Client, env('AWS_BUCKET'));
+
+//test put object
+$s3Service->uploadFile('Hello, S3!', 'test.txt');

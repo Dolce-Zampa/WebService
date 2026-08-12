@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace PS\Webservice\Domain\Models;
+namespace PS\Webservice\Domain\Models\PS\Manufacturers;
+
+use PS\Webservice\Domain\Models\PS\PsTable;
 
 class ManufacturerDetail extends PsTable
 {

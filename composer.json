@@ -48,7 +48,8 @@
     "require-dev": {
         "nikic/php-parser": "^5.0",
         "fakerphp/faker": "^1.23",
-        "phpunit/phpunit": "^10.0"
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^2.2"
     },
     "autoload": {
         "psr-4": {

@@ -17,7 +17,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use malirobot\AwsCognito\Exception\UsernameExistsException;
-use PS\Webservice\Domain\Models\Manufacturer;
+use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Traits\AuthFlow;

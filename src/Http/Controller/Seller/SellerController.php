@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
-use PS\Webservice\Domain\Models\Manufacturer;
-use PS\Webservice\Domain\Models\ManufacturerDetail;
+use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
+use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Auth\AuthService;
@@ -215,7 +215,7 @@ class SellerController
                 $this->upsertManufacturerDetails((int) $manufacturer->id_manufacturer, $entity->toArray());
             }
         } catch (\Throwable $e) {
-            Log::error("Failed to save user in Prestashop database: " . $e->getMessage());
+            Log::error("Failed to save user: " . $e->getMessage());
             if (($signup['is_new_user'] ?? false) === true) {
                 AwsCognitoClient::deleteUser($bodyParams['email']);
             }
