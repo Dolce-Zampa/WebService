@@ -101,6 +101,7 @@ class ProductEntity extends Entity implements ObjectInterface
 
     // una combinazione se ha il valore di price > 0 significa che ha un prezzo incrementale quindi non è in promozione.
     // se invece il price = 0 non ha prezzo incrementale quindi se original_price è diverso da base price allora è in promozione
+    // @deprecated non è performante
     private function checkIfCombinationProductHasPromotion(): void
     {
         if (!empty($this->data['associations']['combinations'])) {
@@ -121,7 +122,7 @@ class ProductEntity extends Entity implements ObjectInterface
     public function withCombinations(): self
     {
         $this->buildCombinations();
-        $this->checkIfCombinationProductHasPromotion();
+        // $this->checkIfCombinationProductHasPromotion();
         return $this;
     }
 

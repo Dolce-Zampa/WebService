@@ -63,7 +63,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             }
             try {
                 $product = ProductEntity::create($filter->productData, $this);
-                $product->withCombinations();
+                // $product->withCombinations(); @deprecated 
                 $collection->push($product);
             } catch (EntityExceptions $e) {
                 Log::error("Failed to create ProductEntity for product ID {$productData['id']}: " . $e->getMessage());
