@@ -117,7 +117,7 @@ class ProductController extends Controller
         ?string $manufacturer,
         array $paginationOptions,
         string $sort = 'id_DESC',
-        Filter $filter
+        ?Filter $filter = null
     ): array {
         if ($manufacturer === null) {
             return [

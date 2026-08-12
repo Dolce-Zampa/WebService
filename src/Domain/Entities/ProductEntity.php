@@ -20,7 +20,7 @@ class ProductEntity extends Entity implements ObjectInterface
 
     protected $tagsCache = 'product:';
 
-    private static $filters = [];
+    private $filters = [];
 
     public static function create(array $data, PrestashopServiceInterface $service): self
     {

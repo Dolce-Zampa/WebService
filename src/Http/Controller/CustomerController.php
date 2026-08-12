@@ -3,8 +3,6 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\CustomerEntity;
