@@ -3,9 +3,10 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
+use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
-use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 
 class ManufactureEntity extends Entity implements ObjectInterface
 {
@@ -49,8 +50,15 @@ class ManufactureEntity extends Entity implements ObjectInterface
 		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
 		$this->data['image'] = $this->getAvatar();
 
-		if($this->data['premium'] == true) {
+		$isPremium = Manufacturer::when('id_manufacturer', $this->getId())
+			->where('premium', true)
+			->exists();
+		
+		if($isPremium || $this->data['premium'] == true) {
+			$this->data['premium'] = true;
 			$this->data['link_domain'] = "https://". $this->data['link_rewrite'] . 'dolcezampa.com';
+		} else {
+			$this->data['premium'] = false;
 		}
 	}
 

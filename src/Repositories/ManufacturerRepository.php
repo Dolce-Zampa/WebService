@@ -73,6 +73,7 @@ class ManufacturerRepository
                 'date_add' => $now,
                 'date_upd' => $now,
                 'sub' => $manufacture->sub,
+                'premium' => $manufacture->premium
             ]
         );
     }

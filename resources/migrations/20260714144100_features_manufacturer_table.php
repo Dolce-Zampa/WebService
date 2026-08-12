@@ -25,6 +25,7 @@ final class FeaturesManufacturerTable extends AbstractMigration
             ->addColumn('uuid', 'string', ['limit' => 36, 'null' => true, 'after' => 'id_manufacturer'])
             ->addColumn('email', 'string', ['limit' => 255, 'null' => true, 'after' => 'uuid'])
             ->addColumn('sub', 'string', ['limit' => 255, 'null' => true])
+            ->addColumn('premium', 'boolean', ['default' => false, 'null' => false, 'after' => 'sub'])
             ->update();
 
         //create new table for manufatcurer fiscal details
