@@ -7,6 +7,7 @@ namespace PS\Webservice\Domain\Entities;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
+use Ramsey\Uuid\Uuid;
 
 class CustomerEntity implements ObjectInterface
 {
@@ -46,15 +47,23 @@ class CustomerEntity implements ObjectInterface
 	public function __get(string $name): mixed
 	{
 		if (!array_key_exists($name, $this->data)) {
-			throw new \InvalidArgumentException('No argument found with ' . $name);
+			return null;
 		}
 
 		return $this->data[$name];
 	}
 
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
+
 	public function normalizeData(): void
 	{
             $this->data = $this->normalizeCustomerPayload($this->data);
+            if($this->data['uuid'] === null) {
+                $this->data['uuid'] = Uuid::uuid4()->toString();
+            }
 	}
 
     /**

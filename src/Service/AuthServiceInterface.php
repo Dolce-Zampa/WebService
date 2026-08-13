@@ -2,6 +2,7 @@
 
 namespace PS\Webservice\Service;
 
+use PS\Webservice\Domain\ObjectInterface;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Stringable;
 
@@ -13,7 +14,7 @@ interface AuthServiceInterface
 
     public function delete(Stringable $uuid);
 
-    public function signUp(Request $request): array|bool;
+    public function signUp(ObjectInterface $request): array|bool;
 
     public function confirmToken(string $token);
 

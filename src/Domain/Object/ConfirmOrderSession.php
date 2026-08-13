@@ -118,4 +118,8 @@ class ConfirmOrderSession implements ObjectInterface
     {
         return new PayloadServiceData($this->data, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
     }
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
 }

@@ -5,7 +5,7 @@ namespace PS\Webservice\Repositories;
 
 use Illuminate\Support\Collection;
 
-class PrestashopRepository extends ManufacturerRepository
+class PrestashopRepository implements RepositoryInterface
 {
     protected \Illuminate\Database\Capsule\Manager $db;
 
@@ -59,5 +59,10 @@ class PrestashopRepository extends ManufacturerRepository
         } catch (\Exception $e) {
             return false;
         }
+    }
+
+    public function getDbInstance(): \Illuminate\Database\Capsule\Manager
+    {
+        return $this->db;
     }
 }

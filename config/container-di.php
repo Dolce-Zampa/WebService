@@ -18,6 +18,10 @@ $container->set(\PS\Webservice\Repositories\PrestashopRepository::class, functio
     return new \PS\Webservice\Repositories\PrestashopRepository($capsule);
 });
 
+$container->set(\PS\Webservice\Repositories\ManufacturerRepository::class, function($c) use($capsule) {
+    return new \PS\Webservice\Repositories\ManufacturerRepository($capsule);
+});
+
 $container->set(\PS\Webservice\Service\PS\Product::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
     $service = new \PS\Webservice\Service\PS\Product($httpService);
@@ -121,7 +125,7 @@ $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, f
     $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
     $prestashopService = $c->get(\PS\Webservice\Service\PS\PrestashopService::class);
     $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
-    $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
+    $repository = $c->get(\PS\Webservice\Repositories\ManufacturerRepository::class);
     $product = $c->get(\PS\Webservice\Service\PS\Product::class);
     return new \PS\Webservice\Http\Controller\Seller\SellerController($authService, $prestashopService,$mailer, $repository, $product);
 });

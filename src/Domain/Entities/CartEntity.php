@@ -91,4 +91,9 @@ class CartEntity implements ObjectInterface
 		$dataPayLoad['id_address_invoice'] = $this->data['id_address_invoice'] ?? null; // Is not required at these point FIXME: on prestashop web service module /controllers/front/cart.php:60
 		return new \PS\Webservice\Domain\Object\PayloadServiceData($dataPayLoad, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
 	}
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
 }

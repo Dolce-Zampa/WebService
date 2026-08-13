@@ -97,4 +97,9 @@ class CouponEntity implements ObjectInterface
     {
         return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray(), ['id', 'coupon']);
     }
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
 }

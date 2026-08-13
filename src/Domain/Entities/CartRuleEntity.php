@@ -62,4 +62,9 @@ class CartRuleEntity implements ObjectInterface
         );
     }
 
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
+
 }

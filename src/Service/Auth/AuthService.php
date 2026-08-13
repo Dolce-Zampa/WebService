@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use League\Container\Exception\NotFoundException;
+use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Exceptions\AuthException;
 use PS\Webservice\Facades\AwsCognitoClient;
@@ -68,7 +69,7 @@ class AuthService extends LoginService implements AuthServiceInterface
         }
         $decodedIdToken = AwsCognitoClient::decodeAccessToken($idToken);
 
-        $user = User::where("email", Crypt::encrypt($decodedIdToken['email']))->first();
+        $user = Customer::where("email", Crypt::encrypt($decodedIdToken['email']))->first();
         $userId = $user->id;
 
         if (is_null($userId)) {
@@ -128,7 +129,7 @@ class AuthService extends LoginService implements AuthServiceInterface
     public function sendVerifyEmail(Request $request)
     {
         $email = $request->getParsedBody()['email'];
-        $user = User::where('email', Crypt::encrypt($email))->first();
+        $user = Customer::where('email', Crypt::encrypt($email))->first();
         if ($user) {
             $token = $this->generateToken(['email' => $email, 'password' => '',  $user->id]);
             $this->setToCache($token, $email, 3600); // Cache for 1 hour
@@ -169,7 +170,7 @@ class AuthService extends LoginService implements AuthServiceInterface
      */
     public function userInfoByEmail(string $email)
     {
-        $user = User::where('email', Crypt::encrypt($email))->first();
+        $user = Customer::where('email', Crypt::encrypt($email))->first();
         if (!$user) {
             throw new AuthException('User not found', 404);
         }

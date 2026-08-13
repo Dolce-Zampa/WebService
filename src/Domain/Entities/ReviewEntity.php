@@ -62,4 +62,9 @@ class ReviewEntity implements ObjectInterface
     {
         return new \PS\Webservice\Domain\Object\PayloadServiceData($this->toArray());
     }
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
 }

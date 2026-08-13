@@ -23,7 +23,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         $this->setToCache($token, $email, 3600); // Cache for 1 hour
 
         try {
-            $this->httpService->setUrl('/mailer');
+            $this->httpService->setUrl('/mailer?debug=true');
             $this->httpService->invoke('POST',
             new PayloadServiceData(
                 [
@@ -31,7 +31,10 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                     'to_email' => $email,
                     'to_name' => $username,
                     'template_vars' => [
+                        'email' => $email,
                         'token' => $token,
+                        'firstname' => $username,
+                        'lastname' => '',
                     ],
                     'template' => TemplateMail::SIGNUP->value
                 ]

@@ -7,7 +7,7 @@ use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerLang;
 use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerShop;
 use PS\Webservice\Domain\Models\PS\PsTable;
-use PS\Webservice\Domain\PS\Address;
+use PS\Webservice\Domain\Models\PS\Address;
 
 class Manufacturer extends PsTable
 {

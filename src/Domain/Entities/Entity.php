@@ -5,6 +5,7 @@ namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UseCache;
+use Ramsey\Uuid\Uuid;
 
 class Entity
 {
@@ -21,7 +22,7 @@ class Entity
     {
         $this->service = $service;
         $this->data = $data;
-        $tagsCache = [$this->tagsCache . $this->data['id'] ?? ''];
+        $tagsCache = [$this->tagsCache . empty($this->data['id']) ? Uuid::uuid4()->toString() : $this->data['id']];
         $tagsCache[] = 'entity:all';
         $tagsCache[] = $this->tagsCache . 'all';
 
@@ -37,6 +38,11 @@ class Entity
     public function normalizeData(): void
     {
         
+    }
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
     }
 
 }

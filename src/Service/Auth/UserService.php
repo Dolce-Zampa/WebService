@@ -1,6 +1,7 @@
 <?php
 namespace PS\Webservice\Service\Auth;
 
+use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\User;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -18,7 +19,7 @@ class UserService extends AuthServiceProvider {
      */
     public function delete(Stringable $uuid)
     {
-        $user = User::where('uuid', $uuid)->first();
+        $user = Customer::where('uuid', $uuid)->first();
         if ($user) {
             $user->delete();
             return response(['message' => 'User deleted successfully'], 200);

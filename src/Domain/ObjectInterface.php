@@ -18,4 +18,6 @@ interface ObjectInterface extends Arrayable, Jsonable {
 
     public function generatePayload(): PayloadServiceData;
 
+    public function get(string $key, mixed $default = null): mixed;
+
 }

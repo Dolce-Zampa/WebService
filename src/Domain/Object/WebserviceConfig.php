@@ -97,4 +97,9 @@ final class WebserviceConfig implements ObjectInterface {
     {
         return new PayloadServiceData($this->toArray(), []);
     }
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
 }

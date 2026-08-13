@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Facade;
+use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Service\MailerInterface;
@@ -130,7 +131,7 @@ class AuthServiceProvider {
         // Decode ID Token
         $content = AwsCognitoClient::decodeAccessToken($tokens->id_token);
         $userEmail = $content['email'];
-        $user = User::where('email', Crypt::encrypt($userEmail))->with('workspaces')->first();
+        $user = Customer::where('email', Crypt::encrypt($userEmail))->with('workspaces')->first();
         $sub = $content['sub'];
       
         if(!$user) {
@@ -142,7 +143,7 @@ class AuthServiceProvider {
         }
 
         //retrive user workspaces
-        $user = User::where('email', Crypt::encrypt($userEmail))->with('workspaces')->first();
+        $user = Customer::where('email', Crypt::encrypt($userEmail))->with('workspaces')->first();
 
         Cache::put($this->refreshTokenCacheKey($sub), $tokens->refresh_token, Carbon::now()->addDays(30));
         Cache::put($this->idTokenCacheKey($sub), $tokens->id_token, Carbon::now()->addDays(30));

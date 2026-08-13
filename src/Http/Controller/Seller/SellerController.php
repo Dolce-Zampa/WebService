@@ -7,23 +7,24 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
-use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
+use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 use PS\Webservice\Facades\AwsCognitoClient;
-use PS\Webservice\Repositories\PrestashopRepository;
+use PS\Webservice\Facades\S3Service;
+use PS\Webservice\Repositories\ManufacturerRepository;
+use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\AuthServiceInterface;
 use PS\Webservice\Service\PS\Mailer;
 use PS\Webservice\Service\PS\PrestashopService;
 use PS\Webservice\Service\PS\Product;
+use PS\Webservice\Traits\FileResource;
 use PS\Webservice\Traits\PaginationTrait;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\UploadedFileInterface;
 use Ramsey\Uuid\Uuid;
-use PS\Webservice\Traits\FileResource;
-use PS\Webservice\Facades\S3Service;
 
 class SellerController
 {
@@ -31,13 +32,16 @@ class SellerController
 
     protected AuthServiceInterface $authService;
     protected Mailer $mailer;
-    protected PrestashopRepository $prestashopRepository;
+    /**
+     * @var ManufacturerRepository $prestashopRepository
+     */
+    protected RepositoryInterface $prestashopRepository;
     protected PrestashopService $prestashopService;
     protected Product $productService;
 
     const PASSWORD_VALIDATION = '/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[A-Z])(?=.*[a-z]).{8,}$/';
 
-    public function __construct(AuthService $authService, PrestashopService $prestashop, Mailer $mailer, PrestashopRepository $prestashopRepository, Product $productService)
+    public function __construct(AuthService $authService, PrestashopService $prestashop, Mailer $mailer, RepositoryInterface $prestashopRepository, Product $productService)
     {
         $this->authService = $authService;
         $this->mailer = $mailer;
@@ -146,7 +150,9 @@ class SellerController
             return response(['error' => 'Validation error: ' . $e->getMessage()], 400);
         }
 
-        $signup = $this->authService->signUp($data);
+        $signup = $this->authService->signUp(
+            ManufactureEntity::create($data->toArray(), $this->prestashopService)
+        );
         if ($signup === false) {
             Log::error("Sign up failed");
             return response(['error' => 'Sign up failed'], 400);
@@ -216,6 +222,7 @@ class SellerController
                     'zip_code' => $data['zip_code'] ?? null,
                     'phone_number' => $data['phone_number'] ?? null,
                     'premium' => (bool) $data['premium'] ?? false,
+                    'iban' => $data['iban'] ?? null,
                 ],
                 $this->prestashopService
             );

@@ -150,4 +150,9 @@ class OrderSession implements ObjectInterface
     {
         return $this->service;
     }
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
 }

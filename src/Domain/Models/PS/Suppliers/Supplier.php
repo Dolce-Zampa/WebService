@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use PS\Webservice\Domain\Models\PS\PsTable;
 use PS\Webservice\Domain\Models\PS\Suppliers\SupplierLang;
 use PS\Webservice\Domain\Models\PS\Suppliers\SupplierShop;
-use PS\Webservice\Domain\PS\Address;
+use PS\Webservice\Domain\Models\PS\Address;
 
 class Supplier extends PsTable
 {

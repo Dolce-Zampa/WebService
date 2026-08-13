@@ -8,5 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 class PsTable extends Model
 {
     public $timestamps = false;
+    protected $table = 'customer';
+
+    public static function tableName(): string
+    {
+        return (new self())->table;
+    }
 
 }

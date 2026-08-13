@@ -62,6 +62,8 @@ final class FeaturesManufacturerTable extends AbstractMigration
             ->addColumn('sub', 'string', ['limit' => 255, 'null' => true, 'after' => 'uuid'])
             ->update();
 
+        $table = $this->table(env('PS_TABLE_PREFIX').'address');
+        $table->addColumn('iban', 'string', ['limit' => 34, 'null' => true, 'after' => 'vat_number']);
         $table->update();
     }
 

@@ -49,8 +49,12 @@ class ManufactureEntity extends Entity implements ObjectInterface
 	{
 		$this->data['slug'] = $this->data['link_rewrite'] ?? '';
 		$this->data['image'] = $this->getAvatar();
-
-		$isPremium = Manufacturer::when('id_manufacturer', $this->getId())
+		$this->data['firstname'] = $this->data['first_name'];
+		$this->data['lastname'] = $this->data['last_name'];
+		$this->data['newsletter'] = (bool) ($this->data['newsletter'] ?? false);
+		$this->data['id_country'] = (int) 11; //FIXME: Hardcoded country ID, should be dynamic based on actual data
+		
+		$isPremium = Manufacturer::where('id_manufacturer', $this->getId())
 			->where('premium', true)
 			->exists();
 		

@@ -12,18 +12,16 @@ namespace PS\Webservice\Service\Auth;
  * - 4. create default settings
  */
 
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use malirobot\AwsCognito\Exception\UsernameExistsException;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
-use PS\Webservice\Domain\Models\User;
+use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\AwsCognitoClient;
+use PS\Webservice\Facades\Repositories;
 use PS\Webservice\Traits\AuthFlow;
 use PS\Webservice\Traits\RegistersUsers;
 use PS\Webservice\Traits\UseCache;
-use Psr\Http\Message\ServerRequestInterface as Request;
 
 class SignUpService extends UserService
 {
@@ -36,21 +34,20 @@ class SignUpService extends UserService
      * 
      * "{"User":{"Username":"12954434-c091-7097-0301-07a456e327df","Attributes":[{"Name":"email","Value":"marco.defelice890@gmail.com"},{"Name":"email_verified","Value":"true"},{"Name":"sub","Value":"12954434-c091-7097-0301-07a456e327df"}],"UserCreateDate":"2026-07-16T07:38:31+00:00","UserLastModifiedDate":"2026-07-16T07:38:31+00:00","Enabled":true,"UserStatus":"FORCE_CHANGE_PASSWORD"},"@metadata":{"statusCode":200,"effectiveUri":"https:\/\/cognito-idp.eu-west-1.amazonaws.com\/","headers":{"date":"Thu, 16 Jul 2026 07:38:31 GMT","content-type":"application\/x-amz-json-1.1","content-length":"359","connection":"keep-alive","x-amzn-requestid":"69de265d-be04-4bc1-ba5d-94ea099e365a"},"transferStats":{"http":[[]]}}}"
      *
-    * @param mixed $data Signup payload (Request, Collection or array).
+    * @param ObjectInterface $data Signup payload (Request, Collection or array).
      * @return array|bool
      */
-    public function signUp(mixed $data): array|bool
+    public function signUp(ObjectInterface $data): array|bool
     {
-        $payload = $this->normalizeSignUpData($data);
-        $isSellerSignup = (bool) $payload->get('is_seller', false);
+        $isSellerSignup = (bool) $data->is_seller;
         $isNewUser = false;
-        $resolvedAuth = null;
         $sub = null;
-        $authToken = $data['auth_token'] ?? null;
+        $authToken = $data->auth_token;
+        $newCustomer = $data;
 
         try {
             if(is_null($authToken) || trim((string) $authToken) === '') {
-                $cognito = $this->createCognitoUser($payload);
+                $cognito = $this->createCognitoUser($data);
                 if($cognito['error'] ?? false) {
                     Log::error("Cognito user creation failed: " . json_encode($cognito));
                     return false;
@@ -65,17 +62,7 @@ class SignUpService extends UserService
 
             //create user in DB
             try {
-                User::create([
-                    'email' => $payload->get('email'),
-                    'id_lang' => 1,
-                    'active' => 1,
-                    'firstname' => $payload->get('first_name'),
-                    'lastname' => $payload->get('last_name'),
-                    'id_gender' => 1,
-                    'passwd' => $payload->get('password'),
-                    'date_add' => Carbon::now(),
-                    'date_upd' => Carbon::now(),
-                ]);
+                $newCustomer = Repositories::customer()->saveNewCustomer($data);
             } catch (\Exception $e) {
                 Log::critical("User creation in DB failed: " . $e->getMessage());
                 return false;
@@ -89,40 +76,34 @@ class SignUpService extends UserService
                 return false;
             }
 
-            $resolvedAuth = $this->resolveExistingUserAuth($payload);
-            $payload = $this->mergeIdentityIntoPayload($payload, $resolvedAuth);
+            $resolvedAuth = $this->resolveExistingUserAuth($data);
 
         } catch (\Exception $e) {
             Log::critical($e->getMessage());
             if ($isNewUser === true) {
-                AwsCognitoClient::deleteUser((string) $payload->get('email'));
+                AwsCognitoClient::deleteUser($data->auth_token);
             }
             return false;
         }
 
-        $this->updateUserSellerAttributes($payload);
+        $this->updateUserSellerAttributes($data);
 
         if (!is_string($sub) || $sub === '') {
-            Log::error('Missing Cognito sub after signup authentication', [
-                'email' => $payload->get('email'),
-            ]);
+            Log::error('Missing Cognito sub after signup authentication');
             return false;
         }
 
-        $resolvedAuth = is_array($resolvedAuth) ? $resolvedAuth : [];
-        $this->setToCache($sub, $resolvedAuth['RefreshToken'] ?? null, 2592000);
-        $this->setToCache($sub, $resolvedAuth['IdToken'] ?? null, 2592000);
+        // send mail to user for confirmation
+        $this->mailer->sendSignUpMail($data->email, "$data->firstname $data->lastname");
 
         return [
-            'access_token' => $resolvedAuth['AccessToken'] ?? ($cognito['AccessToken'] ?? null),
-            'refresh_token' => $resolvedAuth['RefreshToken'] ?? ($cognito['RefreshToken'] ?? null),
-            'id_token' => $resolvedAuth['IdToken'] ?? ($cognito['IdToken'] ?? null),
             'sub' => $sub,
             'is_new_user' => $isNewUser,
+            'customer' => $newCustomer
         ];
     }
 
-    public function updateUserSellerAttributes(Collection $data): void
+    public function updateUserSellerAttributes(ObjectInterface $data): void
     {
         AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
         if (is_string($data->get('password')) && trim((string) $data->get('password')) !== '') {
@@ -136,41 +117,7 @@ class SignUpService extends UserService
         ]);
     }
 
-    private function normalizeSignUpData(mixed $data): Collection
-    {
-        if ($data instanceof Request) {
-            $payload = is_array($data->getParsedBody()) ? $data->getParsedBody() : [];
-            $firstName = trim((string) ($payload['firstname'] ?? $payload['first_name'] ?? ''));
-            $lastName = trim((string) ($payload['lastname'] ?? $payload['last_name'] ?? ''));
-
-            $name = trim((string) ($payload['name'] ?? ''));
-            if ($name === '') {
-                $name = trim($firstName . ' ' . $lastName);
-            }
-
-            return collect([
-                'name' => $name,
-                'email' => (string) ($payload['email'] ?? ''),
-                'password' => (string) ($payload['password'] ?? ''),
-                'is_seller' => (bool) ($payload['is_seller'] ?? false),
-                'first_name' => $firstName,
-                'last_name' => $lastName,
-                'auth_token' => $this->normalizeAuthorizationToken($data->getHeaderLine('Authorization')),
-            ]);
-        }
-
-        if ($data instanceof Collection) {
-            return $data;
-        }
-
-        if (is_array($data)) {
-            return collect($data);
-        }
-
-        throw new \InvalidArgumentException('Invalid signup payload format', 400);
-    }
-
-    private function resolveExistingUserAuth(Collection $payload): array|bool
+    private function resolveExistingUserAuth(ObjectInterface $payload): array|bool
     {
         $authToken = $this->normalizeAuthorizationToken((string) ($payload->get('auth_token') ?? ''));
         if ($authToken !== '') {
@@ -230,26 +177,6 @@ class SignUpService extends UserService
         }
 
         return $existingUserAuth;
-    }
-
-    private function mergeIdentityIntoPayload(Collection $payload, array $auth): Collection
-    {
-        $identity = is_array($auth['identity'] ?? null) ? $auth['identity'] : [];
-        $email = (string) ($identity['email'] ?? ($payload->get('email') ?? ''));
-        $firstName = trim((string) ($identity['given_name'] ?? ($payload->get('first_name') ?? '')));
-        $lastName = trim((string) ($identity['family_name'] ?? ($payload->get('last_name') ?? '')));
-        $name = trim((string) ($identity['name'] ?? ($payload->get('name') ?? '')));
-
-        if ($name === '' && ($firstName !== '' || $lastName !== '')) {
-            $name = trim($firstName . ' ' . $lastName);
-        }
-
-        return $payload->merge([
-            'email' => $email,
-            'first_name' => $firstName,
-            'last_name' => $lastName,
-            'name' => $name,
-        ]);
     }
 
     private function normalizeAuthorizationToken(?string $authHeader): string

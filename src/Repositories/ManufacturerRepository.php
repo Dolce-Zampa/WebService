@@ -4,14 +4,14 @@ declare(strict_types=1);
 namespace PS\Webservice\Repositories;
 
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Domain\Models\PS\Suppliers\Supplier;
 use Ramsey\Uuid\Uuid;
+use Illuminate\Database\Capsule\Manager as DB;
 
-class ManufacturerRepository
+class ManufacturerRepository extends PrestashopRepository implements RepositoryInterface
 {
     protected \Illuminate\Database\Capsule\Manager $db;
 
@@ -173,12 +173,18 @@ class ManufacturerRepository
         $supplier->address()->updateOrCreate(
             ['id_supplier' => $supplier->id_supplier],
             [
-                'address' => $manufacture->address,
+                'address1' => $manufacture->address,
                 'city' => $manufacture->city,
-                'zip_code' => $manufacture->postcode,
+                'postcode' => $manufacture->postcode,
                 'country' => $manufacture->country,
                 'state' => $manufacture->state,
+                'id_country' => $manufacture->id_country ?? 11,
                 'phone_number' => $manufacture->phone_number,
+                'dni' => $manufacture->fiscal_code,
+                'phone_mobile' => $manufacture->phone_number,
+                'vat_number' => $manufacture->vat_number,
+                'iban' => $manufacture->iban,
+                'alias' => 'default',
             ]
         );
     }

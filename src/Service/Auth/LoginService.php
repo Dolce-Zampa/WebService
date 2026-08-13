@@ -5,6 +5,7 @@ namespace PS\Webservice\Service\Auth;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\User;
 use PS\Webservice\Exceptions\AuthException;
 use PS\Webservice\Facades\AwsCognitoClient;
@@ -67,7 +68,7 @@ class LoginService extends SignUpService
             ]);
             return false;
         }
-        $user = User::where('email', $user)->first();
+        $user = Customer::where('email', $user)->first();
 
         if(is_null($user)) {
             Log::info('User not found in database');

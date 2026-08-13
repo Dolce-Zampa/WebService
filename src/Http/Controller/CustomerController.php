@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Facades\AwsCognitoClient;
-use PS\Webservice\Repositories\PrestashopRepository;
+use PS\Webservice\Repositories\CustomerRepository;
+use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\PS\Customer;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -17,11 +18,14 @@ class CustomerController extends Controller
 {
     private Customer $customerService;
     private AuthService $authService;
-    private PrestashopRepository $prestashopRepository;
+    /**
+     * @var CustomerRepository $prestashopRepository
+     */
+    private RepositoryInterface $prestashopRepository;
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
     private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
 
-    public function __construct(Customer $customerService, AuthService $authService, PrestashopRepository $prestashopRepository)
+    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository)
     {
         $this->customerService = $customerService;
         $this->authService = $authService;
@@ -33,18 +37,10 @@ class CustomerController extends Controller
         $payload = $this->requireArrayPayload($request->getParsedBody());
         $this->validateCustomerRegistrationPayload($payload);
 
-        $name = trim(((string) $payload['firstname']) . ' ' . ((string) $payload['lastname']));
-        $cognitoPayload = [
-            'name' => $name,
-            'email' => (string) $payload['email'],
-            'password' => (string) $payload['password'],
-        ];
-
         try {
-            $cognito = $this->authService->signUp($request);
-
+            $cognito = $this->authService->signUp(CustomerEntity::create($payload, $this->customerService));
             if ($cognito === false) {
-                return response(['message' => 'Cognito signup failed'], 400);
+                return response(['message' => 'Utente già resistrato, prova con il recupera password'], 400);
             }
 
         } catch (\Throwable $e) {
@@ -52,23 +48,10 @@ class CustomerController extends Controller
             return response(['message' => 'Unable to register customer'], 400);
         }
 
-        try {
-            $customer = $this->customerService->register(CustomerEntity::create($payload, $this->customerService));
-            if (!$customer instanceof CustomerEntity) {
-                AwsCognitoClient::deleteUser($cognitoPayload['email']);
-                return response(['message' => 'Unable to register customer'], 400);
-            }
-
-            $sub = $this->extractCognitoAttribute($cognito['access_token'], 'sub');
-            return response([
-                'customer' => $customer->toArray(),
-                'cognito_sub' => $sub,
-            ], 201);
-        } catch (\Throwable $e) {
-            AwsCognitoClient::deleteUser($cognitoPayload['email']);
-            Log::error('Customer PrestaShop register failed after Cognito signup: ' . $e->getMessage());
-            return response(['message' => 'Unable to register customer'], 500);
-        }
+        return response([
+            'customer' => $cognito['customer'],
+            'cognito_sub' => $cognito['sub'],
+        ], 201);
     }
 
     public function createCustomer(Request $request, Response $response, array $argv): Response

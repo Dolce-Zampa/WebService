@@ -82,4 +82,9 @@ class OrderEntity implements ObjectInterface
 	{
 		return new \PS\Webservice\Domain\Object\PayloadServiceData($this->data, ['id' => 'order', 'id_cart' => 'cart']);
 	}
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
 }

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace PS\Webservice\Domain\PS;
+namespace PS\Webservice\Domain\Models\PS;
 
 use PS\Webservice\Domain\Models\PS\PsTable;
 use PS\Webservice\Domain\Models\PS\Suppliers\Supplier;
@@ -12,6 +12,16 @@ class Address extends PsTable
 {
     protected $table = 'address';
     protected $primaryKey = 'id_address';
+    protected $fillable = [
+        'id_supplier',
+        'id_country',
+        'address',
+        'city',
+        'zip_code',
+        'country',
+        'state',
+        'phone_number',
+    ];
 
     public function supplier()
     {

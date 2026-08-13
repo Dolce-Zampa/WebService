@@ -9,4 +9,11 @@ final class Repositories extends \Illuminate\Support\Facades\Facade
     {
         return 'public-repositories';
     }
+
+    public static function customer(): \PS\Webservice\Repositories\CustomerRepository
+    {
+        return new \PS\Webservice\Repositories\CustomerRepository(
+            static::getFacadeRoot()->getDbInstance()
+        );
+    }
 }
