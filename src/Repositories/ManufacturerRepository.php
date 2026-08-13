@@ -176,15 +176,16 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
                 'address1' => $manufacture->address,
                 'city' => $manufacture->city,
                 'postcode' => $manufacture->postcode,
-                'country' => $manufacture->country,
-                'state' => $manufacture->state,
                 'id_country' => $manufacture->id_country ?? 11,
-                'phone_number' => $manufacture->phone_number,
                 'dni' => $manufacture->fiscal_code,
                 'phone_mobile' => $manufacture->phone_number,
                 'vat_number' => $manufacture->vat_number,
                 'iban' => $manufacture->iban,
                 'alias' => 'default',
+                'lastname' => $manufacture->lastname,
+                'firstname' => $manufacture->firstname,
+                'date_add' => Carbon::now(),
+                'date_upd' => Carbon::now(),
             ]
         );
     }

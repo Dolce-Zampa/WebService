@@ -20,7 +20,16 @@ class Address extends PsTable
         'zip_code',
         'country',
         'state',
-        'phone_number',
+        'alias',
+        'lastname',
+        'firstname',
+        'vat_number',
+        'dni',
+        'phone_mobile',
+        'iban',
+        'address1',
+        'date_add',
+        'date_upd',
     ];
 
     public function supplier()

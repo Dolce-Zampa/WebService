@@ -223,6 +223,7 @@ class SellerController
                     'phone_number' => $data['phone_number'] ?? null,
                     'premium' => (bool) $data['premium'] ?? false,
                     'iban' => $data['iban'] ?? null,
+                    'alias' => 'default',
                 ],
                 $this->prestashopService
             );
@@ -244,9 +245,6 @@ class SellerController
 
         return response(
             [
-                'access_token' => $signup['access_token'] ?? null,
-                'refresh_token' => $signup['refresh_token'] ?? null,
-                'seller' => ''
             ]
             ,
             201
@@ -605,20 +603,6 @@ class SellerController
         $manufacturer = Manufacturer::query()->with('details')->where('sub', $sub)->first();
         if ($manufacturer !== null) {
             return $manufacturer;
-        }
-
-        $idToken = Cache::get($sub . 'id_token');
-        if (is_string($idToken) && $idToken !== '') {
-            $decodedIdToken = AwsCognitoClient::decodeAccessToken($idToken);
-            $email = $decodedIdToken['email'] ?? null;
-            if (is_string($email) && $email !== '') {
-                $manufacturer = Manufacturer::query()->with('details')->where('email', $email)->first();
-                if ($manufacturer !== null) {
-                    $manufacturer->sub = $sub;
-                    $manufacturer->save();
-                    return $manufacturer->fresh('details');
-                }
-            }
         }
 
         throw new \RuntimeException('Seller not found', 404);

@@ -71,12 +71,20 @@ class SignUpService extends UserService
         } catch (UsernameExistsException $e) {
             Log::info("User already exists in Cognito: " . $e->getMessage());
 
+
+            $resolvedAuth = $this->resolveExistingUserAuth($data);
+            $decodedToken = AwsCognitoClient::decodeAccessToken((string) ($resolvedAuth['IdToken'] ?? ''));
+            $sub = $decodedToken['sub'] ?? null;
+
             // Existing users can be promoted to seller, but standard customer signup remains strict.
             if ($isSellerSignup !== true) {
                 return false;
             }
 
-            $resolvedAuth = $this->resolveExistingUserAuth($data);
+            if($decodedToken['custom:seller'] == 1 ) {
+                Log::info("User is already a seller in Cognito: " . $e->getMessage());
+                return false;
+            }
 
         } catch (\Exception $e) {
             Log::critical($e->getMessage());

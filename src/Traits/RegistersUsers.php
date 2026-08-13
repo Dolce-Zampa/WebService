@@ -4,6 +4,7 @@ namespace PS\Webservice\Traits;
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CustomerEntity;
+use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\AwsCognitoClient;
 
 trait RegistersUsers
@@ -15,7 +16,7 @@ trait RegistersUsers
      * @return array<string, mixed>
      * @throws \InvalidArgumentException
      */
-    public function createCognitoUser(CustomerEntity $request, ?array $clientMetadata = null, ?string $groupname = null)
+    public function createCognitoUser(ObjectInterface $request, ?array $clientMetadata = null, ?string $groupname = null)
     {
         $email = $request->email;
         $username = $email;
