@@ -11,12 +11,14 @@ use PS\Webservice\Repositories\CustomerRepository;
 use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\PS\Customer;
+use PS\Webservice\Service\PS\Mailer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class CustomerController extends Controller
 {
     private Customer $customerService;
+    protected Mailer $mailer;
     private AuthService $authService;
     /**
      * @var CustomerRepository $prestashopRepository
@@ -25,11 +27,12 @@ class CustomerController extends Controller
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
     private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
 
-    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository)
+    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer)
     {
         $this->customerService = $customerService;
         $this->authService = $authService;
         $this->prestashopRepository = $prestashopRepository;
+        $this->mailer = $mailer;
     }
 
     public function register(Request $request, Response $response, array $argv): Response
@@ -47,6 +50,10 @@ class CustomerController extends Controller
             Log::error('Customer Cognito signup failed: ' . $e->getMessage());
             return response(['message' => 'Unable to register customer'], 400);
         }
+
+        // send mail to user for confirmation
+        $customer = $cognito['customer'];
+        $this->mailer->sendSignUpMail($customer->email, "$customer->firstname $customer->lastname");
 
         return response([
             'customer' => $cognito['customer'],

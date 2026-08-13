@@ -101,9 +101,6 @@ class SignUpService extends UserService
             return false;
         }
 
-        // send mail to user for confirmation
-        $this->mailer->sendSignUpMail($data->email, "$data->firstname $data->lastname");
-
         return [
             'sub' => $sub,
             'is_new_user' => $isNewUser,

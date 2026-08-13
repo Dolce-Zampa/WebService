@@ -113,7 +113,8 @@ $container->set(\PS\Webservice\Http\Controller\CustomerController::class, functi
     $customerService = $c->get(\PS\Webservice\Service\PS\Customer::class);
     $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
     $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
-    return new \PS\Webservice\Http\Controller\CustomerController($customerService, $authService, $repository);
+    $mailer =   $c->get(\PS\Webservice\Service\PS\Mailer::class);
+    return new \PS\Webservice\Http\Controller\CustomerController($customerService, $authService, $repository, $mailer);
 });
 
 $container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {
