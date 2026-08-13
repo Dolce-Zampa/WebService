@@ -6,4 +6,8 @@ parameters:
         -
             identifier: method.staticCall
         -
+            identifier: staticMethod.notFound
+        -
+            identifier: class.notFound
+        -
             identifier: property.notFound

@@ -25,7 +25,7 @@ trait RegistersUsers
      * @return array<string, mixed>
      * @throws \InvalidArgumentException
      */
-    public function createCognitoUser(\Illuminate\Support\Collection $request, array $clientMetadata=null, string $groupname=null)
+    public function createCognitoUser(\Illuminate\Support\Collection $request, ?array $clientMetadata = null, ?string $groupname = null)
     {
         $email = $request->has('email')?$request['email']:null;
         $username = $email;

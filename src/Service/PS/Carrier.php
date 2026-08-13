@@ -23,12 +23,8 @@ class Carrier extends PrestashopService implements PrestashopServiceInterface {
             $displayOptions['filter[deleted]'] = 0;
         }
 
-        if (!empty($displayOptions)) {
-            $queryString = http_build_query($displayOptions);
-            $this->httpService->setUrl("/carriers?{$queryString}");
-        } else {
-            $this->httpService->setUrl("/carriers");
-        }
+        $queryString = http_build_query($displayOptions);
+        $this->httpService->setUrl('/carriers' . ($queryString !== '' ? "?{$queryString}" : ''));
 
         $response = $this->httpService->invoke('GET');
 

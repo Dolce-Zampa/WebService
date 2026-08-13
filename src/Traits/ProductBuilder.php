@@ -74,6 +74,12 @@ trait ProductBuilder
      *
      * @throws \RuntimeException When option retrieval fails
      */
+    protected function getProductOptionValues(): array
+    {
+        $values = $this->data['associations']['product_option_values'] ?? [];
+        return is_array($values) ? array_values($values) : [];
+    }
+
     protected function buildOptionValues(): void
     {
         $cacheKey = "product_{$this->getId()}_option_values";

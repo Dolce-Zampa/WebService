@@ -90,8 +90,13 @@ class PrestashopService implements PrestashopServiceInterface {
             throw new \RuntimeException("Failed to retrieve combination: " . $response->getHttpCode());
         }
 
+        $combination = null;
         foreach($response->toArray()['combinations'] as $combinationData) {
             $combination = CombinationEntity::create($combinationData, $this);
+        }
+
+        if ($combination === null) {
+            throw new \RuntimeException('Failed to retrieve combination details: empty response');
         }
 
         return $combination;

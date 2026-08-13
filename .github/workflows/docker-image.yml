@@ -26,6 +26,10 @@ jobs:
     - name: Build the Docker image
       run: |
         docker build . --file Dockerfile --tag ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
+
+    - name: Run phpstan
+      run: |
+        docker run --rm ghcr.io/dolce-zampa/webservice:${{ github.ref_name }} vendor/bin/phpstan analyse src --level 1
     
     - name: Push the Docker image
       run: |

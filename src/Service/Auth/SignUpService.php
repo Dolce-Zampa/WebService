@@ -45,6 +45,7 @@ class SignUpService extends UserService
         $isSellerSignup = (bool) $payload->get('is_seller', false);
         $isNewUser = false;
         $resolvedAuth = null;
+        $sub = null;
         $authToken = $data['auth_token'] ?? null;
 
         try {
@@ -100,7 +101,7 @@ class SignUpService extends UserService
         }
 
         $this->updateUserSellerAttributes($payload);
-        
+
         if (!is_string($sub) || $sub === '') {
             Log::error('Missing Cognito sub after signup authentication', [
                 'email' => $payload->get('email'),
@@ -108,13 +109,14 @@ class SignUpService extends UserService
             return false;
         }
 
+        $resolvedAuth = is_array($resolvedAuth) ? $resolvedAuth : [];
         $this->setToCache($sub, $resolvedAuth['RefreshToken'] ?? null, 2592000);
         $this->setToCache($sub, $resolvedAuth['IdToken'] ?? null, 2592000);
 
         return [
-            'access_token' => $auth['AccessToken'] ?? null,
-            'refresh_token' => $auth['RefreshToken'] ?? null,
-            'id_token' => $auth['IdToken'] ?? null,
+            'access_token' => $resolvedAuth['AccessToken'] ?? ($cognito['AccessToken'] ?? null),
+            'refresh_token' => $resolvedAuth['RefreshToken'] ?? ($cognito['RefreshToken'] ?? null),
+            'id_token' => $resolvedAuth['IdToken'] ?? ($cognito['IdToken'] ?? null),
             'sub' => $sub,
             'is_new_user' => $isNewUser,
         ];

@@ -11,7 +11,7 @@ class CodPaymentService implements PaymentGatewayInterface
     public static function setApiKey(string $apiKey): self
     {
         // no API key needed for COD, but we implement the method to satisfy the interface
-        return new static();
+        return new self();
     }
 
     public function createPaymentSession(OrderSession $orderSession): string
