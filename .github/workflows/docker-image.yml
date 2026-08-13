@@ -26,14 +26,7 @@ jobs:
     - name: Build the Docker image
       run: |
         docker build . --file Dockerfile --tag ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
-    - name: Create environment file
-      run: |
-        if [ -f .env.example ]; then
-          cp .env.example .env
-        else
-          touch .env
-        fi
-        
+
     - name: Run phpstan
       run: |
         docker run --rm ghcr.io/dolce-zampa/webservice:${{ github.ref_name }} vendor/bin/phpstan analyse src --level 1

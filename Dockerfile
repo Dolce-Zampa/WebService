@@ -20,6 +20,7 @@ COPY . .
 RUN chown -R www-data:www-data /var/www/workdir
 RUN mkdir -p /var/www/workdir/storage/cache
 RUN mkdir -p /var/www/workdir/storage/logs
+RUN cp .env.example .env
 
 # Se usi public/ come document root (es Slim/Laravel)
 # Puoi eventualmente fare:
