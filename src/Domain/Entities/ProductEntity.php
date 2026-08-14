@@ -87,7 +87,9 @@ class ProductEntity extends Entity implements ObjectInterface
         }
 
         //normalize urls
-        $this->data['url'] = str_replace('http://aidyis-prod-backoffice.dolcezampa.com', '', $this->data['url']);
+        if(!is_null($this->data['url'])) {
+            $this->data['url'] = str_replace('http://aidyis-prod-backoffice.dolcezampa.com', '', $this->data['url']);
+        }
 
         // normalize on_sale flag
         $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);
