@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Middleware;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Enums\CategoriesMap;
+use PS\Webservice\Domain\Enums\ManufacturesMap;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -86,13 +88,13 @@ class CachingMiddleware implements MiddlewareInterface
     {
         $tags = [];
         if(isset($params['manufacturer']) || isset($params['id_manufacturer'])) {
-            $tags[] = 'manufacturer:' . $params['manufacturer'];
+            $tags[] = ManufacturesMap::getManufacturer((int)$params['manufacturer']);
         }
 
         if(isset($params['category']) || isset($params['id_category'])) {
             $categories = explode('|', $params['category'] ?? $params['id_category']);
             foreach($categories as $category) {
-                $tags[] = 'category:' . $category;
+                $tags[] = CategoriesMap::getCategory((int)$category);
             }
         }
 
