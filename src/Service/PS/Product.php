@@ -210,8 +210,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         $collection = new Collection();
         $products = $response->toArray()['products'] ?? [];
         foreach ($products as $productData) {
-            $productData['filters'] = ['id','name','id_default_image','price', 'url'];
-            $product = ProductEntity::create($productData, $this)->withCustomizations();
+            $product = ProductEntity::create($productData, $this);
             $collection->push($product);
         }
 
