@@ -23,7 +23,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
             ->where('email', 'like', '%@%')
             ->first();
 
-        if ($existingCustomer && $existingCustomer->created_at < '2026-08-01 00:00:00') {
+        if ($existingCustomer && $existingCustomer->created_at < '2026-08-15 00:00:00') {
             // Se esiste un cliente con la stessa email, aggiorna il record esistente
             $this->db->table(Customer::tableName())
                 ->where('id_customer', $existingCustomer->id_customer)
