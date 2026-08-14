@@ -11,7 +11,7 @@ use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
-class PrestashopProductWebhookController extends Controller
+class PrestashopProductWebhookController extends ConfigController
 {
     use UseCache;
 
@@ -136,11 +136,5 @@ class PrestashopProductWebhookController extends Controller
         $generate = stripos($productShortDescription, $key);
         return $generate !== false;
     }
-
-    public function clearCache() 
-    {
-        $this->flush();
-        return response(['message' => 'All cache cleared successfully'], 200);
-
-    }
+    
 }

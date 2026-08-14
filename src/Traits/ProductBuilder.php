@@ -82,12 +82,6 @@ trait ProductBuilder
 
     protected function buildOptionValues(): void
     {
-        $cacheKey = "product_{$this->getId()}_option_values";
-        $cachedOptions = $this->tags(['product-options'])->getFromCache($cacheKey);
-        if ($cachedOptions !== null) {
-            $this->data['associations'] = $cachedOptions;
-            return; // Use cached option values if available
-        }
 
         foreach ($this->getProductOptionValues() as $i => $value) {
             try {
@@ -98,8 +92,6 @@ trait ProductBuilder
                 continue; // Skip this option value but continue processing others
             }
         }
-
-        $this->tags(['product-options'])->setToCache($cacheKey, $this->data['associations'], (1440 * 364)); // Cache the full option values for 1 year
 
         unset($this->data['associations']['product_option_values']); // Remove the id-only entry to avoid confusion
     }

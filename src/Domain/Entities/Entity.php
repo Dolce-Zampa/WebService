@@ -17,6 +17,7 @@ class Entity
     protected $tagsCache = 'entity:';
 
     private const KEY_CACHE = 'entity_cache';
+    protected $cacheTTL = 5; // 5 minuts default
 
     protected function __construct(array $data, PrestashopServiceInterface $service)
     {
@@ -31,7 +32,7 @@ class Entity
             $this->data = $this->getFromCache(self::KEY_CACHE);
         } else {
             $this->normalizeData();
-            $this->setToCache(self::KEY_CACHE, $this->data);
+            $this->setToCache(self::KEY_CACHE, $this->data, $this->cacheTTL);
         }
     }
 

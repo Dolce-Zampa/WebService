@@ -94,6 +94,7 @@ class webserviceapi extends PaymentModule
             return;
         }
         $this->notifyProductSavedWebhook($params['object']);
+        $this->clearCacheWebhook($params['object']);
     }
 
     /**
@@ -105,6 +106,7 @@ class webserviceapi extends PaymentModule
             return;
         }
         $this->notifyProductSavedWebhook($params['object']);
+        $this->clearCacheWebhook($params['object']);
     }
 
     /**
@@ -186,17 +188,59 @@ class webserviceapi extends PaymentModule
             );
         }
 
-        $this->clearCacheWebhook($webhookSecret, $webhookBaseUrl);
     }
 
-    protected function clearCacheWebhook($webhookSecret, $webhookBaseUrl)
+    protected function clearCacheWebhook(Product $product)
     {
+        $webhookEnabled = (bool) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED);
+        if (!$webhookEnabled) {
+            return;
+        }
+
+        $webhookBaseUrl = rtrim((string) Configuration::get(self::CONFIG_WEBSERVICE_URL), '/');
+        $webhookSecret = (string) Configuration::get(self::CONFIG_WEBHOOK_SECRET);
+
+        if (empty($webhookBaseUrl) || empty($webhookSecret)) {
+            PrestaShopLogger::addLog(
+                '[webserviceapi] Webhook clear cache not sent: WEBSERVICE_URL or WEBHOOK_SECRET is not configured.',
+                2,
+                null,
+                'Product',
+                (int) $product->id
+            );
+            return;
+        }
+
+        $productUrl = "api_cache:/api".$this->context->link->getProductLink($product)."?";
+        $categoryName = $this->getCategoryNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
+        $brandName = $this->getBrandNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
+
+        $tags = [];
+        $tags[] = [
+            "tags" => ['product-detail'],
+            "key" => $productUrl,
+        ];
+        $tags[] = [
+            "tags" => [$categoryName],
+        ];
+        $tags[] = [
+            "tags" => [$brandName],
+        ];
+        $tags[] = [
+            "tags" => ["product:" . (int) $product->id],
+        ];
+
         $url = $webhookBaseUrl . '/api/webhooks/clear-cache';
+        $payload = json_encode(
+            ["cache" => $tags]
+        );
 
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             'Content-Type: application/json',
+            'Content-Length: ' . strlen($payload),
             'X-Webhook-Secret: ' . $webhookSecret,
         ));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -531,5 +575,35 @@ class webserviceapi extends PaymentModule
         }
 
         return '';
+    }
+
+    private function getCategoryNameFromProduct(Product $product, int $langId = 1): string
+    {
+        $categories = $product->getCategories();
+        if (empty($categories)) {
+            return '';
+        }
+
+        $categoryId = (int) $categories[0];
+        $category = new Category($categoryId, $langId);
+        if (!Validate::isLoadedObject($category)) {
+            return '';
+        }
+
+        return (string) $category->name;
+    }
+
+    private function getBrandNameFromProduct(Product $product, int $langId = 1): string
+    {
+        if (!isset($product->id_manufacturer) || (int) $product->id_manufacturer <= 0) {
+            return '';
+        }
+
+        $manufacturer = new Manufacturer((int) $product->id_manufacturer, $langId);
+        if (!Validate::isLoadedObject($manufacturer)) {
+            return '';
+        }
+
+        return (string) $manufacturer->name;
     }
 }
