@@ -61,7 +61,7 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/carriers/{id}', PS\Webservice\Http\Controller\CarrierController::class . ':getCarrier')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
 
     /** search */
-    $app->get('/api/search', PS\Webservice\Http\Controller\ProductController::class . ':searchProducts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
+    $app->get('/api/search', PS\Webservice\Http\Controller\ProductController::class . ':searchProducts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('search'));
 
     /** Pet professional services api */
     $app->get('/api/pet-services', PS\Webservice\Http\Controller\PetProfessionalServiceController::class . ':index');

@@ -20,7 +20,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
     {
         //Patch per utenti creati prima della versione 2 di DolceZampa, dobbiamo preservare i vecchi customers
         $existingCustomer = $this->db->table(Customer::tableName())
-            ->where('email', 'like', '%@%')
+            ->where('email', $customer->email)
             ->first();
 
         if ($existingCustomer && $existingCustomer->created_at < '2026-08-15 00:00:00') {
