@@ -76,7 +76,7 @@ class StripeWebhookController extends OrderController
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
         $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
         $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
-        $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
+        $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : 14; //FIXME: default carrier id should be configurable, not hardcoded
         $couponCode = isset($metadata->coupon_code) ? (string) $metadata->coupon_code : null;
         $customerDetails = json_decode($metadata->customer);
 
