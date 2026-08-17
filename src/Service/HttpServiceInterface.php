@@ -13,6 +13,8 @@ interface HttpServiceInterface {
 
     public function setUrl(string $url): void;
 
+    public function setQueryParams(array $params): void;
+
     public function invoke(string $method, array|PayloadServiceData $data = []): self;
 
     public function setMultipartData(array $multipartData): void;

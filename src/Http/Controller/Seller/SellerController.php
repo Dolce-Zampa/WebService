@@ -15,6 +15,7 @@ use PS\Webservice\Repositories\ManufacturerRepository;
 use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\AuthServiceInterface;
+use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\PS\Mailer;
 use PS\Webservice\Service\PS\PrestashopService;
 use PS\Webservice\Service\PS\Product;
@@ -39,15 +40,18 @@ class SellerController
     protected PrestashopService $prestashopService;
     protected Product $productService;
 
+    protected MailjetService $mailjetService;
+
     const PASSWORD_VALIDATION = '/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[A-Z])(?=.*[a-z]).{8,}$/';
 
-    public function __construct(AuthService $authService, PrestashopService $prestashop, Mailer $mailer, RepositoryInterface $prestashopRepository, Product $productService)
+    public function __construct(AuthService $authService, PrestashopService $prestashop, Mailer $mailer, RepositoryInterface $prestashopRepository, Product $productService, MailjetService $mailjetService)
     {
         $this->authService = $authService;
         $this->mailer = $mailer;
         $this->prestashopRepository = $prestashopRepository;
         $this->prestashopService = $prestashop;
         $this->productService = $productService;
+        $this->mailjetService = $mailjetService;
     }
 
     public function healthCheck(Request $request): ResponseInterface
@@ -241,6 +245,13 @@ class SellerController
                 AwsCognitoClient::deleteUser($bodyParams['email']);
             }
             return response(['error' => 'Failed to save seller profile'], 500);
+        }
+
+        try {
+            $contactId = $this->mailjetService->createNewContact($entity->email, $entity->first_name ?? '', $entity->last_name ?? '');
+            $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_ARTIGIANI_LIST_ID', 10663906));
+        } catch (\Exception $e) {
+            Log::critical('Stripe SellerController: failed to create new contact in Mailjet for email ' . $entity->email . ': ' . $e->getMessage());
         }
 
         return response(

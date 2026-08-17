@@ -3,41 +3,23 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Object;
 
-use PS\Webservice\Domain\ObjectInterface;
-use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use InvalidArgumentException;
 
-final class WebserviceConfig implements ObjectInterface {
+final class WebserviceConfig {
 
-    private readonly string $apikey;
     private readonly string $base_uri;
 
     private string $api;
 
-    private array $header = [
-        'Content-Type' => 'application/json',
-        'Accept' => 'application/json'
-    ];
+    private array $header = [];
 
-    private const ALLOWED_CONFIGS = [
-        'apikey',
-        'base_uri',
-        'timeout',
-        'headers',
-        'proxy',
-        'verify',
-        'debug',
-        'http_errors',
-        'cookies',
-        'allow_redirects',
-        ];
+    private array $queryParams = [];
 
-    public function __construct(string $apiKey, string $domain, array $headers = [])
+    public function __construct(string $domain, array $headers = [])
     {
-        $this->apikey = $apiKey;
         $this->base_uri = $domain;
-        $this->api = $domain . '/api';
-        $this->header = array_merge($this->header, $headers);
+        $this->api = $domain;
+        $this->header = $headers;
     }
 
     public function __get(string $name): mixed 
@@ -61,45 +43,26 @@ final class WebserviceConfig implements ObjectInterface {
         ];
     }
 
-    public function authToken(string $token): self
-    {
-        $this->header['Authorization'] = "Bearer $token";
-        $this->header['X-WS-Key'] = $token;
-
-        return $this;
-    }
-
     public function toJson($options = 0): string
     {
         return json_encode($this->toArray(), $options);
     }
 
-    public static function create(array $data, PrestashopServiceInterface $service): self
-    {
-        return new self(
-            $data['apikey'],
-            $data['base_uri']
-        );
-    }
-
     public function addQueryParams(array $params): void
     {
-        $queryString = http_build_query($params);
-        $this->api .= '&' . $queryString;
+        $this->queryParams = array_merge($this->queryParams, $params);
     }
 
-    public function normalizeData(): void
+    public function getQueryParams(): string
     {
-        //
-    }
+        if(empty($this->queryParams)) {
+            return '';
+        }
+        return "&" . http_build_query($this->queryParams);
+    }   
 
-    public function generatePayload(): PayloadServiceData
+    public function getHeaders(): mixed
     {
-        return new PayloadServiceData($this->toArray(), []);
-    }
-
-    public function get(string $key, mixed $default = null): mixed
-    {
-        return $this->data[$key] ?? $default;
+        return $this->header;
     }
 }

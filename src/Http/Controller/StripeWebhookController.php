@@ -3,18 +3,21 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
-use PS\Webservice\Service\PS\Order;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Service\MailjetService;
+use PS\Webservice\Service\PS\Order;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class StripeWebhookController extends OrderController
 {
     private Order $orderService;
+    private MailjetService $mailjetService;
 
-    public function __construct(Order $orderService)
+    public function __construct(Order $orderService, MailjetService $mailjetService)
     {
         $this->orderService = $orderService;
+        $this->mailjetService = $mailjetService;
     }
 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -122,6 +125,13 @@ class StripeWebhookController extends OrderController
             $customerDetails,
             $amountPaid
         );
+
+        try {
+            $contactId = $this->mailjetService->createNewContact($email, $firstname, $lastname);
+            $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
+        } catch (\Exception $e) {
+            Log::critical('Stripe webhook: failed to create new contact in Mailjet for email ' . $email . ': ' . $e->getMessage());
+        }
 
         Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
     }

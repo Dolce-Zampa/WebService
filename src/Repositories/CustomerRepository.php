@@ -51,6 +51,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'firstname' => $customer->firstname,
                     'lastname' => $customer->lastname,
                     'newsletter' => $customer->newsletter,
+                    'id_gender' => $customer->id_gender,
                     'date_add' => Carbon::now(),
                     'date_upd' => Carbon::now(),
                 ]);

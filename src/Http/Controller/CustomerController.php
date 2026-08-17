@@ -10,6 +10,7 @@ use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Repositories\CustomerRepository;
 use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
+use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\PS\Customer;
 use PS\Webservice\Service\PS\Mailer;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -25,14 +26,16 @@ class CustomerController extends Controller
      */
     private RepositoryInterface $prestashopRepository;
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
+    private MailjetService $mailjetService;
     private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
 
-    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer)
+    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer, MailjetService $mailjetService)
     {
         $this->customerService = $customerService;
         $this->authService = $authService;
         $this->prestashopRepository = $prestashopRepository;
         $this->mailer = $mailer;
+        $this->mailjetService = $mailjetService;
     }
 
     public function register(Request $request, Response $response, array $argv): Response
@@ -54,6 +57,13 @@ class CustomerController extends Controller
         // send mail to user for confirmation
         $customer = $cognito['customer'];
         $this->mailer->sendSignUpMail($customer->email, "$customer->firstname $customer->lastname");
+
+        try {
+            $contactId = $this->mailjetService->createNewContact($customer->email, $customer->first_name ?? '', $customer->last_name ?? '');
+            $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
+        } catch (\Exception $e) {
+            Log::critical('Stripe CustomerController: failed to create new contact in Mailjet for email ' . $customer->email . ': ' . $e->getMessage());
+        }
 
         return response([
             'customer' => $cognito['customer'],

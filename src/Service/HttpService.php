@@ -29,7 +29,12 @@ class HttpService implements HttpServiceInterface
 
     public function setUrl(string $url): void
     {
-        $this->api = $this->config->api($url . "&ws_key={$this->config->apikey}");
+        $this->api = $this->config->api($url);
+    }
+
+    public function setQueryParams(array $params): void
+    {
+        $this->config->addQueryParams($params);
     }
 
     /**
@@ -53,9 +58,7 @@ class HttpService implements HttpServiceInterface
             $options = [
                 'verify' => false, //FIXME: Riattiva sempre in produzione!
                 'timeout' => 30,   // È buona norma impostare un timeout
-                'headers' => [
-                    'Host' => 'aidyis-prod-backoffice.dolcezampa.com',
-                ],
+                'headers' => $this->config->getHeaders(),
             ];
 
             if (!empty($data)) {
@@ -68,7 +71,7 @@ class HttpService implements HttpServiceInterface
             }
 
             Log::debug("HTTP request: {$method} {$this->api} with data: " . json_encode($data));
-            $response = $stream->request($method, $this->api, $options);
+            $response = $stream->request($method, $this->api . $this->config->getQueryParams(), $options);
             $this->saveRequest($method, $this->api, $data);
 
             $this->response = $response;
