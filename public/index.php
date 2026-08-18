@@ -1,15 +1,16 @@
 <?php
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-$allowedOrigins = json_decode(file_get_contents(__DIR__ . '/../vendor/mdf/json-database-storage/storage/database/subdomains.json'), true);
+ini_set('display_errors', '1');
+error_reporting(E_ALL);
 
-if (in_array($origin, $allowedOrigins, true)) {
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+// all subdomains of dolcezampa.com are allowed
+if (preg_match('/^https?:\/\/([a-z0-9-]+\.)?dolcezampa\.com$/', $origin)) {
 	header('Access-Control-Allow-Origin: ' . $origin);
 	header('Vary: Origin');
 	header('Access-Control-Allow-Credentials: true');
+	header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
+	header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, Origin');
 }
-
-header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, Origin');
 
 # --- NUOVO: INTERCETTA E FERMA IL PREFLIGHT OPTIONS ---
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
