@@ -213,7 +213,7 @@ class OrderController extends CartController
             }
 
             //save in cache the order session only for 24h
-            $this->setToCache($orderSession->cart_id, ["orderSession" => $orderSession, "cart" => $cart], 24 * 60); //FIXME: customer data should be encrypted
+            $this->setToCache($orderSession->metadata['cart_id'], ["orderSession" => $orderSession, "cart" => $cart], 24 * 60); //FIXME: customer data should be encrypted
             $checkoutUrl = $paymentService->createPaymentSession($orderSession);
 
             return response([
