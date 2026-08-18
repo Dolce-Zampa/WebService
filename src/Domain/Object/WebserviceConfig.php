@@ -25,7 +25,7 @@ final class WebserviceConfig {
     public function __get(string $name): mixed 
     {
         if(!isset($this->$name)) {
-            throw new InvalidArgumentException("No argument found with " . $name);
+            return null;
         }
         return $this->$name;
     }

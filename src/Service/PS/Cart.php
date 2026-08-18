@@ -40,8 +40,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         $queryString = http_build_query([
             'id_cart' => $this->decodeId($cartId, 'cart'),
             'id_customer' => $this->decodeId($customerId, 'customer'),
-            'id_guest' => $this->decodeId($guestId, 'guest'),
-            'ws_key' => $this->httpService->getConfig()->apikey
+            'id_guest' => $this->decodeId($guestId, 'guest')
         ]);
         $this->httpService->setUrl("/carts?{$queryString}");
 
