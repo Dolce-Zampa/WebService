@@ -1,7 +1,4 @@
 <?php
-ini_set('display_errors', '1');
-error_reporting(E_ALL);
-
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 // all subdomains of dolcezampa.com are allowed
 if (preg_match('/^https?:\/\/([a-z0-9-]+\.)?dolcezampa\.com$/', $origin)) {
