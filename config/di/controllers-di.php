@@ -49,7 +49,7 @@ $container->set(\PS\Webservice\Http\Controller\CarrierController::class, functio
 $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
     $mailjet = $c->get(\PS\Webservice\Service\MailjetService::class);
-    $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class;
+    $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
     $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
     return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService,$mailjet,$payment,$mailer);
 });

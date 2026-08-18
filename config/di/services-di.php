@@ -127,7 +127,7 @@ $container->set(\PS\Webservice\Service\MailjetService::class, function ($c) {
         headers: [
 	        'Content-Type' => 'application/json',
 	        'Accept' => 'application/json',
-	        'Authorization'=> 'Basic '. base64(env('MAILJET_API_KEY').':'.env('MAILJET_SECRET_KEY'))
+	        'Authorization'=> 'Basic '. base64_encode(env('MAILJET_API_KEY').':'.env('MAILJET_SECRET_KEY'))
         ]
     );
 	$httpService = new \PS\Webservice\Service\HttpService($webserviceConfig);

@@ -1,10 +1,6 @@
 <?php
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-$allowedOrigins = [
-	'http://localhost:3000',
-	'http://127.0.0.1:3000',
-	'https://storefront-rho-navy.vercel.app'
-];
+$allowedOrigins = json_decode(file_get_contents(__DIR__ . '/../vendor/mdf/json-database-storage/storage/database/subdomains.json'), true);
 
 if (in_array($origin, $allowedOrigins, true)) {
 	header('Access-Control-Allow-Origin: ' . $origin);
