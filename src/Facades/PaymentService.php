@@ -6,7 +6,7 @@ namespace PS\Webservice\Facades;
 /**
  * @method static \PS\Webservice\Service\Payments\PaymentService setApiKey(string $apiKey)
  * @method string createPaymentSession(\PS\Webservice\Domain\Object\OrderSession $orderSession)
- * @method string getPaymentUrl(string $priceId, \PS\Webservice\Domain\ObjectInterface $entity)
+ * @method \ getPaymentUrl(\PS\Webservice\Domain\Object\OrderSession $priceId, \PS\Webservice\Domain\ObjectInterface $entity)
  * 
  * @see \PS\Webservice\Service\Payments\PaymentService
  */

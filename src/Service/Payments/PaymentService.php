@@ -34,12 +34,10 @@ class PaymentService implements PaymentGatewayInterface
         }
     }
 
-    public function getPaymentUrl(string $priceId, ObjectInterface $entity): string 
+    public function getPaymentUrl(OrderSession $orderSession, ObjectInterface $entity): string 
     {
         $paymentLink = \Stripe\PaymentLink::create([
-            'line_items' => [
-                ['price' => $priceId, 'quantity' => 1],
-            ],
+            'line_items' => $orderSession->getLineItems(),
             'after_completion' => [
                 'type' => 'redirect',
                 'redirect' => ['url' => env("APP_URL").'/aretigiani/premium/success'],

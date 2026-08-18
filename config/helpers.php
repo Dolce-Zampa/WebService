@@ -90,4 +90,24 @@ if(!function_exists('generate_token')) {
     }
 }
 
+if(!function_exists('build_product_image_url')) {
+        function build_product_image_url($imageId, $productName, $imageType = 'product_main') {
+            $BASE_URL = 'https://www.dolcezampa.com/img';
+            
+            // Se l'ID è 0, ritorna un placeholder
+            if ($imageId === 0) {
+                return $BASE_URL . '/placeholder.jpg';
+            }
+            
+            // Converti l'ID in stringa e crea il percorso
+            // Es: 1471 => "1/4/7/1"
+            $idStr = (string)$imageId;
+            $path = $idStr . '-' . $imageType . '/' . $productName;
+            
+            // Costruisci l'URL finale
+            // Es: https://www.dolcezampa.com/img/1/4/7/1/1471-product_main.jpg
+            return $BASE_URL . '/' . $path . '.jpg';
+        }
+}
+
 // More functions...

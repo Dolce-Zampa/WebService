@@ -11,4 +11,6 @@ interface MailerInterface
     public function sendResetPasswordConfirmationMail(string $email): void;
 
     public function sendPremiumSignUpMail(string $email, string $username): void;
+
+    public function sendRecoveryCartExpired(string $email, string $paymentUrl, array $products, string $cartTotal, $firstname = '');
 }

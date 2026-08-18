@@ -9,5 +9,7 @@ enum TemplateMail: string
     case PASSWORD_UPDATED = 'password';
     case PREMIUM_SIGNUP = 'premium_account';
     case SIGNUP_SELLER = 'account_seller';
+    case ABBANDONED_CART = 'abandoned_cart';
+
 
 }

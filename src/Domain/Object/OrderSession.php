@@ -16,6 +16,8 @@ class OrderSession implements ObjectInterface
     use UuidGenerator;
     protected array $data;
     private Order $service;
+
+    private CustomerEntity $customer;
     private function __construct(array $data, Order $service)
     {
         $this->data = $data;
@@ -55,7 +57,7 @@ class OrderSession implements ObjectInterface
         if (!$customer instanceof CustomerEntity) {
             throw new \InvalidArgumentException('customer must be an instance of CustomerEntity to create an order session');
         }
-
+        $this->customer = $customer;
         $customerDetails = $customer->toArray();
         $this->data = [
             'mode' => 'payment',
@@ -154,5 +156,15 @@ class OrderSession implements ObjectInterface
     public function get(string $key, mixed $default = null): mixed
     {
         return $this->data[$key] ?? $default;
+    }
+
+    public function getLineItems(): array
+    {
+        return $this->data['line_items'] ?? [];
+    }
+
+    public function getCustomer(): CustomerEntity
+    {
+        return $this->customer;
     }
 }

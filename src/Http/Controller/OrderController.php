@@ -5,20 +5,25 @@ namespace PS\Webservice\Http\Controller;
 
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
-use PS\Webservice\Domain\Object\ConfirmOrderSession;
 use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class OrderController extends CartController
 {
+    use UseCache;
     private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
     private Order $orderService;
 
-    public function __construct(Order $orderService)
+    protected PaymentGatewayInterface $stripeService;
+
+    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService)
     {
+        $this->stripeService = $stripeService;
         $this->orderService = $orderService;
     }
 
@@ -143,7 +148,7 @@ class OrderController extends CartController
 
         // Create payment session
         try {
-            $paymentService = $this->initializePaymentService($paymentMethod);
+            $paymentService = $this->stripeService;
 
             //recuperiamo il corriere scelto dal cliente per aggiungerlo alla sessione di pagamento
             $carrierId = $payload['id_carrier'] ?? null;
@@ -156,7 +161,7 @@ class OrderController extends CartController
                 throw new \InvalidArgumentException('Invalid carrier ID: ' . $carrierId);
             }
 
-            $orderSession = \PS\Webservice\Domain\Object\OrderSession::create([
+            $orderSession = OrderSession::create([
                 'success_url' => $_ENV['STRIPE_SUCCESS_URL'] ?? '',
                 'cancel_url' => $_ENV['STRIPE_CANCEL_URL'] ?? '',
                 'cart_id' => $payload['id_cart'],
@@ -174,7 +179,6 @@ class OrderController extends CartController
                     'invoice_address' => $payload['invoice_address'] ?? $payload['delivery_address'],
                 ], $this->orderService)
             ], $this->orderService);
-
 
             // Server-side price validation: fetch each product price directly from the catalog.
             // Never use prices from the cart payload or any frontend-supplied value.
@@ -208,6 +212,8 @@ class OrderController extends CartController
                 );
             }
 
+            //save in cache the order session only for 24h
+            $this->setToCache($orderSession->cart_id, ["orderSession" => $orderSession, "cart" => $cart], 24 * 60); //FIXME: customer data should be encrypted
             $checkoutUrl = $paymentService->createPaymentSession($orderSession);
 
             return response([
@@ -294,8 +300,8 @@ class OrderController extends CartController
         }
 
         try {
-            $paymentService = $this->initializePaymentService($payload['paymentMethod'] ?? 'stripe');
-            $orderSession = \PS\Webservice\Domain\Object\OrderSession::create([
+            $paymentService = $this->stripeService;
+            $orderSession = OrderSession::create([
                 'success_url' => $payload['success_url'] ?? $_ENV['STRIPE_SUCCESS_URL'] ?? '',
                 'cancel_url' => $payload['cancel_url'] ?? $_ENV['STRIPE_CANCEL_URL'] ?? '',
                 'cart_id' => $payload['id_cart'],
@@ -319,19 +325,6 @@ class OrderController extends CartController
             return response(['url' => $checkoutUrl], 200);
         } catch (\Exception $e) {
             return response(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    private function initializePaymentService(string $paymentMethod): \PS\Webservice\Service\Payments\PaymentGatewayInterface
-    {
-        switch ($paymentMethod) {
-            case 'stripe':
-                $apiKey = $_ENV['STRIPE_API_KEY'] ?? throw new \RuntimeException('STRIPE_API_KEY not configured');
-                return \PS\Webservice\Service\Payments\PaymentService::setApiKey($apiKey);
-            case 'cod':
-                return \PS\Webservice\Service\Payments\CodPaymentService::setApiKey('');
-            default:
-                throw new \InvalidArgumentException('Unsupported payment method: ' . $paymentMethod);
         }
     }
 

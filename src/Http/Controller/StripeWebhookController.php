@@ -4,20 +4,30 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Models\PS\Product;
+use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
+use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class StripeWebhookController extends OrderController
 {
+    use UseCache;
     private Order $orderService;
     private MailjetService $mailjetService;
+    protected PaymentGatewayInterface $stripeService;
 
-    public function __construct(Order $orderService, MailjetService $mailjetService)
+    private MailerInterface $mailer;
+
+    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer)
     {
         $this->orderService = $orderService;
         $this->mailjetService = $mailjetService;
+        $this->stripeService = $stripeService;
+        $this->mailer = $mailer;
     }
 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -45,7 +55,16 @@ class StripeWebhookController extends OrderController
             try {
                 $this->handleCheckoutSessionCompleted($event->data->object);
             } catch (\Exception $e) {
-                Log::error('Stripe webhook: failed to process checkout.session.completed: ' . $e->getMessage());
+                Log::critical('Stripe webhook: failed to process checkout.session.completed: ' . $e->getMessage());
+                return response(['error' => 'Failed to process event'], 500);
+            }
+        }
+
+        if( $event->type === 'checkout.session.expired') {
+            try {
+                $this->handleCheckoutSessionExpired($event->data->object);
+            } catch (\Exception $e) {
+                Log::critical('Stripe webhook: failed to process checkout.session.expired: ' . $e->getMessage());
                 return response(['error' => 'Failed to process event'], 500);
             }
         }
@@ -134,5 +153,59 @@ class StripeWebhookController extends OrderController
         }
 
         Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
+    }
+
+    /**
+     * Process the recovery cart process for a given cart ID.
+     * This method is currently a placeholder and should be implemented to handle cart recovery logic.
+     */
+    public function handleCheckoutSessionExpired(\Stripe\StripeObject $session): void
+    {
+        $metadata = $session->metadata;
+        $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
+
+        if ($cartId <= 0) {
+            Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
+            return;
+        }
+
+        // Create a stripe payment link and submit with email
+        /**
+         * @var array $orderSavedInCache
+         */
+        $orderSavedInCache = $this->getFromCache((string) $cartId);
+        if(is_null($orderSavedInCache)) {
+            Log::warning("No order session retrived in cache, skip ");
+        }
+
+        $orderSession = $orderSavedInCache['orderSession'];
+        $cart = $orderSavedInCache['cart'];
+
+        $paymentUrl = $this->stripeService->createPaymentSession($orderSession);
+        $customer = $orderSession->getCustomer();
+        $lineItems = $this->lineItems($cart->toArray()['products']);
+
+        // send email to customer with payment link and line items
+        $this->mailer->sendRecoveryCartExpired($customer->email, $paymentUrl, $lineItems, (string) $orderSession->total(), $customer->firstname);
+
+        Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
+    }
+
+    /**
+     * @param array $cartProducts
+     * @return array{name: mixed, photo: string, price: string[]}
+     */
+    private function lineItems(array $cartProducts): array
+    {
+        $items = [];
+        foreach ($cartProducts as $item) {
+            $product = Product::find((int) $item['id_product']);
+            $items[] = [
+                'name' => $product->name,
+                'photo' => build_product_image_url($product->id_product, $product->name),
+                'price' => number_format((float) $product->price, 2, '.', ''),
+            ];
+        }
+        return $items;
     }
 }

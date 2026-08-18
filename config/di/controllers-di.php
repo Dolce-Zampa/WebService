@@ -26,7 +26,8 @@ $container->set(\PS\Webservice\Http\Controller\CustomerController::class, functi
 
 $container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
-    return new \PS\Webservice\Http\Controller\OrderController($orderService);
+    $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
+    return new \PS\Webservice\Http\Controller\OrderController($orderService,$payment);
 });
 
 $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, function ($c) {
@@ -48,7 +49,9 @@ $container->set(\PS\Webservice\Http\Controller\CarrierController::class, functio
 $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
     $mailjet = $c->get(\PS\Webservice\Service\MailjetService::class);
-    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService,$mailjet);
+    $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class;
+    $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
+    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService,$mailjet,$payment,$mailer);
 });
 
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {

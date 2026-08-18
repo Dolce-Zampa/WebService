@@ -6,6 +6,7 @@ namespace PS\Webservice\Service\PS;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Enums\TemplateMail;
+use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Domain\Object\PayloadServiceData;
 use PS\Webservice\Facades\PaymentService;
 use PS\Webservice\Service\MailerInterface;
@@ -104,8 +105,13 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
     public function sendPremiumSignUpMail(string $email, string $username): void
     {
         try {
+            $orderSession = OrderSession::create([
+                'line_items' => [
+                    ['price' => env('STRIPE_PREMIUM_PRICE_ID'), 'quantity' => 1],
+                ]
+            ], $this);
             $paymentLink = PaymentService::getPaymentUrl(
-                env('STRIPE_PREMIUM_PRICE_ID'),
+                $orderSession,
                 ManufactureEntity::create([
                     'username' => $username,
                     'email' => $email,
@@ -135,6 +141,91 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         } catch (\Throwable $e) {
             throw new PrestashopConnectorException($this->httpService, $e);
         }
+    }
+
+
+
+    public function sendRecoveryCartExpired(string $email, string $paymentUrl, array $products, string $cartTotal, $firstname = '')
+    {
+         try {
+            $this->httpService->setUrl('/mailer?debug=true');
+            $this->httpService->invoke('POST',
+                new PayloadServiceData(
+                    [
+                        'subject' => 'Sei ancora in tempo per il tuo ordine!',
+                        'to_email' => $email,
+                        'template' => TemplateMail::ABBANDONED_CART->value,
+                        'template_vars' => [
+                            'products_list' => $this->recoveryCartHtml($products),
+                            'cart_total' => $cartTotal,
+                            'recovery_url' => $paymentUrl,
+                            'firstname' => $firstname,
+                        ]
+                    ]
+                ));
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
+    private function recoveryCartHtml(array $products): string
+    {
+        $productsHtml = '';
+
+        foreach ($products as $product) {
+
+            $productsHtml .= '
+                <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                    style="border-bottom:1px solid #E8DED0; padding:15px 0;">
+                    <tr>
+
+                        <td width="90" valign="middle">
+                            <img src="' . htmlspecialchars($product['photo']) . '"
+                                width="75"
+                                height="75"
+                                style="display:block;
+                                        width:75px;
+                                        height:75px;
+                                        object-fit:cover;
+                                        border-radius:10px;
+                                        border:1px solid #E5D8C8;"
+                                alt="' . htmlspecialchars($product['name']) . '">
+                        </td>
+
+                        <td valign="middle"
+                            style="padding-left:15px;
+                                font-family:Arial,Helvetica,sans-serif;">
+
+                            <div style="
+                                font-size:15px;
+                                line-height:20px;
+                                font-weight:bold;
+                                color:#4F463B;">
+                                
+                                ' . htmlspecialchars($product['name']) . '
+
+                            </div>
+
+                        </td>
+
+                        <td width="100"
+                            valign="middle"
+                            align="right"
+                            style="
+                                font-family:Arial,Helvetica,sans-serif;
+                                font-size:15px;
+                                font-weight:bold;
+                                color:#A07F55;">
+
+                            €' . number_format((float)$product['price'], 2, ',', '.') . '
+
+                        </td>
+
+                    </tr>
+                </table>';
+            }
+
+            return $productsHtml;
     }
    
 }
