@@ -25,14 +25,14 @@ trait UseCache
     // "c275d4f4-2011-7091-eb17-87e208e05738" "57f6dd7f7506f497933045377e718d257a0b9006"
     /**
      * Summary of setToCache
-     * @param string $key
+     * @param mixed $key
      * @param mixed $value
      * @param mixed $ttl in minutes
      * @return void
      */
-    protected function setToCache(string $key, mixed $value, ?int $ttl = null): void
+    protected function setToCache(mixed $key, mixed $value, ?int $ttl = null): void
     {
-        $key = sha1($key);
+        $key = sha1((string) $key);
         if(env("APP_DISABLE_CACHE", false)) {
             return;
         }
