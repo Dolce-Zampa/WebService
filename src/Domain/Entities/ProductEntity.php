@@ -24,7 +24,7 @@ class ProductEntity extends Entity implements ObjectInterface
 
     protected $cacheTTL = null; // Cache TTL in minutes, null means no expiration
 
-    public static function create(array $data, PrestashopServiceInterface $service): self
+    public static function create(array $data, ?PrestashopServiceInterface $service): self
     {
         return new self($data, $service);
     }

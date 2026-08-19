@@ -5,6 +5,7 @@ namespace PS\Webservice\Domain\Object;
 
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\Order;
@@ -94,13 +95,28 @@ class OrderSession implements ObjectInterface
         return $url . $separator . urlencode($param) . '=' . urlencode((string) $value);
     }
 
-    public function addLineItem(string $name, int $quantity, float $price, string $type = 'product'): void
+    public function addLineItem(ProductEntity $product, int $quantity, float $price, string $type = 'product'): void
     {
         $this->data['line_items'][] = [
             'price_data' => [
                 'currency' => 'eur',
                 'product_data' => [
-                    'name' => $name
+                    'name' => $product->name,
+                    'images' => [build_product_image_url($product->getImages()[0]['id'], $product->name)],
+                ],
+                'unit_amount' => (int) ($price * 100),
+            ],
+            'quantity' => $quantity
+        ];
+    }
+
+    public function addCarrierLineItem(string $name, int $quantity, float $price, string $type = 'product'): void
+    {
+        $this->data['line_items'][] = [
+            'price_data' => [
+                'currency' => 'eur',
+                'product_data' => [
+                    'name' => $name,
                 ],
                 'unit_amount' => (int) ($price * 100),
             ],

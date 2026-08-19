@@ -5,6 +5,7 @@ namespace PS\Webservice\Http\Controller;
 
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
@@ -168,6 +169,7 @@ class OrderController extends CartController
                 'id_customer' => $payload['id_customer'] ?? null,
                 'id_guest' => $payload['id_guest'] ?? null,
                 'id_carrier' => $carrierId,
+                'expires_at' => time() + 3600, // Scade tra 1 ora (3600 secondi)
                 'customer' => CustomerEntity::create([
                     'id' => $payload['id_customer'] ?? null,
                     'email' => $payload['customer']['email'] ?? null,
@@ -186,8 +188,9 @@ class OrderController extends CartController
                 $productId = (int) $product['id_product'];
                 // $serverPrice = $this->orderService->getProductPriceById($productId); // not correct
                 $serverPrice = $product['price_wt'];
+                $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
                 $orderSession->addLineItem(
-                    name: $product['name'] ?? "Product #{$productId}",
+                    product: ProductEntity::create($product, null),
                     quantity: (int) $product['quantity'],
                     price: $serverPrice
                 );
@@ -204,7 +207,7 @@ class OrderController extends CartController
 
             //check for free shipping cart rule
             if ($this->checkForFreeShippingCartRule($cartRules, $orderSession) === false) {
-                $orderSession->addLineItem(
+                $orderSession->addCarrierLineItem(
                     name: $carrierDetails->name,
                     quantity: 1,
                     price: (float) $carrierDetails->price_with_tax,
@@ -312,9 +315,10 @@ class OrderController extends CartController
             foreach ($cart->toArray()['products'] ?? [] as $product) {
                 $productId = (int) $product['id_product'];
                 $serverPrice = $this->orderService->getProductPriceById($productId);
+                $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
 
                 $orderSession->addLineItem(
-                    name: $product['name'] ?? "Product #{$productId}",
+                    product: ProductEntity::create($product, null),
                     quantity: (int) $product['quantity'],
                     price: $serverPrice
                 );
