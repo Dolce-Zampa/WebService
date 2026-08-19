@@ -102,7 +102,7 @@ if(!function_exists('build_product_image_url')) {
             // Converti l'ID in stringa e crea il percorso
             // Es: 1471 => "1/4/7/1"
             $idStr = (string)$imageId;
-            $path = $idStr . '-' . $imageType . '/' . $productName;
+            $path = $idStr . '-' . $imageType . '/' . rawurlencode($productName);
             
             // Costruisci l'URL finale
             // Es: https://www.dolcezampa.com/img/1/4/7/1/1471-product_main.jpg
