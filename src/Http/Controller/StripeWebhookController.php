@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Product;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
@@ -200,9 +201,11 @@ class StripeWebhookController extends OrderController
         $items = [];
         foreach ($cartProducts as $item) {
             $product = Product::find((int) $item['id_product']);
+            $idDefaultImage = ProductEntity::create(['id' => $item['id_product']], null)->getImages()[0]->id ?? 0;
+
             $items[] = [
                 'name' => $product->name,
-                'photo' => build_product_image_url($product->id_product, $product->name),
+                'photo' => build_product_image_url($idDefaultImage, $product->name, 'small_default'),
                 'price' => number_format((float) $product->price, 2, '.', ''),
             ];
         }

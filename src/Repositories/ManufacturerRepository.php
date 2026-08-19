@@ -4,12 +4,13 @@ declare(strict_types=1);
 namespace PS\Webservice\Repositories;
 
 use Carbon\Carbon;
+use Illuminate\Database\Capsule\Manager as DB;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Domain\Models\PS\Suppliers\Supplier;
 use Ramsey\Uuid\Uuid;
-use Illuminate\Database\Capsule\Manager as DB;
 
 class ManufacturerRepository extends PrestashopRepository implements RepositoryInterface
 {
@@ -285,6 +286,35 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
     }
 
     /**
+     * Ottiene il totale degli articoli aggiunti al carrello per un manufacturer
+     *
+     * @param int $idManufacturer
+     * @return int
+     */
+    public function getProductAddToCart(int $idManufacturer): array
+    {
+        $results = $this->db->table('v_manufacturer_cart_products_stats')
+            ->where('id_manufacturer', $idManufacturer)
+            ->get();
+
+        $products = [];
+        foreach ($results as $row) {
+            $idDefaultImage = ProductEntity::create(['id' => $row->id_product], null)->getImages()[0]->id ?? 0;
+            $products[] = [
+                'id_product' => (int) $row->id_product,
+                'product_name' => $row->product_name,
+                'reference' => $row->reference,
+                'number_of_carts' => (int) $row->total_quantity_added_to_cart,
+                'number_of_orders' => (int) $row->total_orders,
+                'price' => (float) $row->price,
+                'image' => build_product_image_url($idDefaultImage, $row->product_name, 'small_default'),
+            ];
+        }
+
+        return $products;
+    }
+
+    /**
      * Ottiene il ricavo totale per un manufacturer
      *
      * @param int $idManufacturer
@@ -296,7 +326,7 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
             ->where('id_manufacturer', $idManufacturer)
             ->get();
         
-        return $results->first()->total_revenue_tax_incl ?? 0.0;
+        return (float) $results->first()->total_revenue_tax_incl ?? 0.0;
     }
 
     /**
@@ -307,10 +337,10 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
      */
     public function getTotalNumberOfOrders(int $idManufacturer): int
     {
-        $results = $this->db->table('v_manufacturer_orders_stats')
+        $results = $this->db->table('v_manufacturer_sales_stats')
             ->where('id_manufacturer', $idManufacturer)
             ->get();
         
-        return $results->first()->total_orders ?? 0;
+        return (int) $results->first()->total_orders ?? 0;
     }
 }

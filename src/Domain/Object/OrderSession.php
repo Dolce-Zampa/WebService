@@ -102,7 +102,7 @@ class OrderSession implements ObjectInterface
                 'currency' => 'eur',
                 'product_data' => [
                     'name' => $product->name,
-                    'images' => [build_product_image_url($product->getImages()[0]['id'], $product->name)],
+                    'images' => [build_product_image_url($product->getImages()[0]['id'], $product->name, 'small_default')],
                 ],
                 'unit_amount' => (int) ($price * 100),
             ],

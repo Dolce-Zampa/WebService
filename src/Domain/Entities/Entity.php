@@ -12,14 +12,14 @@ class Entity
     use UseCache;
 
     protected array $data;
-    protected PrestashopServiceInterface $service;
+    protected ?PrestashopServiceInterface $service;
 
     protected $tagsCache = 'entity:';
 
     private const KEY_CACHE = 'entity_cache';
     protected $cacheTTL = 5; // 5 minuts default
 
-    protected function __construct(array $data, PrestashopServiceInterface $service)
+    protected function __construct(array $data, ?PrestashopServiceInterface $service)
     {
         $this->service = $service;
         $this->data = $data;

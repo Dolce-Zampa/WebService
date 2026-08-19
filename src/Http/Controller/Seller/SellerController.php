@@ -270,23 +270,9 @@ class SellerController
                 return response(['success' => false, 'message' => 'Seller ID is required'], 400);
             }
 
-            $pagination = $this->getPaginationParams($request->getQueryParams());
-            $products = $this->productService->getProductByManufacture(
-                (string) $sellerId,
-                null,
-                ['limit' => min($pagination['per_page'], 50), 'page' => $pagination['page']]
-            );
+            $productList = $this->prestashopRepository->getProductAddToCart($sellerId);
+            return response(['success' => true, 'data' => $productList], 200);
 
-            $totalProducts = $this->productService->countProducts([
-                'filter[id_manufacturer]' => '[' . $sellerId . ']'
-            ]);
-
-            return response($this->paginatedResponse(
-                $products->toArray(),
-                $pagination['page'],
-                $pagination['per_page'],
-                $totalProducts
-            ));
         } catch (\Throwable $e) {
             return response(['success' => false, 'message' => $e->getMessage()], 400);
         }

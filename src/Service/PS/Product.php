@@ -58,9 +58,14 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         $collection = new Collection();
         $products = $response->toArray()['products'] ?? [];
         foreach ($products as $productData) {
-            if(!is_null($filter) && $filter->match($productData) !== true) {
+            if(is_null($filter)) {
+                $filter = new Filter($productData); // Create a default filter if none is provided
+            }
+            
+            if($filter->match($productData) !== true) {
                 continue; // Skip products that do not match the filter criteria
             }
+
             try {
                 $product = ProductEntity::create($filter->productData, $this);
                 // $product->withCombinations(); @deprecated 

@@ -13,7 +13,7 @@ class CombinationEntity extends Entity implements ObjectInterface
 
 	/** @var array<string, mixed> */
 	protected array $data;
-    protected PrestashopServiceInterface $service;
+    protected ?PrestashopServiceInterface $service;
 
 	protected $tagsCache = 'combination:';
 

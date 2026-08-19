@@ -10,11 +10,11 @@ class AccessoryEntity extends Entity implements ObjectInterface
 {
 	/** @var array<string, mixed> */
 	protected array $data;
-    protected PrestashopServiceInterface $service;
+    protected ?PrestashopServiceInterface $service;
 
 	protected $tagsCache = 'accessory:';
 
-	public static function create(array $data, PrestashopServiceInterface $service): self
+	public static function create(array $data, ?PrestashopServiceInterface $service): self
 	{
 		return new self($data, $service);
 	}

@@ -9,7 +9,7 @@ use PS\Webservice\Service\PS\PrestashopServiceInterface;
 class ImageEntity extends Entity implements ObjectInterface {
 
 	protected array $data;
-    protected PrestashopServiceInterface $service;
+    protected ?PrestashopServiceInterface $service;
 	protected $tagsCache = 'image:';
 
     public static function create(array $data, PrestashopServiceInterface $service): self
