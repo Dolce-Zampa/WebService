@@ -1,13 +1,13 @@
 <?php
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 // all subdomains of dolcezampa.com are allowed
-if (preg_match('/^https?:\/\/([a-z0-9-]+\.)?dolcezampa\.com$/', $origin)) {
+if(preg_match('/^https?:\/\/([a-z0-9-]+\.)?dolcezampa\.com$/', $origin) || $origin == "http://localhost:3000") {
 	header('Access-Control-Allow-Origin: ' . $origin);
 	header('Vary: Origin');
 	header('Access-Control-Allow-Credentials: true');
 	header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 	header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, Origin');
-}
+} 
 
 # --- NUOVO: INTERCETTA E FERMA IL PREFLIGHT OPTIONS ---
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
