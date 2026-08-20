@@ -23,7 +23,7 @@ class Entity
     {
         $this->service = $service;
         $this->data = $data;
-        $tagsCache = [$this->tagsCache . empty($this->data['id']) ? $this->data['id'] : Uuid::uuid4()->toString()];
+        $tagsCache = [$this->tagsCache . empty($this->data['id']) ? $this->tagsCache . $this->data['id'] : Uuid::uuid4()->toString()];
         $tagsCache[] = 'entity:all';
         $tagsCache[] = $this->tagsCache . 'all';
 
