@@ -43,7 +43,7 @@ class BrandController extends Controller
     public function getManufacturerReviews(Request $request, Response $response, array $argv): Response
     {
         $id = $argv['id'];
-        $reviews = $this->brandService->getReviews((int) 4);
+        $reviews = $this->brandService->getReviews((int) $id);
 
         if (is_null($reviews)) {
             return response([], 404);
