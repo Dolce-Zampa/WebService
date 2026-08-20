@@ -15,24 +15,31 @@ class Entity
     protected ?PrestashopServiceInterface $service;
 
     protected $tagsCache = 'entity:';
-
-    private const KEY_CACHE = 'entity_cache';
-    protected $cacheTTL = 5; // 5 minuts default
+    protected $cacheTTL = 5; // 5 minutes
 
     protected function __construct(array $data, ?PrestashopServiceInterface $service)
     {
         $this->service = $service;
         $this->data = $data;
-        $tagsCache = [$this->tagsCache . empty($this->data['id']) ? $this->tagsCache . $this->data['id'] : Uuid::uuid4()->toString()];
-        $tagsCache[] = 'entity:all';
-        $tagsCache[] = $this->tagsCache . 'all';
+        
+        // 1. Definiamo una chiave univoca basata sull'ID (o un UUID se non esiste)
+        $entityId = $this->data['id'] ?? Uuid::uuid4()->toString();
+        $cacheKey = $this->tagsCache . $entityId;
 
+        // 2. Prepariamo i tag per la pulizia in blocco
+        $tagsCache = [
+            'entity:all',
+            'entity:' . $entityId
+        ];
+
+        // 3. Usiamo i tag corretti concatenati alla chiave univoca
         $this->tags($tagsCache);
-        if($this->existsInCache(self::KEY_CACHE)) {
-            $this->data = $this->getFromCache(self::KEY_CACHE);
+        
+        if($this->existsInCache($cacheKey)) {
+            $this->data = $this->getFromCache($cacheKey);
         } else {
             $this->normalizeData();
-            $this->setToCache(self::KEY_CACHE, $this->data, $this->cacheTTL);
+            $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
         }
     }
 
