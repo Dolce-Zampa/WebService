@@ -3,20 +3,24 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use PS\Webservice\Domain\Models\PS\Customer;
+use PS\Webservice\Domain\Models\PS\Orders\Order;
 use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Http\Controller\Controller;
-use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Traits\PaginationTrait;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use PS\Webservice\Domain\Models\PS\Products\ProductReviews;
+use PS\Webservice\Domain\Models\PS\Products\Product;
+use PS\Webservice\Service\PS\Product as ProductService;
 
 class ProductController extends Controller
 {
     use PaginationTrait;
 
-    private Product $productService;
+    private ProductService $productService;
 
-    public function __construct(Product $productService)
+    public function __construct(ProductService $productService)
     {
         $this->productService = $productService;
     }
@@ -213,5 +217,73 @@ class ProductController extends Controller
             'success' => true,
             'data' => $promotions->toArray()
         ]);
+    }
+
+    public function addProductReview(Request $request, Response $response, array $args)
+    {
+        $id = isset($args['id']) ? (int) $args['id'] : null;
+        if (!$id || $id <= 0) {
+            return response([
+                'success' => false,
+                'message' => 'Product ID is required'
+            ], 400);
+        }
+
+        $data = json_decode((string) $request->getBody(), true);
+        if (!$data || !isset($data['review']) || !isset($data['rating']) || empty($data['order_id']) || $this->checkForExpolitCode($data['review'])) {
+            return response([
+                'success' => false,
+                'message' => 'All data are required'
+            ], 400);
+        }
+
+        $review = $data['review'];
+        $rating = (int) $data['rating'];
+        $orderId = $data['order_id'];
+
+        // first check if the order exists and belongs to the customer
+        $order = Order::where('reference', $orderId)->first();
+        $product = Product::where('id_product', $id)->firstOrFail(); // Ensure the product exists
+
+        if(!$order) {
+            return response([
+                'success' => false,
+                'message' => 'Invalid order or customer'
+            ], 400);
+        }
+       
+        // save the review using the product service
+        ProductReviews::create([
+            'id_product' => $id,
+            'id_customer' => $order ? $order->id_customer : null,
+            'id_order' => $order ? $order->id_order : null,
+            'id_manufacturer' => $product->manufacturer_id ?? null,
+            'comment' => $review,
+            'rating' => $rating
+        ]);
+
+        return response([
+            'success' => true,
+            'message' => 'Review added successfully'
+        ]);
+    }
+
+    private function checkForExpolitCode(string $data): bool
+    {
+        // Check for common exploit patterns
+        $patterns = [
+            '/<script\b[^>]*>(.*?)<\/script>/is', // Script tags
+            '/<\?php\b[^>]*>(.*?)<\/\?php>/is',   // PHP tags
+            '/(union|select|insert|update|delete|drop|alter)\s+/i', // SQL keywords
+            '/(eval|base64_decode|exec|shell_exec|system)\s*\(/i', // Dangerous functions
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $data)) {
+                return true; // Exploit code found
+            }
+        }
+
+        return false; // No exploit code found
     }
 }

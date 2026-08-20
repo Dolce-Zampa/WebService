@@ -5,7 +5,7 @@ namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Models\PS\Product;
+use PS\Webservice\Domain\Models\PS\Products\Product;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
@@ -181,6 +181,11 @@ class StripeWebhookController extends OrderController
 
         $orderSession = $orderSavedInCache['orderSession'];
         $cart = $orderSavedInCache['cart'];
+
+        if(is_null($orderSession) || is_null($cart)) {
+            Log::warning("No order session or cart retrived in cache, skip ");
+            return;
+        }
 
         $paymentUrl = $this->stripeService->createPaymentSession($orderSession);
         $customer = $orderSession->getCustomer();

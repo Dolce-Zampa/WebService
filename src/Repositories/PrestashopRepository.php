@@ -23,6 +23,7 @@ class PrestashopRepository implements RepositoryInterface
     {
         $reviews = $this->db->table('product_reviews')
             ->where('id_product', $idProduct)
+            ->where('status', 'approved') // Only fetch approved reviews
             ->get();
 
         return $reviews;

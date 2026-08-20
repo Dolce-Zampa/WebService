@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace PS\Webservice\Domain\Models\Collections;
+namespace PS\Webservice\Domain\Models\PS\Products;
 
 use Illuminate\Database\Eloquent\Model;
 
