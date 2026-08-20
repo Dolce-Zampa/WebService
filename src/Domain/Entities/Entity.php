@@ -28,8 +28,8 @@ class Entity
 
         // 2. Prepariamo i tag per la pulizia in blocco
         $tagsCache = [
-            'entity:all',
-            'entity:' . $entityId
+            'entity',
+            $this->tagsCache . $entityId
         ];
 
         // 3. Usiamo i tag corretti concatenati alla chiave univoca
