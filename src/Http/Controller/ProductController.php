@@ -297,9 +297,10 @@ class ProductController extends Controller
         if($queryParams['limit'] !== null) {
             $reviews = ProductReviews::query()
                 ->limit((int) $queryParams['limit'])
+                ->where('status', 'approved')
                 ->get();
         } else {
-            $reviews = ProductReviews::all();
+            $reviews = ProductReviews::where('status', 'approved')->get();
         }
 
         //build all product from cache
@@ -313,8 +314,9 @@ class ProductController extends Controller
                     'product_name' => $product->name,
                     'comment' => $review->comment,
                     'rating' => $review->rating,
-                    'created_at' => $review->date_add,
+                    'created_at' => $review->created_at,
                     'id_manufacturer' => $review->id_manufacturer,
+                    'status' => $review->status,
                 ];
             } catch (\Exception $e) {
                 Log::warning("Failed to build review data for review ID {$review->id}: " . $e->getMessage());
