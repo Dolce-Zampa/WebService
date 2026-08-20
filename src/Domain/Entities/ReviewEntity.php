@@ -14,18 +14,18 @@ class ReviewEntity implements ObjectInterface
 
     /** @var array<string, mixed> */
     private array $data;
-    private Product $service;
+    private ?Product $service;
 
     private static $filters = [];
 
-    private function __construct(array $data, PrestashopServiceInterface $service)
+    private function __construct(array $data, ?PrestashopServiceInterface $service)
     {
         $this->service = $service;
         $this->data = $data;
         $this->normalizeData();
     }
 
-    public static function create(array $data, PrestashopServiceInterface $service): self
+    public static function create(array $data, ?PrestashopServiceInterface $service): self
     {
         return new self($data, $service);
     }

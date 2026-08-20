@@ -35,6 +35,7 @@ $app->group('/api', function () use ($app) {
     /** brands list */
     $app->get('/api/manufacturers', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
     $app->get('/api/manufacturers/{id}', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
+    $app->get('/api/manufacturer/{id}/reviews', PS\Webservice\Http\Controller\BrandController::class . ':getManufacturerReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
 
     /** Customer api */
     $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');

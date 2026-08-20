@@ -53,7 +53,11 @@ $container->set(\PS\Webservice\Service\PS\Order::class, function ($c) {
 
 $container->set(\PS\Webservice\Service\PS\Brand::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
-    return new \PS\Webservice\Service\PS\Brand($httpService);
+    $service = new \PS\Webservice\Service\PS\Brand($httpService);
+    $service->addRepository(
+        $c->get(\PS\Webservice\Repositories\PrestashopRepository::class)
+    );
+    return $service;
 });
 
 $container->set(\PS\Webservice\Service\PS\Carrier::class, function ($c) {

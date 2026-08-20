@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Service\PS;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Entities\ReviewEntity;
 
@@ -42,7 +43,7 @@ class Brand extends PrestashopService implements PrestashopServiceInterface
         }
 
         foreach ($reviews as $reviewData) {
-            $reviewEntities[] = ReviewEntity::create((array) $reviewData, $this);
+            $reviewEntities[] = ReviewEntity::create((array) $reviewData, null)->toArray();
         }
 
         return $reviewEntities ?? [];
