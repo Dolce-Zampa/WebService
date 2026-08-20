@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\PS\Orders\Order;
@@ -307,7 +308,7 @@ class ProductController extends Controller
             try {
                 $product = ProductEntity::create(['id' => $review->id_product], null);
                 $reviewCompleteData[] = [
-                    'id' => $review->id_product_review,
+                    'id' => $review->id,
                     'id_product' => $review->id_product,
                     'product_name' => $product->name,
                     'comment' => $review->comment,
@@ -316,7 +317,7 @@ class ProductController extends Controller
                     'id_manufacturer' => $review->id_manufacturer,
                 ];
             } catch (\Exception $e) {
-                Log::warning("Failed to build review data for review ID {$review->id_product_review}: " . $e->getMessage());
+                Log::warning("Failed to build review data for review ID {$review->id}: " . $e->getMessage());
                 continue; // Skip this review and continue with the next one
             }
         }
