@@ -1,11 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UseCache;
-use Ramsey\Uuid\Uuid;
 
 class Entity
 {
@@ -14,43 +14,62 @@ class Entity
     protected array $data;
     protected ?PrestashopServiceInterface $service;
 
-    protected $tagsCache = 'entity:';
-    protected $cacheTTL = 5; // 5 minutes
+    /**
+     * Prefisso base dei tag di cache. Viene sempre concatenato con
+     * static::class in modo che le sottoclassi non collidano mai
+     * tra loro (es. Product:5 !== Category:5).
+     */
+    protected string $cacheTag = 'entity';
+
+    protected int $cacheTTL = 5; // minuti
 
     protected function __construct(array $data, ?PrestashopServiceInterface $service)
     {
         $this->service = $service;
         $this->data = $data;
-        
-        // 1. Definiamo una chiave univoca basata sull'ID (o un UUID se non esiste)
-        $entityId = $this->data['id'] ?? Uuid::uuid4()->toString();
-        $cacheKey = $this->tagsCache . $entityId;
 
-        // 2. Prepariamo i tag per la pulizia in blocco
-        $tagsCache = [
-            'entity',
-            $this->tagsCache . $entityId
+        $entityId = $this->data['id'] ?? null;
+
+        // Senza un identificatore stabile non possiamo cachare in modo
+        // sensato (ogni istanza avrebbe una chiave diversa, causando solo
+        // scritture inutili e cache-miss garantiti). In questo caso ci
+        // limitiamo a normalizzare i dati e basta.
+        if ($entityId === null) {
+            $this->normalizeData();
+
+            return;
+        }
+
+        // static::class distingue le sottoclassi: Product e Category
+        // con lo stesso id numerico non si sovrascrivono più a vicenda.
+        $cacheKey = static::class . ':' . $entityId;
+
+        $tags = [
+            $this->cacheTag,
+            static::class,
+            $cacheKey,
         ];
 
-        // 3. Usiamo i tag corretti concatenati alla chiave univoca
-        $this->tags($tagsCache);
-        
-        if($this->existsInCache($cacheKey)) {
-            $this->data = $this->getFromCache($cacheKey);
-        } else {
-            $this->normalizeData();
-            $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
+        $this->tags($tags);
+
+        $cached = $this->getFromCache($cacheKey);
+
+        if ($cached !== null) {
+            $this->data = $cached;
+
+            return;
         }
+
+        $this->normalizeData();
+        $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
     }
 
-    public function normalizeData(): void
+    protected function normalizeData(): void
     {
-        
     }
 
     public function get(string $key, mixed $default = null): mixed
     {
         return $this->data[$key] ?? $default;
     }
-
 }
