@@ -3,16 +3,17 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\PS\Orders\Order;
+use PS\Webservice\Domain\Models\PS\Products\Product;
+use PS\Webservice\Domain\Models\PS\Products\ProductReviews;
 use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Http\Controller\Controller;
+use PS\Webservice\Service\PS\Product as ProductService;
 use PS\Webservice\Traits\PaginationTrait;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use PS\Webservice\Domain\Models\PS\Products\ProductReviews;
-use PS\Webservice\Domain\Models\PS\Products\Product;
-use PS\Webservice\Service\PS\Product as ProductService;
 
 class ProductController extends Controller
 {
@@ -285,5 +286,44 @@ class ProductController extends Controller
         }
 
         return false; // No exploit code found
+    }
+
+    public function getAllProductReviews(Request $request, Response $response)
+    {
+        $queryParams = $request->getQueryParams();
+        $pagination = $this->getPaginationParams($queryParams);
+
+        if($queryParams['limit'] !== null) {
+            $reviews = ProductReviews::query()
+                ->limit((int) $queryParams['limit'])
+                ->get();
+        } else {
+            $reviews = ProductReviews::all();
+        }
+
+        //build all product from cache
+        $reviewCompleteData = [];
+        foreach($reviews as $review) {
+            try {
+                $product = ProductEntity::create(['id' => $review->id_product], null);
+                $reviewCompleteData[] = [
+                    'id' => $review->id_product_review,
+                    'id_product' => $review->id_product,
+                    'product_name' => $product->name,
+                    'comment' => $review->comment,
+                    'rating' => $review->rating,
+                    'created_at' => $review->date_add,
+                    'id_manufacturer' => $review->id_manufacturer,
+                ];
+            } catch (\Exception $e) {
+                Log::warning("Failed to build review data for review ID {$review->id_product_review}: " . $e->getMessage());
+                continue; // Skip this review and continue with the next one
+            }
+        }
+
+        return response([
+            'success' => true,
+            'data' => $reviewCompleteData,
+        ]);
     }
 }
