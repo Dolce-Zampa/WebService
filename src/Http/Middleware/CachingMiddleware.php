@@ -27,9 +27,6 @@ class CachingMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         // Skip caching for non-GET requests
-        if ($request->getMethod() !== 'GET' || env('APP_DISABLE_CACHE', false)) {
-            return $handler->handle($request);
-        }
 
         $uri = $request->getUri()->getPath();
         $tags = $this->extractTagsFromParams($request->getQueryParams());
@@ -40,7 +37,7 @@ class CachingMiddleware implements MiddlewareInterface
         $queryParams = http_build_query($request->getQueryParams());
         $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
 
-        $this->tags($tags);
+        $this->tags($this->tag);
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
