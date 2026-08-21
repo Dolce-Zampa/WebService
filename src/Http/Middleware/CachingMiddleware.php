@@ -40,12 +40,6 @@ class CachingMiddleware implements MiddlewareInterface
         if ($request->getMethod() !== 'GET' || env('APP_DISABLE_CACHE', false)) {
             return $handler->handle($request);
         }
-        // Cache solo per GET: su POST/PUT/DELETE/PATCH un cache-hit
-        // salterebbe l'esecuzione dell'handler, cioè l'operazione di
-        // scrittura non verrebbe mai eseguita.
-        if ($request->getMethod() !== 'GET') {
-            return $handler->handle($request);
-        }
 
         $queryParams = $request->getQueryParams();
 

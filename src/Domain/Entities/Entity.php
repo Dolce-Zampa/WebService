@@ -27,39 +27,7 @@ class Entity
     {
         $this->service = $service;
         $this->data = $data;
-
-        $entityId = $this->data['id'] ?? null;
-
-        if ($entityId === null) {
-            $this->normalizeData();
-            return;
-        }
-
-        $cacheKey = static::class . ':' . $entityId;
-
-        $tags = [
-            "entity",
-            $this->cacheTag,
-            $this->cacheTag . ':' . $entityId,
-        ];
-
-        $this->tags($tags);
-
-        $cached = $this->getFromCache($cacheKey);
-
-        if ($cached !== null) {
-            //check if the hash of the cached data is the same as the current data
-            $this->normalizeData();
-            if (isset($cached['hash']) && $cached['hash'] === $this->hash()) {
-                $this->data = $cached;
-                return;
-            }
-
-        }
-
-        // save the hash of the data to the cache to detect changes in the future
-        $this->data['hash'] = $this->hash();
-        $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
+        $this->normalizeData();
     }
 
     protected function normalizeData(): void
