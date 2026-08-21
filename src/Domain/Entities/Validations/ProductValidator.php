@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities\Validations;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
 
 final class ProductValidator {
@@ -31,6 +32,10 @@ final class ProductValidator {
             if (!array_key_exists($field, $data) || $data[$field] === null || $data[$field] === '') {
                 $errors[] = "Campo mancante o vuoto: {$field}";
             }
+        }
+
+        if(count($errors) > 0) {
+            Log::error("Product validation failed for product ID {$product->getId()}: " . implode(", ", $errors));
         }
 
         return $errors;

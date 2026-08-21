@@ -5,7 +5,6 @@ namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\PS\Orders\Order;
 use PS\Webservice\Domain\Models\PS\Products\Product;
 use PS\Webservice\Domain\Models\PS\Products\ProductReviews;
@@ -307,7 +306,7 @@ class ProductController extends Controller
         $reviewCompleteData = [];
         foreach ($reviews as $review) {
             try {
-                $product = $this->resolveProductForReview($review);
+                $product = ProductEntity::create(['id' => $review->id_product], $this->productService);
                 $reviewCompleteData[] = $this->mapReviewData($review, $product);
             } catch (\Exception $e) {
                 Log::error("Skipping review ID {$review->id}, product resolution failed permanently: " . $e->getMessage());
@@ -319,16 +318,6 @@ class ProductController extends Controller
             'success' => true,
             'data' => $reviewCompleteData,
         ]);
-    }
-
-    private function resolveProductForReview($review): ProductEntity
-    {
-        try {
-            return ProductEntity::create(['id' => $review->id_product], null);
-        } catch (\Exception $e) {
-            // Prova a recuperare/costruire il prodotto tramite il service
-            return $this->productService->getProductById($review->id_product);
-        }
     }
 
     private function mapReviewData($review, ProductEntity $product): array

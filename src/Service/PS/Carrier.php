@@ -6,7 +6,7 @@ namespace PS\Webservice\Service\PS;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use Illuminate\Support\Collection;
 
-class Carrier extends PrestashopService implements PrestashopServiceInterface {
+class Carrier extends Product implements PrestashopServiceInterface {
 
     /**
      * Retrieves a list of active carriers.

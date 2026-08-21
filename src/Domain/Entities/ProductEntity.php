@@ -34,7 +34,8 @@ class ProductEntity extends Entity implements ObjectInterface
         } else {
             //remove from cache if exists
             $class->removeFromCache(static::class. ':' . $data['id']);
-            throw new EntityExceptions(EntityExceptions::ENTITY_INVALID, $data['id']);
+            /** @var \PS\Webservice\Service\PS\Order $service */
+            return $service->getProductById($data['id']);
         }
     }
 

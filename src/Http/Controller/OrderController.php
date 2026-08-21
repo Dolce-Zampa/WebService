@@ -123,10 +123,6 @@ class OrderController extends CartController
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
-
-        // check payment method if cod 
-        $paymentMethod = $payload['payment_method'];
-
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
         }
@@ -190,7 +186,7 @@ class OrderController extends CartController
                 $serverPrice = $product['price_wt'];
                 $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
                 $orderSession->addLineItem(
-                    product: ProductEntity::create($product, null),
+                    product: ProductEntity::create($product, $this->orderService),
                     quantity: (int) $product['quantity'],
                     price: $serverPrice
                 );
@@ -318,7 +314,7 @@ class OrderController extends CartController
                 $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
 
                 $orderSession->addLineItem(
-                    product: ProductEntity::create($product, null),
+                    product: ProductEntity::create($product, $this->orderService),
                     quantity: (int) $product['quantity'],
                     price: $serverPrice
                 );
