@@ -326,8 +326,6 @@ class ProductController extends Controller
         try {
             return ProductEntity::create(['id' => $review->id_product], null);
         } catch (\Exception $e) {
-            Log::warning("Failed to build review data for review ID {$review->id}: " . $e->getMessage());
-
             // Prova a recuperare/costruire il prodotto tramite il service
             return $this->productService->getProductById($review->id_product);
         }

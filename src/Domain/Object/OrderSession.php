@@ -183,4 +183,9 @@ class OrderSession implements ObjectInterface
     {
         return $this->customer;
     }
+
+    public function hash(): string
+    {
+        return md5(json_encode($this->data));
+    }
 }

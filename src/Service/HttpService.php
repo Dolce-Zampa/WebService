@@ -74,6 +74,10 @@ class HttpService implements HttpServiceInterface
             $response = $stream->request($method, $this->api . $this->config->getQueryParams(), $options);
             $this->saveRequest($method, $this->api, $data);
 
+            if(is_null($response)) {
+                throw new \RuntimeException("HTTP request failed: No response received.");
+            }
+
             $this->response = $response;
             $this->body = $response->getBody()->getContents();
             $this->httpCode = $response->getStatusCode();   

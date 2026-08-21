@@ -11,6 +11,7 @@ class EntityExceptions extends \Exception
     public const ENTITY_DELETION_FAILED = 'Failed to delete entity.';
     public const ENTITY_NOT_FOUND = 'Entity not found.';
     public const ENTITY_ID_NOT_FOUND = 'Entity ID not found in data.';
+    public const ENTITY_INVALID = 'Entity ID is invalid.';
 
     public function __construct(string $message, ?int $productId = null)
     {
