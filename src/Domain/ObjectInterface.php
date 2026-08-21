@@ -20,4 +20,6 @@ interface ObjectInterface extends Arrayable, Jsonable {
 
     public function get(string $key, mixed $default = null): mixed;
 
+    public function hash(): string;
+
 }

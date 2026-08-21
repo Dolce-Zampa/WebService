@@ -72,6 +72,7 @@ class ConfigController extends CartController
             if(empty($params['tags'])) {
                 throw new \InvalidArgumentException("The 'tags' parameter is mandatory for each cache entry to clear.");
             }
+
             
             if(empty($params['key'])) {
                 $this->tags($params['tags'])->flushTag();

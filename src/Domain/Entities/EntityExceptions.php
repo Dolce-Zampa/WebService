@@ -10,8 +10,9 @@ class EntityExceptions extends \Exception
     public const ENTITY_UPDATE_FAILED = 'Failed to update entity.';
     public const ENTITY_DELETION_FAILED = 'Failed to delete entity.';
     public const ENTITY_NOT_FOUND = 'Entity not found.';
+    public const ENTITY_ID_NOT_FOUND = 'Entity ID not found in data.';
 
-    public function __construct(string $message, int $productId)
+    public function __construct(string $message, ?int $productId = null)
     {
         parent::__construct(sprintf('%s Product ID: %d', $message, $productId), 500);
     }

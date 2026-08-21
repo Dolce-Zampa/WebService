@@ -129,4 +129,9 @@ class CustomerEntity implements ObjectInterface
     {
         return new \PS\Webservice\Domain\Object\PayloadServiceData($this->data, ['id' => 'customer']);
     }
+
+    public function hash(): string
+    {
+        return md5(json_encode($this->data));
+    }
 }

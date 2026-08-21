@@ -10,7 +10,7 @@ class ImageEntity extends Entity implements ObjectInterface {
 
 	protected array $data;
     protected ?PrestashopServiceInterface $service;
-	protected $tagsCache = 'image:';
+	protected string $cacheTag = 'image';
 
     public static function create(array $data, PrestashopServiceInterface $service): self
     {

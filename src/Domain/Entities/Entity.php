@@ -30,24 +30,17 @@ class Entity
 
         $entityId = $this->data['id'] ?? null;
 
-        // Senza un identificatore stabile non possiamo cachare in modo
-        // sensato (ogni istanza avrebbe una chiave diversa, causando solo
-        // scritture inutili e cache-miss garantiti). In questo caso ci
-        // limitiamo a normalizzare i dati e basta.
         if ($entityId === null) {
             $this->normalizeData();
-
             return;
         }
 
-        // static::class distingue le sottoclassi: Product e Category
-        // con lo stesso id numerico non si sovrascrivono più a vicenda.
         $cacheKey = static::class . ':' . $entityId;
 
         $tags = [
+            "entity",
             $this->cacheTag,
-            static::class,
-            $cacheKey,
+            $this->cacheTag . ':' . $entityId,
         ];
 
         $this->tags($tags);
@@ -56,11 +49,16 @@ class Entity
 
         if ($cached !== null) {
             $this->data = $cached;
-
-            return;
+            //check if the hash of the cached data is the same as the current data
+            if (isset($this->data['hash']) && $this->data['hash'] === $this->hash()) {
+                return;
+            }
         }
 
         $this->normalizeData();
+
+        // save the hash of the data to the cache to detect changes in the future
+        $this->data['hash'] = $this->hash();
         $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
     }
 
@@ -71,5 +69,10 @@ class Entity
     public function get(string $key, mixed $default = null): mixed
     {
         return $this->data[$key] ?? $default;
+    }
+
+    public function hash(): string
+    {
+        return md5(json_encode($this->data));
     }
 }

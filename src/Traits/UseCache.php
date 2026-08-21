@@ -37,7 +37,7 @@ trait UseCache
             return;
         }
 
-        if ($ttl === null) {
+        if (empty($ttl)) {
             Cache::tags($this->tags)->forever($key, $value);
         } else {
             $expiresAt = Carbon::now()->addMinutes($ttl);

@@ -81,7 +81,7 @@ class ProductController extends Controller
         $pagination = $this->getPaginationParams($queryParams);
 
         //fix provvisoria perchè non riusciamo a recuperare i prodotti se sono filtrati
-        if($filters && is_array($filters) && count($filters) > 0){
+        if ($filters && is_array($filters) && count($filters) > 0) {
             $pagination['per_page'] = 30; // Set a high limit to retrieve all products
         }
 
@@ -247,13 +247,13 @@ class ProductController extends Controller
         $order = Order::where('reference', $orderId)->first();
         $product = Product::where('id_product', $id)->firstOrFail(); // Ensure the product exists
 
-        if(!$order) {
+        if (!$order) {
             return response([
                 'success' => false,
                 'message' => 'Invalid order or customer'
             ], 400);
         }
-       
+
         // save the review using the product service
         ProductReviews::create([
             'id_product' => $id,
@@ -294,7 +294,7 @@ class ProductController extends Controller
         $queryParams = $request->getQueryParams();
         $pagination = $this->getPaginationParams($queryParams);
 
-        if($queryParams['limit'] !== null) {
+        if ($queryParams['limit'] !== null) {
             $reviews = ProductReviews::query()
                 ->limit((int) $queryParams['limit'])
                 ->where('status', 'approved')
@@ -305,22 +305,13 @@ class ProductController extends Controller
 
         //build all product from cache
         $reviewCompleteData = [];
-        foreach($reviews as $review) {
+        foreach ($reviews as $review) {
             try {
-                $product = ProductEntity::create(['id' => $review->id_product], null);
-                $reviewCompleteData[] = [
-                    'id' => $review->id,
-                    'id_product' => $review->id_product,
-                    'product_name' => $product->name,
-                    'comment' => $review->comment,
-                    'rating' => $review->rating,
-                    'created_at' => $review->created_at,
-                    'id_manufacturer' => $review->id_manufacturer,
-                    'status' => $review->status,
-                ];
+                $product = $this->resolveProductForReview($review);
+                $reviewCompleteData[] = $this->mapReviewData($review, $product);
             } catch (\Exception $e) {
-                Log::warning("Failed to build review data for review ID {$review->id}: " . $e->getMessage());
-                continue; // Skip this review and continue with the next one
+                Log::error("Skipping review ID {$review->id}, product resolution failed permanently: " . $e->getMessage());
+                continue;
             }
         }
 
@@ -328,5 +319,31 @@ class ProductController extends Controller
             'success' => true,
             'data' => $reviewCompleteData,
         ]);
+    }
+
+    private function resolveProductForReview($review): ProductEntity
+    {
+        try {
+            return ProductEntity::create(['id' => $review->id_product], null);
+        } catch (\Exception $e) {
+            Log::warning("Failed to build review data for review ID {$review->id}: " . $e->getMessage());
+
+            // Prova a recuperare/costruire il prodotto tramite il service
+            return $this->productService->getProductById($review->id_product);
+        }
+    }
+
+    private function mapReviewData($review, ProductEntity $product): array
+    {
+        return [
+            'id' => $review->id,
+            'id_product' => $review->id_product,
+            'product_name' => $product->name,
+            'comment' => $review->comment,
+            'rating' => $review->rating,
+            'created_at' => $review->created_at,
+            'id_manufacturer' => $review->id_manufacturer,
+            'status' => $review->status,
+        ];
     }
 }

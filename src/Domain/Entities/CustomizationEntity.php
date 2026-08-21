@@ -12,7 +12,7 @@ class CustomizationEntity extends Entity implements ObjectInterface
 	protected array $data;
     protected ?PrestashopServiceInterface $service;
 
-	protected $tagsCache = 'customization:';
+	protected string $cacheTag = 'customization';
 
 	public static function create(array $data, PrestashopServiceInterface $service): self
 	{

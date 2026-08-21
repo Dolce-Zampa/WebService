@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Entities;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\EntityExceptions;
+use PS\Webservice\Domain\Entities\Validations\ProductValidator;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
@@ -18,15 +20,23 @@ class ProductEntity extends Entity implements ObjectInterface
     protected array $data;
     protected ?PrestashopServiceInterface $service;
 
-    protected $tagsCache = 'product:';
+    protected string $cacheTag = 'product';
 
     private $filters = [];
 
-    protected $cacheTTL = null; // Cache TTL in minutes, null means no expiration
+    protected int $cacheTTL = 0;
 
     public static function create(array $data, ?PrestashopServiceInterface $service): self
     {
-        return new self($data, $service);
+        $class = new self($data, $service);
+        if(ProductValidator::isValid($class)) {
+            return $class;
+        } else {
+            //remove from cache if exists
+            $class->removeFromCache(static::class. ':' . $data['id']);
+            throw new EntityExceptions(EntityExceptions::ENTITY_CREATION_FAILED);
+        }
+
     }
 
     public function getId(): int
@@ -95,7 +105,7 @@ class ProductEntity extends Entity implements ObjectInterface
         $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);
         $currentPrice = round((float)$this->data['price'], 2, PHP_ROUND_HALF_UP);
         $this->data['on_sale'] = $originalePrice < $currentPrice;
-        $this->data['shipping_cost'] = '6.99'; //FIXME: remove this on production, shipping cost will be calculated on checkout
+        $this->data['shipping_cost'] = '6.10'; //FIXME: remove this on production, shipping cost will be calculated on checkout
 
     }
 

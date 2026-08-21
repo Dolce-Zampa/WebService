@@ -15,7 +15,7 @@ class CombinationEntity extends Entity implements ObjectInterface
 	protected array $data;
     protected ?PrestashopServiceInterface $service;
 
-	protected $tagsCache = 'combination:';
+	protected string $cacheTag = 'combination';
 
 	public static function create(array $data, PrestashopServiceInterface $service): self
 	{

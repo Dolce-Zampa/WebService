@@ -14,7 +14,7 @@ class ManufactureEntity extends Entity implements ObjectInterface
 	protected array $data;
     protected ?PrestashopServiceInterface $service;
 
-	protected $tagsCache = 'manufacturer:';
+	protected string $cacheTag = 'manufacturer';
 
 	public static function create(array $data, PrestashopServiceInterface $service): self
 	{

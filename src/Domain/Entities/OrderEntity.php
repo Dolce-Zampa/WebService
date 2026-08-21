@@ -87,4 +87,9 @@ class OrderEntity implements ObjectInterface
     {
         return $this->data[$key] ?? $default;
     }
+
+	public function hash(): string
+    {
+        return md5(json_encode($this->data));
+    }
 }
