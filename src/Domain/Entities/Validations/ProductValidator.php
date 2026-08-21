@@ -16,8 +16,8 @@ final class ProductValidator {
     /** Chiavi obbligatorie dentro associations */
     private const REQUIRED_ASSOCIATIONS = [
         'categories', 'images', 'combinations',
-        'product_option_values', 'product_features',
-        'stock_availables', 'accessories',
+        'product_option_values',
+        'stock_availables',
     ];
 
     /**
