@@ -25,6 +25,8 @@ class ProductEntity extends Entity implements ObjectInterface
 
     protected int $cacheTTL = 0;
 
+    protected bool $isNormalized = false;
+
     public static function create(array $data, ?PrestashopServiceInterface $service): self
     {
         $class = new self($data, $service);
@@ -84,6 +86,11 @@ class ProductEntity extends Entity implements ObjectInterface
 
     public function normalizeData(): void
     {
+        if($this->isNormalized === true) {
+            Log::debug("ProductEntity: Data already normalized for product ID {$this->getId()}");
+            return;
+        }
+
         if (!empty($this->data['filters'])) {
             foreach ($this->data as $key => $value) {
                 if (in_array($key, $this->filters)) {
@@ -105,6 +112,8 @@ class ProductEntity extends Entity implements ObjectInterface
         $this->data['on_sale'] = $originalePrice < $currentPrice;
         $this->data['shipping_cost'] = '6.10'; //FIXME: remove this on production, shipping cost will be calculated on checkout
         $this->calculateFullPrice(); // Ensure the price is calculated before converting to array
+
+        $this->isNormalized = true;
 
     }
 
@@ -217,5 +226,10 @@ class ProductEntity extends Entity implements ObjectInterface
     public function addFiler(FilterEntity $filter): void
     {
         $this->data['filters'][] = $filter->toArray();
+    }
+
+    public function isNormalized(): bool
+    {
+        return $this->isNormalized;
     }
 }
