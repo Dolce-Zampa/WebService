@@ -5,10 +5,8 @@ namespace PS\Webservice\Repositories;
 
 use Carbon\Carbon;
 use Illuminate\Database\Capsule\Manager as DB;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
-use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Domain\Models\PS\Suppliers\Supplier;
 use Ramsey\Uuid\Uuid;
@@ -292,7 +290,7 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
      * @param int $idManufacturer
      * @return int
      */
-    public function getProductAddToCart(int $idManufacturer): Collection
+    public function getProductAddToCart(int $idManufacturer): \Illuminate\Database\Eloquent\Collection
     {
         $results = $this->db->table('v_manufacturer_cart_products_stats')
             ->where('id_manufacturer', $idManufacturer)
