@@ -21,26 +21,8 @@ class Entity
     {
         $this->service = $service;
         $this->data = $data;
+        $this->normalizeData();
         
-        // 1. Definiamo una chiave univoca basata sull'ID (o un UUID se non esiste)
-        $entityId = $this->data['id'] ?? Uuid::uuid4()->toString();
-        $cacheKey = $this->tagsCache . $entityId;
-
-        // 2. Prepariamo i tag per la pulizia in blocco
-        $tagsCache = [
-            'entity:all',
-            'entity:' . $entityId
-        ];
-
-        // 3. Usiamo i tag corretti concatenati alla chiave univoca
-        $this->tags($tagsCache);
-        
-        if($this->existsInCache($cacheKey)) {
-            $this->data = $this->getFromCache($cacheKey);
-        } else {
-            $this->normalizeData();
-            $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
-        }
     }
 
     public function normalizeData(): void
