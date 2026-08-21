@@ -4,7 +4,6 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Entities;
 
 use Illuminate\Support\Facades\Log;
-use PS\Webservice\Domain\Entities\EntityExceptions;
 use PS\Webservice\Domain\Entities\Validations\ProductValidator;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
