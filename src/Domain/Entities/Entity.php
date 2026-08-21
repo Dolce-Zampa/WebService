@@ -52,9 +52,9 @@ class Entity
             $this->normalizeData();
             if (isset($cached['hash']) && $cached['hash'] === $this->hash()) {
                 $this->data = $cached;
-                return;
             }
-
+            
+            return;
         }
 
         // save the hash of the data to the cache to detect changes in the future
