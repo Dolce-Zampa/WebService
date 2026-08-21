@@ -37,8 +37,9 @@ class CachingMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         // Skip caching for non-GET requests
+        if ($request->getMethod() !== 'GET' || env('APP_DISABLE_CACHE', false)) {
             return $handler->handle($request);
-
+        }
         // Cache solo per GET: su POST/PUT/DELETE/PATCH un cache-hit
         // salterebbe l'esecuzione dell'handler, cioè l'operazione di
         // scrittura non verrebbe mai eseguita.

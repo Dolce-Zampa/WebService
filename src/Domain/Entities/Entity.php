@@ -57,7 +57,6 @@ class Entity
 
         }
 
-
         // save the hash of the data to the cache to detect changes in the future
         $this->data['hash'] = $this->hash();
         $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
