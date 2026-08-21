@@ -48,14 +48,15 @@ class Entity
         $cached = $this->getFromCache($cacheKey);
 
         if ($cached !== null) {
-            $this->data = $cached;
             //check if the hash of the cached data is the same as the current data
-            if (isset($this->data['hash']) && $this->data['hash'] === $this->hash()) {
+            $this->normalizeData();
+            if (isset($cached['hash']) && $cached['hash'] === $this->hash()) {
+                $this->data = $cached;
                 return;
             }
+
         }
 
-        $this->normalizeData();
 
         // save the hash of the data to the cache to detect changes in the future
         $this->data['hash'] = $this->hash();

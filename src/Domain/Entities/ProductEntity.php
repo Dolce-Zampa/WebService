@@ -60,7 +60,6 @@ class ProductEntity extends Entity implements ObjectInterface
 
     public function toArray(): array
     {
-        $this->calculateFullPrice(); // Ensure the price is calculated before converting to array
         return $this->data;
     }
 
@@ -105,6 +104,7 @@ class ProductEntity extends Entity implements ObjectInterface
         $currentPrice = round((float)$this->data['price'], 2, PHP_ROUND_HALF_UP);
         $this->data['on_sale'] = $originalePrice < $currentPrice;
         $this->data['shipping_cost'] = '6.10'; //FIXME: remove this on production, shipping cost will be calculated on checkout
+        $this->calculateFullPrice(); // Ensure the price is calculated before converting to array
 
     }
 

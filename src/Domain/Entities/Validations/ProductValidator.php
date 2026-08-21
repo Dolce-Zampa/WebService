@@ -15,8 +15,7 @@ final class ProductValidator {
 
     /** Chiavi obbligatorie dentro associations */
     private const REQUIRED_ASSOCIATIONS = [
-        'categories', 'images', 'combinations',
-        'product_option_values',
+        'categories', 'images',
         'stock_availables',
     ];
 
@@ -31,16 +30,6 @@ final class ProductValidator {
         foreach (self::REQUIRED_FIELDS as $field) {
             if (!array_key_exists($field, $data) || $data[$field] === null || $data[$field] === '') {
                 $errors[] = "Campo mancante o vuoto: {$field}";
-            }
-        }
-
-        if (!isset($data['associations']) || !is_array($data['associations'])) {
-            $errors[] = "Manca il blocco 'associations'";
-        } else {
-            foreach (self::REQUIRED_ASSOCIATIONS as $assoc) {
-                if (!array_key_exists($assoc, $data['associations'])) {
-                    $errors[] = "Manca 'associations.{$assoc}'";
-                }
             }
         }
 
