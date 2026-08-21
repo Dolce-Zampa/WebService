@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 use PS\Webservice\Facades\AwsCognitoClient;
@@ -271,7 +272,30 @@ class SellerController
             }
 
             $productList = $this->prestashopRepository->getProductAddToCart($sellerId);
-            return response(['success' => true, 'data' => $productList], 200);
+            $products = [];
+            foreach ($productList as $row) {
+                $product = ProductEntity::create(['id' => $row->id_product], $this->productService); //FIXME: passare il service corretto se necessario
+                $idDefaultImage = $product->getImages()[0]['id'] ?? 0;
+                try {
+                    $products[] = [
+                        'id_product' => (int) $row->id_product,
+                        'product_name' => $product->name,
+                        'reference' => $row->reference,
+                        'number_of_carts' => (int) $row->total_quantity_added_to_cart,
+                        'number_of_orders' => (int) $row->total_orders,
+                        'price' => (float) $product->original_price,
+                        'image' => build_product_image_url($idDefaultImage, $row->product_name, 'small_default'),
+                        'url' => $product->url
+                    ];
+                } catch (\Exception $e) {
+                    Log::error('Errore durante la creazione dell\'oggetto ProductEntity per il prodotto con ID ' . $row->id_product . ': ' . $e->getMessage(), [
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                    continue; // Salta questo prodotto e continua con il prossimo
+                }
+            }
+
+            return response(['success' => true, 'data' => $products], 200);
 
         } catch (\Throwable $e) {
             return response(['success' => false, 'message' => $e->getMessage()], 400);

@@ -5,6 +5,7 @@ namespace PS\Webservice\Repositories;
 
 use Carbon\Carbon;
 use Illuminate\Database\Capsule\Manager as DB;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
@@ -291,36 +292,13 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
      * @param int $idManufacturer
      * @return int
      */
-    public function getProductAddToCart(int $idManufacturer): array
+    public function getProductAddToCart(int $idManufacturer): Collection
     {
         $results = $this->db->table('v_manufacturer_cart_products_stats')
             ->where('id_manufacturer', $idManufacturer)
             ->get();
 
-        $products = [];
-        foreach ($results as $row) {
-            $product = ProductEntity::create(['id' => $row->id_product], null);
-            $idDefaultImage = $product->getImages()[0]['id'] ?? 0;
-            try {
-                $products[] = [
-                    'id_product' => (int) $row->id_product,
-                    'product_name' => $product->name,
-                    'reference' => $row->reference,
-                    'number_of_carts' => (int) $row->total_quantity_added_to_cart,
-                    'number_of_orders' => (int) $row->total_orders,
-                    'price' => (float) $product->original_price,
-                    'image' => build_product_image_url($idDefaultImage, $row->product_name, 'small_default'),
-                    'url' => $product->url
-                ];
-            } catch (\Exception $e) {
-                Log::error('Errore durante la creazione dell\'oggetto ProductEntity per il prodotto con ID ' . $row->id_product . ': ' . $e->getMessage(), [
-                    'trace' => $e->getTraceAsString()
-                ]);
-                continue; // Salta questo prodotto e continua con il prossimo
-            }
-        }
-
-        return $products;
+        return $results;
     }
 
     /**
