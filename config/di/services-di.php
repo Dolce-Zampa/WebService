@@ -127,7 +127,7 @@ $container->set(\PS\Webservice\Service\RedisQueue::class, function ($c) {
 
 $container->set(\PS\Webservice\Service\MailjetService::class, function ($c) {
 	    $webserviceConfig = new \PS\Webservice\Domain\Object\WebserviceConfig(
-        domain: env('PS_BASE_URL'),
+        domain: 'https://api.mailjet.com',
         headers: [
 	        'Content-Type' => 'application/json',
 	        'Accept' => 'application/json',
