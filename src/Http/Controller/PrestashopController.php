@@ -42,7 +42,7 @@ class PrestashopController
         try {
             $this->mailjetService->createNewContact($payload['email']);
         } catch (\Exception $e) {
-            Log::creitical('Failed to create new contact in Mailjet', [
+            Log::critical('Failed to create new contact in Mailjet', [
                 'email' => $payload['email'],
                 'error' => $e->getMessage(),
             ]);
