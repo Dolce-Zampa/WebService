@@ -62,7 +62,8 @@ $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($
 $container->set(\PS\Webservice\Http\Controller\PrestashopController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\PsModule::class);
     $mailjet = $c->get(\PS\Webservice\Service\MailjetService::class);
-    return new \PS\Webservice\Http\Controller\PrestashopController($orderService,$mailjet);
+    $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
+    return new \PS\Webservice\Http\Controller\PrestashopController($orderService,$mailjet,$mailer);
 });
 
 $container->set(\PS\Webservice\Http\Controller\PrestashopProductWebhookController::class, function ($c) {
