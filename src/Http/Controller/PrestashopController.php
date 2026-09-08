@@ -5,6 +5,7 @@ namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Service\MailjetService;
+use PS\Webservice\Service\PS\Mailer;
 use PS\Webservice\Service\PS\PsModule;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -13,10 +14,12 @@ class PrestashopController
 {
     private PsModule $service;
     private MailjetService $mailjetService;
-    public function __construct(PsModule $prestashopService, MailjetService $mailjetService)
+    private Mailer $mailer;
+    public function __construct(PsModule $prestashopService, MailjetService $mailjetService, Mailer $mailer)
     {
         $this->service = $prestashopService;
         $this->mailjetService = $mailjetService;
+        $this->mailer = $mailer;
     }
 
     public function healthCheck(Request $request, Response $response): Response
@@ -34,13 +37,12 @@ class PrestashopController
         if (empty($payload) || !isset($payload['email']) || !isset($payload['privacy_accepted']) || !$payload['privacy_accepted'] || !isset($payload['source'])) {
             throw new \InvalidArgumentException('Payload is required');
         }
-
-        $response = $this->service->welcomeCoupon($payload);
-
-        Log::debug('PrestashopController: welcomeCoupon response', ['response' => $response->toArray()]);
+        // depreceted: this call will be removed in future versions
+        // $response = $this->service->welcomeCoupon($payload);
 
         try {
             $this->mailjetService->createNewContact($payload['email']);
+            $this->mailer->sendSubscriptionConfirmation($payload['email']);
         } catch (\Exception $e) {
             Log::critical('Failed to create new contact in Mailjet', [
                 'email' => $payload['email'],

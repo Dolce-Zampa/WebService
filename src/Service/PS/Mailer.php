@@ -168,6 +168,26 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         }
     }
 
+    public function sendSubscriptionConfirmation(string $email)
+    {
+        try {
+            $this->httpService->setUrl('/mailer?debug=true');
+            $this->httpService->invoke('POST',
+                new PayloadServiceData(
+                    [
+                        'subject' => 'Conferma iscrizione',
+                        'to_email' => $email,
+                        'template' => TemplateMail::SUBSCRIPTION_CONFIRMATION->value,
+                        'template_vars' => [
+                            'email' => $email,
+                        ]
+                    ]
+                ));
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
     private function recoveryCartHtml(array $products): string
     {
         $productsHtml = '';

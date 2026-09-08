@@ -6,7 +6,7 @@
             "conditions": {
                 "valid-from": "2020-01-01",
                 "valid-to": "2100-01-01",
-                "minimum-spend": 79.00,
+                "minimum-spend": 99.00,
                 "applicable": [],
                 "excluded": [],
                 "discount": {

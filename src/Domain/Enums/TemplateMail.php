@@ -10,6 +10,7 @@ enum TemplateMail: string
     case PREMIUM_SIGNUP = 'premium_account';
     case SIGNUP_SELLER = 'account_seller';
     case ABBANDONED_CART = 'abandoned_cart';
+    case SUBSCRIPTION_CONFIRMATION = 'subscription_confirmation';
 
 
 }
