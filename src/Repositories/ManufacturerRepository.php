@@ -290,7 +290,7 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
      * @param int $idManufacturer
      * @return int
      */
-    public function getProductAddToCart(int $idManufacturer): \Illuminate\Database\Eloquent\Collection
+    public function getProductAddToCart(int $idManufacturer): \Illuminate\Support\Collection
     {
         $results = $this->db->table('v_manufacturer_cart_products_stats')
             ->where('id_manufacturer', $idManufacturer)

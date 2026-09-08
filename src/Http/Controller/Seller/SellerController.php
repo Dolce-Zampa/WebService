@@ -621,7 +621,7 @@ class SellerController
             throw new \RuntimeException('Invalid access token', 401);
         }
 
-        $manufacturer = Manufacturer::query()->with('details')->where('sub', $sub)->first();
+        $manufacturer = Manufacturer::query()->with('details')->with('address')->where('sub', $sub)->first();
         if ($manufacturer !== null) {
             return $manufacturer;
         }
