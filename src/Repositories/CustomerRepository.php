@@ -18,12 +18,11 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
      */
     public function saveNewCustomer(ObjectInterface $customer): \stdClass
     {
-        //Patch per utenti creati prima della versione 2 di DolceZampa, dobbiamo preservare i vecchi customers
         $existingCustomer = $this->db->table(Customer::tableName())
             ->where('email', $customer->email)
             ->first();
 
-        if ($existingCustomer && $existingCustomer->created_at < '2026-08-15 00:00:00') {
+        if ($existingCustomer) {
             // Se esiste un cliente con la stessa email, aggiorna il record esistente
             $this->db->table(Customer::tableName())
                 ->where('id_customer', $existingCustomer->id_customer)
@@ -63,5 +62,12 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
             ->first();
 
         return $customerRecord;
+    }
+
+    public function getCustomerByEmail(string $email): ?\stdClass
+    {
+        return $this->db->table(Customer::tableName())
+            ->where('email', $email)
+            ->first();
     }
 }
