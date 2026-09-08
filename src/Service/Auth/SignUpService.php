@@ -62,12 +62,6 @@ class SignUpService extends UserService
 
             //create user in DB
             try {
-                //check first if user already exists in the database
-                $existingCustomer = Repositories::customer()->getCustomerByEmail($data->get('email'));
-                if ($existingCustomer) {
-                    Log::info("User already exists in the database: " . $data->get('email'));
-                    return false;
-                }
                 $newCustomer = Repositories::customer()->saveNewCustomer($data);
             } catch (\Exception $e) {
                 Log::critical("User creation in DB failed: " . $e->getMessage());
