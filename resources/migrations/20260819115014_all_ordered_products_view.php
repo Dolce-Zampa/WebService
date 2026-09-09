@@ -19,8 +19,8 @@ final class AllOrderedProductsView extends AbstractMigration
      */
     public function change(): void
     {
-        $this->execute('DROP VIEW IF EXISTS `fy8ie_v_manufacturer_sales_stats`;');
-        $this->execute('CREATE VIEW `fy8ie_v_manufacturer_sales_stats` AS
+        $this->execute('DROP VIEW IF EXISTS `fy8ie_v_manufacturer_cart_products_stats`;');
+        $this->execute('CREATE VIEW `fy8ie_v_manufacturer_cart_products_stats` AS
                 SELECT 
                     p.`id_product`,
                     p.`price`,

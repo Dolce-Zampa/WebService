@@ -441,9 +441,13 @@ class SellerController
             $totalOrders = $this->prestashopRepository->getTotalNumberOfOrders((int) $manufacturer->id_manufacturer);
             // $reviews = $this->prestashopRepository->getManufacturertReviews((int) $manufacturer->id_manufacturer);
 
+            // retrive commission value from manufacturer_detail table
+            $commission = (float) $manufacturer->details->commission;
+            $totalRevenue = $totalRevenue * (1 - $commission / 100);
+
             return response([
                 'currency' => 'eur',
-                'total_revenue' => $totalRevenue,
+                'total_revenue' => $totalRevenue * -1,
                 'total_orders' => $totalOrders,
                 'total_add_to_cart' => $totalAddToCart,
                 'active_products' => $totalProducts,

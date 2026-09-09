@@ -17,7 +17,7 @@ class PsModule extends PrestashopService implements PrestashopServiceInterface
 
     public function checkConnection(): bool
     {
-        $this->httpService->setUrl('?debug=1');
+        $this->httpService->setUrl('/?url=');
         return $this->httpService->invoke("GET", [])->getHttpCode() === 200;
     }
 

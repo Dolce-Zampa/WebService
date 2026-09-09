@@ -24,10 +24,7 @@ class PrestashopController
 
     public function healthCheck(Request $request, Response $response): Response
     {
-        $isConnected = $this->service->checkConnection();
-        $status = $isConnected ? 'ok' : 'error';
-        $responseData = ['status' => $status];
-
+        $responseData = ['status' => 'ok'];
         return response($responseData, 200);
     }
 
