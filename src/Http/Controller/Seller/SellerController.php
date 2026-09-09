@@ -447,7 +447,7 @@ class SellerController
 
             return response([
                 'currency' => 'eur',
-                'total_revenue' => $totalRevenue * -1,
+                'total_revenue' => $totalRevenue,
                 'total_orders' => $totalOrders,
                 'total_add_to_cart' => $totalAddToCart,
                 'active_products' => $totalProducts,

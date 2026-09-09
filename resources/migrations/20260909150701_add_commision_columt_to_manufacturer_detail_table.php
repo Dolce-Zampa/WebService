@@ -19,7 +19,7 @@ final class AddCommisionColumtToManufacturerDetailTable extends AbstractMigratio
      */
     public function up(): void
     {
-        $this->table('fy8ie_manufacturer_detail')
+        $this->table('fy8ie_manufacturer_details')
             ->addColumn('commission', 'decimal', ['precision' => 10, 'scale' => 2, 'default' => 0.00, 'null' => false])
             ->update();
     }
