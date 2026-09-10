@@ -47,7 +47,7 @@ class PrestashopController
             ]);
         }
 
-        return response($response->toArray(), 200);
+        return response(['status' => 'ok'], 200);
     }
 
 }

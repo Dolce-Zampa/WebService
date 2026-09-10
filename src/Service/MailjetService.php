@@ -35,12 +35,7 @@ class MailjetService
             'IsExcludedFromCampaigns' => $isExcluded,
         ];
 
-        $response = $this->httpService->invoke('POST', [
-            'ContactsList' => [
-                'ID' => 123456, // Replace with your actual contact list ID
-            ],
-            'Contacts' => [$data],
-        ]);
+        $response = $this->httpService->invoke('POST', $data);
 
         if($response->failed()) {
             Log::error('Failed to create new contact', [
@@ -86,9 +81,9 @@ class MailjetService
 
         if($response->failed()) {
             Log::error('Failed to subscribe contact to list', [
-                'contact_id' => $contactId,
-                'list_id' => $listId,
-                'response' => $response->getBody(),
+                'ContactID' => $contactId,
+                'ListID' => $listId,
+                'response' => $response->getBody()
             ]);
             throw new MailjetServiceException('Failed to subscribe contact to list: ' . $response->getBody());
         }
