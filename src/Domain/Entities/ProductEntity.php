@@ -33,8 +33,6 @@ class ProductEntity extends Entity implements ObjectInterface
         if(ProductValidator::isValid($class)) {
             return $class;
         } else {
-            //remove from cache if exists
-            $class->removeFromCache(static::class. ':' . $data['id']);
             /** @var \PS\Webservice\Service\PS\Order $service */
             return $service->getProductById($data['id']);
         }

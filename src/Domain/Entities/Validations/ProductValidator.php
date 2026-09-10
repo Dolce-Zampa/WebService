@@ -35,7 +35,7 @@ final class ProductValidator {
         }
 
         if(count($errors) > 0) {
-            Log::error("Product validation failed for product ID {$product->getId()}: " . implode(", ", $errors));
+            Log::warning("Product validation failed for product ID {$product->getId()}: " . implode(", ", $errors));
         }
 
         return $errors;
