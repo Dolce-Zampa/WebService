@@ -68,6 +68,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             'id_product' => (int) $cartOptions['productId'],
             'id_product_attribute' => (int) $cartOptions['productAttributeId'],
             'quantity' => (int) $cartOptions['qty'] ?? 1,
+            'customizations' => $cartOptions['customizations'] ?? [],
             'op' => 'up'
         ];
         $cartOptions['products'] = [$products];
@@ -149,13 +150,15 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             $payload = CartEntity::create([
                 'id' => $cartId,
                 'products' => [$products],
-                'id_guest' => $customerId
+                'id_guest' => $customerId,
+                'customizations' => $product['customizations'] ?? [],
             ], $this);
         } else {
             $payload = CartEntity::create([
                 'id' => $cartId,
                 'products' => [$products],
-                'id_customer' => $customerId
+                'id_customer' => $customerId,
+                'customizations' => $product['customizations'] ?? [],
             ], $this);
         }
 

@@ -113,6 +113,52 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             $deliveryAddressId = $cart->id_address_delivery ? (int) $cart->id_address_delivery : 0;
             $operation = MlabFactoryApiHelper::getValue($productLine, 'op');
 
+            // --- NUOVO: gestione campi personalizzati ---
+            $customFields = MlabFactoryApiHelper::getValue($productLine, 'customizations', array());
+            if (!empty($customFields) && is_array($customFields)) {
+                $product = new Product($productId);
+                if (!Validate::isLoadedObject($product)) {
+                    throw new MlabFactoryApiException('Product not found.', 404, array('id_product' => $productId));
+                }
+
+                $allowedFields = $product->getCustomizationFieldIds(); // array di ['id_customization_field' => x, 'type' => y, ...]
+                $allowedById = array();
+                foreach ($allowedFields as $f) {
+                    $allowedById[(int) $f['id_customization_field']] = (int) $f['type'];
+                }
+
+                foreach ($customFields as $field) {
+                    MlabFactoryApiHelper::requireFields($field, array('id_customization_field', 'value'));
+                    $fieldId = (int) $field['id_customization_field'];
+
+                    if (!isset($allowedById[$fieldId])) {
+                        throw new MlabFactoryApiException('Invalid customization field for this product.', 422, array(
+                            'id_product' => $productId,
+                            'id_customization_field' => $fieldId,
+                        ));
+                    }
+
+                    $type = $allowedById[$fieldId]; // Product::CUSTOMIZE_FILE (0) o Product::CUSTOMIZE_TEXTFIELD (1)
+
+                    if ($type == Product::CUSTOMIZE_TEXTFIELD) {
+                        $result = $cart->addTextFieldToProduct($productId, $fieldId, Product::CUSTOMIZE_TEXTFIELD, (string) $field['value'], true);
+                    } else {
+                        // $field['value'] qui deve essere già un path/filename presente in _PS_UPLOAD_DIR_
+                        // (va gestito separatamente il salvataggio del file caricato via API prima di questo punto)
+                        $result = $cart->addPictureToProduct($productId, $fieldId, Product::CUSTOMIZE_FILE, (string) $field['value'], true);
+                    }
+
+                    if (!$result) {
+                        throw new MlabFactoryApiException('Unable to save customization field.', 422, array('field' => $field));
+                    }
+
+                    // addTextFieldToProduct/addPictureToProduct con $returnCustomizationId=true
+                    // ritornano l'id_customization creato/riusato
+                    $customizationId = (int) $result;
+                }
+            }
+            // --- FINE NUOVO ---
+
             $updated = $cart->updateQty($quantity, $productId, $combinationId, $customizationId, $operation, $deliveryAddressId, null, true, true);
             if ($updated <= 0) {
                 throw new MlabFactoryApiException('Unable to add product to cart.', 422, array('product' => $productLine));

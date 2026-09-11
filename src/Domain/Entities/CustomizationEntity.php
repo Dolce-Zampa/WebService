@@ -49,7 +49,7 @@ class CustomizationEntity extends Entity implements ObjectInterface
             case 1:
                 $this->data['type'] = 'text';
                 break;
-            case 2:
+            case 0:
                 $this->data['type'] = 'file';
                 break;
             default:

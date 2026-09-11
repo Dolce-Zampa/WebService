@@ -9,6 +9,7 @@ use PS\Webservice\Domain\Models\PS\Orders\Order;
 use PS\Webservice\Domain\Models\PS\Products\Product;
 use PS\Webservice\Domain\Models\PS\Products\ProductReviews;
 use PS\Webservice\Domain\Object\Filter;
+use PS\Webservice\Facades\S3Service;
 use PS\Webservice\Http\Controller\Controller;
 use PS\Webservice\Service\PS\Product as ProductService;
 use PS\Webservice\Traits\PaginationTrait;
@@ -332,5 +333,32 @@ class ProductController extends Controller
             'id_manufacturer' => $review->id_manufacturer,
             'status' => $review->status,
         ];
+    }
+
+    /**
+     * Summary of uploadCustomizationFile
+     * @param Request $request
+     * @param Response $response
+     * @return Response
+     */
+    public function uploadCustomizationFile(Request $request, Response $response)
+    {
+        $idProduct = $request->getParsedBody()['id_product'];
+        $uuid = $request->getParsedBody()['uuid'];
+
+        $uploadedFiles = $request->getUploadedFiles();
+        if (empty($uploadedFiles['file'])) {
+            return response([
+                'success' => false,
+                'message' => 'No file uploaded',
+            ], 400);
+        }
+
+        $file = $uploadedFiles['file'];
+        S3Service::uploadFile("customization/{$idProduct}/{$uuid}", $file->getFilePath());
+
+        return response([
+            'success' => true,
+        ]);
     }
 }

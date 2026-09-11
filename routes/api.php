@@ -32,7 +32,7 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/product/reviews', PS\Webservice\Http\Controller\ProductController::class . ':getAllProductReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-reviews', 60));
     $app->get('/api/product/{slug}', PS\Webservice\Http\Controller\ProductController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
     $app->post('/api/product/{id}/reviews', PS\Webservice\Http\Controller\ProductController::class . ':addProductReview');
-
+    $app->post('/api/product/customizzation/upload-file', PS\Webservice\Http\Controller\ProductController::class . ':uploadCustomizationFile');
     /** brands list */
     $app->get('/api/manufacturers', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
     $app->get('/api/manufacturers/{id}', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturer-details'));

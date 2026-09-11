@@ -79,6 +79,15 @@ class CartEntity implements ObjectInterface
 		$this->data['products'] = (array) ($this->data['products'] ?? []);
 		$this->data['id_customer'] = empty($this->data['id_customer'] ?? null) ? null : $this->encodeId($this->data['id_customer'], 'customer');
 		$this->data['id_guest'] = empty($this->data['id_guest'] ?? null) ? null : $this->encodeId($this->data['id_guest'], 'guest');
+
+		$customizations = [];
+		foreach($this->data['customizations'] ?? [] as $customization) {
+			$customizations[] = [
+				'id_customization_field' => $customization['id'],
+				'value' => $customization['value']
+			];
+		}
+		$this->data['products']['customizations'] = $customizations;
 	}
 
 
