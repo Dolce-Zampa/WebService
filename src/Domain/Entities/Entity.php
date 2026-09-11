@@ -43,6 +43,10 @@ class Entity
             $this->cacheTag . ':' . $entityId,
         ];
 
+        if(array_key_exists('name', $this->data)) {
+            $tags[] = sha1((string) $this->data['name']);
+        }
+
         $this->tags($tags);
 
         $cached = $this->getFromCache($cacheKey);

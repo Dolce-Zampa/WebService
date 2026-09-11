@@ -211,13 +211,14 @@ class webserviceapi extends PaymentModule
             return;
         }
 
-        $productUrl = "api_cache:/api".$this->context->link->getProductLink($product)."?";
+        $link = str_replace("http://aidyis-prod-backoffice.dolcezampa.com","",$this->context->link->getProductLink($product));
+        $productUrl = "api_cache:/api".$link."?";
         $categoryName = $this->getCategoryNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
         $brandName = $this->getBrandNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
 
         $tags = [];
         $tags[] = [
-            "tags" => ['product-detail'],
+            "tags" => ['api'],
             "key" => $productUrl,
         ];
         $tags[] = [
@@ -228,6 +229,9 @@ class webserviceapi extends PaymentModule
         ];
         $tags[] = [
             "tags" => ["product:" . (int) $product->id],
+        ];
+        $tags[] = [
+            "tags" => [sha1((string) $product->name)],
         ];
 
         $url = $webhookBaseUrl . '/api/webhooks/clear-cache';
