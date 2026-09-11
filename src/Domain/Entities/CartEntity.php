@@ -87,7 +87,7 @@ class CartEntity implements ObjectInterface
 				'value' => "/var/www/workdir/upload/customization/{$customization['value']}"
 			];
 		}
-		$this->data['products']['customizations'] = $customizations;
+		$this->data['products'][0]['customizations'] = $customizations;
 	}
 
 
