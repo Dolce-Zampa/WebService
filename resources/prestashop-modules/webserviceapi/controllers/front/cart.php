@@ -28,10 +28,15 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
         }
 
         $idCustomer = (int) MlabFactoryApiHelper::getValue($payload, 'id_customer', 0);
-        $idGuest = (int) MlabFactoryApiHelper::getValue($payload, 'id_guest', 0);
+        $idGuestProvided = array_key_exists('id_guest', $payload) ? (int) $payload['id_guest'] : 0;
 
-        if ($idCustomer <= 0 && $idGuest <= 0) {
+        // Flag: il guest è stato generato automaticamente (non fornito dal client)
+        $guestWasGenerated = false;
+        $idGuest = $idGuestProvided;
+
+        if ($idCustomer <= 0 && $idGuestProvided <= 0) {
             $idGuest = $this->createGuest();
+            $guestWasGenerated = true;
         }
 
         $customer = null;
@@ -43,32 +48,91 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
         if (!empty($payload['id_cart']) && !Validate::isLoadedObject($cart)) {
             throw new MlabFactoryApiException('Cart not found.', 404, array('id_cart' => (int) $payload['id_cart']));
         }
+
         if ((int) $cart->id > 0) {
             if ($idCustomer > 0 && (int) $cart->id_customer !== $idCustomer) {
-                throw new MlabFactoryApiException('Cart does not belong to the customer.', 422, array('id_cart' => (int) $cart->id));
+                throw new MlabFactoryApiException(
+                    'Cart does not belong to the customer.',
+                    422,
+                    array('id_cart' => (int) $cart->id)
+                );
             }
-            if ($idGuest > 0 && (int) $cart->id_guest !== $idGuest) {
-                throw new MlabFactoryApiException('Cart does not belong to the guest.', 422, array('id_cart' => (int) $cart->id, 'id_guest' => (int) $idGuest, 'correct_id_guest' => (int) $cart->id_guest));
+
+            // Il check sul guest va fatto SOLO se l'utente ha fornito esplicitamente id_guest
+            // (altrimenti verifichiamo contro il guest già presente sul carrello)
+            if ($idCustomer <= 0) {
+                $expectedGuest = $idGuestProvided > 0 ? $idGuestProvided : (int) $cart->id_guest;
+                if ($expectedGuest > 0 && (int) $cart->id_guest !== $expectedGuest) {
+                    throw new MlabFactoryApiException(
+                        'Cart does not belong to the guest.',
+                        422,
+                        array(
+                            'id_cart' => (int) $cart->id,
+                            'id_guest' => $expectedGuest,
+                            'correct_id_guest' => (int) $cart->id_guest,
+                        )
+                    );
+                }
+                // Se il carrello esiste già, mantieni il suo guest invece di sovrascriverlo
+                if ($idGuestProvided <= 0 && (int) $cart->id_guest > 0) {
+                    $idGuest = (int) $cart->id_guest;
+                    $guestWasGenerated = false;
+                }
             }
         }
 
+        // --- GESTIONE INDIRIZZI ---
         $deliveryAddress = null;
-        if ($customer && !empty($payload['delivery_address']) && is_array($payload['delivery_address'])) {
-            $deliveryAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['delivery_address'], 'API delivery');
-        } elseif ($customer && !isset($payload['id_address_delivery'])) {
-            $deliveryAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, array('id_address' => (int) $payload['id_address_delivery']), 'API delivery');
+        if ($customer) {
+            if (!empty($payload['delivery_address']) && is_array($payload['delivery_address'])) {
+                $deliveryAddress = MlabFactoryApiHelper::ensureAddressForCustomer(
+                    $customer,
+                    $payload['delivery_address'],
+                    'API delivery'
+                );
+            } elseif (isset($payload['id_address_delivery']) && (int) $payload['id_address_delivery'] > 0) {
+                $deliveryAddress = MlabFactoryApiHelper::ensureAddressForCustomer(
+                    $customer,
+                    array('id_address' => (int) $payload['id_address_delivery']),
+                    'API delivery'
+                );
+            }
         }
 
         $invoiceAddress = null;
-        if ($customer && !empty($payload['invoice_address']) && is_array($payload['invoice_address'])) {
-            $invoiceAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['invoice_address'], 'API invoice');
-        } elseif ($customer && !isset($payload['id_address_invoice'])) {
-            $invoiceAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, array('id_address' => (int) $payload['id_address_invoice']), 'API invoice');
+        if ($customer) {
+            if (!empty($payload['invoice_address']) && is_array($payload['invoice_address'])) {
+                $invoiceAddress = MlabFactoryApiHelper::ensureAddressForCustomer(
+                    $customer,
+                    $payload['invoice_address'],
+                    'API invoice'
+                );
+            } elseif (isset($payload['id_address_invoice']) && (int) $payload['id_address_invoice'] > 0) {
+                $invoiceAddress = MlabFactoryApiHelper::ensureAddressForCustomer(
+                    $customer,
+                    array('id_address' => (int) $payload['id_address_invoice']),
+                    'API invoice'
+                );
+            }
+        }
+
+        // --- VALUTA ---
+        $idCurrency = (int) MlabFactoryApiHelper::getValue(
+            $payload,
+            'id_currency',
+            Configuration::get('PS_CURRENCY_DEFAULT')
+        );
+        if ($idCurrency > 0 && !Currency::exists($idCurrency)) {
+            throw new MlabFactoryApiException(
+                'Invalid id_currency.',
+                422,
+                array('id_currency' => $idCurrency)
+            );
         }
 
         $cart->id_customer = $idCustomer;
         $cart->id_guest = $idGuest;
-        $cart->id_currency = (int) MlabFactoryApiHelper::getValue($payload, 'id_currency', Configuration::get('PS_CURRENCY_DEFAULT'));
+        $cart->id_currency = $idCurrency;
         $cart->id_lang = (int) MlabFactoryApiHelper::getValue(
             $payload,
             'id_lang',
@@ -76,9 +140,20 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
         );
         $cart->id_shop_group = (int) $this->context->shop->id_shop_group;
         $cart->id_shop = (int) $this->context->shop->id;
-        $cart->secure_key = $customer ? (string) $customer->secure_key : '';
-        $cart->id_address_delivery = $deliveryAddress ? (int) $deliveryAddress->id : (int) $cart->id_address_delivery;
-        $cart->id_address_invoice = $invoiceAddress ? (int) $invoiceAddress->id : (int) $cart->id_address_invoice;
+
+        // secure_key: usa quello del customer, altrimenti genera uno valido per il guest
+        if ($customer) {
+            $cart->secure_key = (string) $customer->secure_key;
+        } elseif (empty($cart->secure_key)) {
+            $cart->secure_key = md5(uniqid((string) mt_rand(), true));
+        }
+
+        $cart->id_address_delivery = $deliveryAddress
+            ? (int) $deliveryAddress->id
+            : (int) $cart->id_address_delivery;
+        $cart->id_address_invoice = $invoiceAddress
+            ? (int) $invoiceAddress->id
+            : (int) $cart->id_address_invoice;
 
         if (!$cart->id) {
             if (!$cart->add()) {
@@ -88,17 +163,24 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             throw new MlabFactoryApiException('Unable to update cart.', 500);
         }
 
-        if (MlabFactoryApiHelper::toBool(MlabFactoryApiHelper::getValue($payload, 'replace_products', false), true)) {
+        // --- REPLACE PRODUCTS ---
+        $replaceProducts = MlabFactoryApiHelper::getValue($payload, 'replace_products', false);
+        if (MlabFactoryApiHelper::toBool($replaceProducts, false)) {
             foreach ($cart->getProducts() as $existingProduct) {
+                $existingDeliveryAddress = isset($existingProduct['id_address_delivery'])
+                    ? (int) $existingProduct['id_address_delivery']
+                    : 0;
+
                 $cart->deleteProduct(
                     (int) $existingProduct['id_product'],
                     (int) $existingProduct['id_product_attribute'],
                     (int) $existingProduct['id_customization'],
-                    (int) isset($existingProduct['id_address_delivery']) ? $existingProduct['id_address_delivery'] : 0
+                    $existingDeliveryAddress
                 );
             }
         }
 
+        // --- AGGIUNTA PRODOTTI ---
         foreach ($payload['products'] as $productLine) {
             if (!is_array($productLine)) {
                 throw new MlabFactoryApiException('Each product line must be an object.', 422);
@@ -111,64 +193,137 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             $combinationId = (int) MlabFactoryApiHelper::getValue($productLine, 'id_product_attribute', 0);
             $customizationId = (int) MlabFactoryApiHelper::getValue($productLine, 'id_customization', 0);
             $deliveryAddressId = $cart->id_address_delivery ? (int) $cart->id_address_delivery : 0;
-            $operation = MlabFactoryApiHelper::getValue($productLine, 'op');
 
-            // --- NUOVO: gestione campi personalizzati ---
+            // Validazione operatore
+            $operation = MlabFactoryApiHelper::getValue($productLine, 'op', null);
+            if ($operation !== null && !in_array($operation, array('up', 'down'), true)) {
+                throw new MlabFactoryApiException(
+                    'Invalid op value. Allowed: "up", "down".',
+                    422,
+                    array('op' => $operation)
+                );
+            }
+
+            // --- GESTIONE CUSTOMIZZAZIONI ---
             $customFields = MlabFactoryApiHelper::getValue($productLine, 'customizations', array());
+            $customizationFieldIds = array();
+
             if (!empty($customFields) && is_array($customFields)) {
                 $product = new Product($productId);
                 if (!Validate::isLoadedObject($product)) {
-                    throw new MlabFactoryApiException('Product not found.', 404, array('id_product' => $productId));
+                    throw new MlabFactoryApiException(
+                        'Product not found.',
+                        404,
+                        array('id_product' => $productId)
+                    );
                 }
 
-                $allowedFields = $product->getCustomizationFieldIds(); // array di ['id_customization_field' => x, 'type' => y, ...]
+                $allowedFields = $product->getCustomizationFieldIds();
                 $allowedById = array();
                 foreach ($allowedFields as $f) {
                     $allowedById[(int) $f['id_customization_field']] = (int) $f['type'];
                 }
 
                 foreach ($customFields as $field) {
+                    if (!is_array($field)) {
+                        throw new MlabFactoryApiException('Each customization field must be an object.', 422);
+                    }
                     MlabFactoryApiHelper::requireFields($field, array('id_customization_field', 'value'));
                     $fieldId = (int) $field['id_customization_field'];
 
                     if (!isset($allowedById[$fieldId])) {
-                        throw new MlabFactoryApiException('Invalid customization field for this product.', 422, array(
-                            'id_product' => $productId,
-                            'id_customization_field' => $fieldId,
-                        ));
+                        throw new MlabFactoryApiException(
+                            'Invalid customization field for this product.',
+                            422,
+                            array(
+                                'id_product' => $productId,
+                                'id_customization_field' => $fieldId,
+                            )
+                        );
                     }
 
-                    $type = $allowedById[$fieldId]; // Product::CUSTOMIZE_FILE (0) o Product::CUSTOMIZE_TEXTFIELD (1)
+                    $type = $allowedById[$fieldId];
 
                     if ($type == Product::CUSTOMIZE_TEXTFIELD) {
-                        $result = $cart->addTextFieldToProduct($productId, $fieldId, Product::CUSTOMIZE_TEXTFIELD, (string) $field['value'], true);
+                        $result = $cart->addTextFieldToProduct(
+                            $productId,
+                            $fieldId,
+                            Product::CUSTOMIZE_TEXTFIELD,
+                            (string) $field['value'],
+                            true
+                        );
                     } else {
-                        // $field['value'] qui deve essere già un path/filename presente in _PS_UPLOAD_DIR_
-                        // (va gestito separatamente il salvataggio del file caricato via API prima di questo punto)
-                        $result = $cart->addPictureToProduct($productId, $fieldId, Product::CUSTOMIZE_FILE, (string) $field['value'], true);
+                        $result = $cart->addPictureToProduct(
+                            $productId,
+                            $fieldId,
+                            Product::CUSTOMIZE_FILE,
+                            (string) $field['value'],
+                            true
+                        );
                     }
 
                     if (!$result) {
-                        throw new MlabFactoryApiException('Unable to save customization field.', 422, array('field' => $field));
+                        throw new MlabFactoryApiException(
+                            'Unable to save customization field.',
+                            422,
+                            array('field' => $field)
+                        );
                     }
 
-                    // addTextFieldToProduct/addPictureToProduct con $returnCustomizationId=true
-                    // ritornano l'id_customization creato/riusato
-                    $customizationId = (int) $result;
+                    // Salva l'id_customization associato a questo field
+                    $customizationFieldIds[$fieldId] = (int) $result;
+                }
+
+                // Recupera l'id_customization "di riga" dal carrello dopo l'aggiunta dei field.
+                // addTextFieldToProduct/addPictureToProduct creano/riusano un customization
+                // legato alla coppia (id_product, id_product_attribute, id_address_delivery).
+                $cartCustomizations = $cart->getProductCustomization(
+                    $productId,
+                    $combinationId,
+                    $deliveryAddressId
+                );
+
+                if (!empty($cartCustomizations)) {
+                    // Usa l'id_customization della riga appena creata
+                    $customizationId = (int) $cartCustomizations[0]['id_customization'];
+                } elseif (!empty($customizationFieldIds)) {
+                    // Fallback: usa l'ultimo id restituito
+                    $customizationId = (int) end($customizationFieldIds);
                 }
             }
-            // --- FINE NUOVO ---
+            // --- FINE GESTIONE CUSTOMIZZAZIONI ---
 
-            $updated = $cart->updateQty($quantity, $productId, $combinationId, $customizationId, $operation, $deliveryAddressId, null, true, true);
+            $updated = $cart->updateQty(
+                $quantity,
+                $productId,
+                $combinationId,
+                $customizationId > 0 ? $customizationId : null,
+                $operation,
+                $deliveryAddressId,
+                null,
+                true,
+                true
+            );
+
             if ($updated <= 0) {
-                throw new MlabFactoryApiException('Unable to add product to cart.', 422, array('product' => $productLine));
+                throw new MlabFactoryApiException(
+                    'Unable to add product to cart.',
+                    422,
+                    array('product' => $productLine)
+                );
             }
         }
 
+        // --- CARRIER ---
         $carrierId = (int) MlabFactoryApiHelper::getValue($payload, 'id_carrier', 0);
         if ($carrierId > 0) {
+            if (!Carrier::checkCarrierZone($carrierId, (int) $cart->id_address_delivery)) {
+                // opzionale: validazione zona carrier
+            }
             $cart->id_carrier = $carrierId;
-            $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
+            if ((int) $cart->id_address_delivery > 0) {
+                $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
+            }
         }
 
         if (!$cart->update()) {
@@ -196,13 +351,11 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             throw new MlabFactoryApiException('You must provide id_customer.', 422);
         }
 
-        // Carica il carrello
         $cart = new Cart($idCart);
         if (!Validate::isLoadedObject($cart)) {
             throw new MlabFactoryApiException('Cart not found.', 404, array('id_cart' => $idCart));
         }
 
-        // Verifica che il carrello appartenga al customer
         if ((int) $cart->id_customer !== $idCustomer) {
             throw new MlabFactoryApiException(
                 'Cart does not belong to the customer.',
@@ -211,10 +364,9 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             );
         }
 
-        // Blocca se esiste già un ordine collegato
         $linkedOrder = (int) Db::getInstance()->getValue(
             'SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders`
-         WHERE `id_cart` = ' . $idCart . ' LIMIT 1'
+             WHERE `id_cart` = ' . $idCart . ' LIMIT 1'
         );
         if ($linkedOrder > 0) {
             throw new MlabFactoryApiException(
@@ -224,13 +376,16 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             );
         }
 
-        // Rimuovi i prodotti prima di eliminare il carrello
         foreach ($cart->getProducts() as $product) {
+            $productDeliveryAddress = isset($product['id_address_delivery'])
+                ? (int) $product['id_address_delivery']
+                : 0;
+
             $cart->deleteProduct(
                 (int) $product['id_product'],
                 (int) $product['id_product_attribute'],
                 (int) $product['id_customization'],
-                (int) (isset($product['id_address_delivery']) ? $product['id_address_delivery'] : 0)
+                $productDeliveryAddress
             );
         }
 
@@ -276,11 +431,19 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
         }
 
         if ($idCustomer > 0 && (int) $cart->id_customer !== (int) $idCustomer) {
-            throw new MlabFactoryApiException('Cart does not belong to the customer.', 422, array('id_cart' => (int) $idCart));
+            throw new MlabFactoryApiException(
+                'Cart does not belong to the customer.',
+                422,
+                array('id_cart' => (int) $idCart)
+            );
         }
 
         if ($idGuest > 0 && (int) $cart->id_guest !== (int) $idGuest) {
-            throw new MlabFactoryApiException('Cart does not belong to the guest.', 422, array('id_cart' => (int) $idCart));
+            throw new MlabFactoryApiException(
+                'Cart does not belong to the guest.',
+                422,
+                array('id_cart' => (int) $idCart)
+            );
         }
 
         return $cart;
@@ -307,10 +470,14 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
         );
 
         if ($cartId <= 0) {
-            throw new MlabFactoryApiException('No open cart found for the requested owner.', 404, array(
-                'id_customer' => (int) $idCustomer,
-                'id_guest' => (int) $idGuest,
-            ));
+            throw new MlabFactoryApiException(
+                'No open cart found for the requested owner.',
+                404,
+                array(
+                    'id_customer' => (int) $idCustomer,
+                    'id_guest' => (int) $idGuest,
+                )
+            );
         }
 
         return new Cart($cartId);
