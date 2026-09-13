@@ -11,6 +11,5 @@ enum TemplateMail: string
     case SIGNUP_SELLER = 'account_seller';
     case ABBANDONED_CART = 'abandoned_cart';
     case SUBSCRIPTION_CONFIRMATION = 'subscription_confirmation';
-
-
+    case REVIEW_REQUEST = 'review_request';
 }
