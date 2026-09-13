@@ -45,7 +45,7 @@ trait UseCache
 
     protected function tags(array $tags): self
     {
-        $this->tags = array_merge($this->tags, $tags);
+        $this->tags = $tags;
         return $this;
     }
 

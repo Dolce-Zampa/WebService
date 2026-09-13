@@ -39,8 +39,9 @@ class CachingMiddleware implements MiddlewareInterface
 
         $queryParams = http_build_query($request->getQueryParams());
         $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
+        $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
 
-        $this->tags(['api']);
+        $this->tags(array_merge($this->tag, $tagEstract));
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
