@@ -58,6 +58,12 @@ class OrderSession implements ObjectInterface
         if (!$customer instanceof CustomerEntity) {
             throw new \InvalidArgumentException('customer must be an instance of CustomerEntity to create an order session');
         }
+
+        $carrierId = $data['id_carrier'] ?? null;
+        if (is_null($carrierId)) {
+            throw new \InvalidArgumentException('Carrier ID is required for payment session');
+        }
+
         $this->customer = $customer;
         $customerDetails = $customer->toArray();
         $this->data = [
@@ -65,8 +71,9 @@ class OrderSession implements ObjectInterface
             // 'permissions' => [ 
             //     'update_discounts' => 'server_only',
             // ],
-            'success_url' => $this->appendQueryParam($data['success_url'] ?? '', 'cart_id', $cartId),
-            'cancel_url' => $this->appendQueryParam($data['cancel_url'] ?? '', 'cart_id', $cartId),
+            'success_url' => $_ENV['STRIPE_SUCCESS_URL'] ?? '',
+            'cancel_url' => $_ENV['STRIPE_CANCEL_URL'] ?? '',
+            'expires_at' => time() + 3600, // Scade tra 1 ora (3600 secondi)
             'line_items' => $data['line_items'] ?? [],
             // Only include IDs with positive integer values; null, empty strings, '0',
             // and negative values are excluded as all PrestaShop entity IDs must be > 0.

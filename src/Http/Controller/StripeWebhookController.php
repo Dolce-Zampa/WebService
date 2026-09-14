@@ -6,6 +6,8 @@ namespace PS\Webservice\Http\Controller;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Products\Product;
+use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Repositories\OrderRepository;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
@@ -22,13 +24,15 @@ class StripeWebhookController extends OrderController
     protected PaymentGatewayInterface $stripeService;
 
     private MailerInterface $mailer;
+    private OrderRepository $orderRepository;
 
-    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer)
+    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer, OrderRepository $orderRepository)
     {
         $this->orderService = $orderService;
         $this->mailjetService = $mailjetService;
         $this->stripeService = $stripeService;
         $this->mailer = $mailer;
+        $this->orderRepository = $orderRepository;
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -163,6 +167,7 @@ class StripeWebhookController extends OrderController
     public function handleCheckoutSessionExpired(\Stripe\StripeObject $session): void
     {
         $metadata = $session->metadata;
+        $customerDetails = json_decode($metadata->customer);
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
 
         if ($cartId <= 0) {
@@ -170,29 +175,22 @@ class StripeWebhookController extends OrderController
             return;
         }
 
-        // Create a stripe payment link and submit with email
-        /**
-         * @var array $orderSavedInCache
-         */
-        $orderSavedInCache = $this->getFromCache((string) $cartId);
-        if(is_null($orderSavedInCache)) {
-            Log::warning("No order session retrived in cache, skip ");
-        }
+        $orderTable = $this->orderRepository->getProductFromAbbandonedCart($customerDetails->email, $cartId);
+        $orderSession = $metadata;
+        $orderSession['customer'] = $customerDetails;
 
-        $orderSession = $orderSavedInCache['orderSession'];
-        $cart = $orderSavedInCache['cart'];
-
+        $cart = $orderSession['cart_id'];
         if(is_null($orderSession) || is_null($cart)) {
             Log::warning("No order session or cart retrived in cache, skip ");
             return;
         }
 
-        $paymentUrl = $this->stripeService->createPaymentSession($orderSession);
-        $customer = $orderSession->getCustomer();
+        $order = OrderSession::create($orderSession, $this->cartService);
+        $paymentUrl = $this->stripeService->createPaymentSession($order);
         $lineItems = $this->lineItems($cart->toArray()['products']);
 
         // send email to customer with payment link and line items
-        $this->mailer->sendRecoveryCartExpired($customer->email, $paymentUrl, $lineItems, (string) $orderSession->total(), $customer->firstname);
+        $this->mailer->sendRecoveryCartExpired($customerDetails->email, $paymentUrl, $lineItems, (string) $order->total(), $customerDetails->firstname);
 
         Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
     }
