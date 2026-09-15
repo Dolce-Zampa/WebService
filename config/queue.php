@@ -1,4 +1,4 @@
 <?php
 
-$redisCli = new \App\Service\Providers\RedisCliProvider();
+$redisCli = new PS\Webservice\Service\Providers\RedisCliProvider();
 $queueService = new \PS\Webservice\Service\RedisQueue($redisCli->connection());

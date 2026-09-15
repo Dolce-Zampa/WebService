@@ -1,6 +1,6 @@
 <?php
 
-use App\Service\Providers\RedisCliProvider;
+use PS\Webservice\Service\Providers\RedisCliProvider;
 use Illuminate\Cache\FileStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Filesystem\Filesystem;
