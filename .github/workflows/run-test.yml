@@ -26,4 +26,4 @@ jobs:
         cp .env.example .env
 
     - name: Run test
-      run: vendor/bin/phpunit
+      run: vendor/bin/phpunit test
