@@ -42,5 +42,5 @@ jobs:
         username: ${{ secrets.SWARM_USER }} 
         key: ${{ secrets.SWARM_SSH_KEY }} 
         script: | 
-          export WEBSERVICE_TAG=${{ github.ref_name }} cd /opt/dolcezampa docker login ghcr.io \ -u ${{ github.actor }} \ -p ${{ secrets.TOKEN }} docker stack deploy \ --with-registry-auth \ -c docker-stack.yml \ dolcezampa
+          export WEBSERVICE_TAG=${{ github.ref_name }} cd /root/infrastructure && sh swarm-deploy.sh
 
