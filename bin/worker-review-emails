@@ -1,0 +1,103 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * Email worker.
+ *
+ * Pops jobs from the Redis "email-jobs" queue and sends emails via MailerInterface.
+ *
+ * Expected job payload for review_request:
+ * {
+ *   "type":        "review_request",
+ *   "email":       <string>,
+ *   "firstname":   <string>,
+ *   "id_order":    <int>,
+ *   "id_customer": <int|null>,
+ *   "products":    <array>
+ * }
+ *
+ * Usage:
+ *   php bin/worker-emails
+ */
+
+require_once __DIR__ . '/../bootstrap/app.php';
+
+use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\ProductEntity;
+use PS\Webservice\Domain\Models\PS\Orders\OrderReviewMailLog;
+use PS\Webservice\Service\MailerInterface;
+use PS\Webservice\Service\PS\Product;
+use PS\Webservice\Service\RedisQueue;
+
+/** @var \DI\Container $container */
+$queue = $container->get(RedisQueue::class);
+$mailer = $container->get(MailerInterface::class);
+$productService = $container->get(Product::class);
+
+const QUEUE_NAME = 'review-request-mail';
+
+Log::info('EmailWorker: started, listening on queue "' . QUEUE_NAME . '"');
+
+while (true) {
+    $job = $queue->pop([QUEUE_NAME], 10);
+
+    if ($job === null) {
+        // Timeout – just keep looping
+        continue;
+    }
+
+    $payload = $job['payload'];
+    $type = (string) ($payload['type'] ?? '');
+
+    try {
+        $email = (string) ($payload['email'] ?? '');
+        $firstname = (string) ($payload['firstname'] ?? 'Cliente');
+        $orderId = (int) ($payload['id_order'] ?? 0);
+        $customerId = isset($payload['id_customer']) ? (int) $payload['id_customer'] : null;
+        $products = (array) ($payload['products'] ?? []);
+
+        //build products entity
+        $products = array_map(function ($product) use ($productService) {
+            return [
+                ProductEntity::createFromId($product['id_product'], $productService),
+                'quantity' => $product['quantity'] ?? 1,
+            ];
+        }, $products);
+
+        if ($orderId <= 0 || empty($email)) {
+            Log::warning('EmailWorker: skipping invalid review_request job payload', $payload);
+            continue;
+        }
+
+        // Safety check against duplicate sends
+        if (OrderReviewMailLog::where('id_order', $orderId)->exists()) {
+            Log::info("EmailWorker: review request mail for order #{$orderId} was already sent. Skipping.");
+            continue;
+        }
+
+        Log::info("EmailWorker: sending review request mail for order #{$orderId} to <{$email}>");
+
+        $mailer->sendReviewRequestMail($email, $firstname, $orderId, $products);
+
+        OrderReviewMailLog::update(
+            ['sent_at' => new \DateTime(), 'status' => 'sent'],
+            [
+                'id_order' => $orderId,
+                'id_customer' => $customerId
+            ]
+        );
+
+        Log::info("EmailWorker: review request mail sent successfully for order #{$orderId}");
+    } catch (\Throwable $e) {
+
+        OrderReviewMailLog::update(
+            ['sent_at' => new \DateTime(), 'status' => 'failed'],
+            [
+                'id_order' => $orderId,
+                'id_customer' => $customerId
+            ]
+        );
+        Log::error("EmailWorker: failed to process job of type \"{$type}\": " . $e->getMessage());
+    }
+}

@@ -1,7 +1,8 @@
 <?php
-// Parameters passed using a named array:
 
-class RedisCache implements \Illuminate\Contracts\Redis\Factory
+namespace App\Service\Providers;
+
+final class RedisCliProvider implements \Illuminate\Contracts\Redis\Factory
 {
 
     public function __construct()

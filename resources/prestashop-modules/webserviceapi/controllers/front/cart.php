@@ -122,13 +122,6 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             'id_currency',
             Configuration::get('PS_CURRENCY_DEFAULT')
         );
-        if ($idCurrency > 0 && !Currency::exists($idCurrency)) {
-            throw new MlabFactoryApiException(
-                'Invalid id_currency.',
-                422,
-                array('id_currency' => $idCurrency)
-            );
-        }
 
         $cart->id_customer = $idCustomer;
         $cart->id_guest = $idGuest;

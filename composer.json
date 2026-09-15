@@ -43,7 +43,8 @@
         "sentry/sentry": "^4.27",
         "predis/predis": "~3.4",
         "malirobot/aws-cognito": "~v1.0.3",
-        "illuminate/validation": "^11.51"
+        "illuminate/validation": "^11.51",
+        "symfony/console": "^7.4"
     },
     "require-dev": {
         "nikic/php-parser": "^5.0",
@@ -60,6 +61,7 @@
         ]
     },
     "scripts": {
+        "console": "php bin/console",
         "db:create": "vendor/bin/phinx create",
         "db:migrate": "vendor/bin/phinx migrate",
         "db:rollback": "vendor/bin/phinx rollback"

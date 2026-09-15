@@ -188,6 +188,30 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         }
     }
 
+    public function sendReviewRequestMail(string $email, string $firstname, int $idOrder, array $products, string $reviewUrl = ''): void
+    {
+        try {
+            $this->httpService->setUrl('/mailer?debug=true');
+            $this->httpService->invoke('POST',
+                new PayloadServiceData(
+                    [
+                        'subject' => 'Lascia una recensione sui tuoi acquisti!',
+                        'to_email' => $email,
+                        'to_name' => $firstname,
+                        'template' => TemplateMail::REVIEW_REQUEST->value,
+                        'template_vars' => [
+                            'firstname' => $firstname,
+                            'id_order' => $idOrder,
+                            'products' => $products,
+                            'review_url' => $reviewUrl ?: env('APP_URL') . '/account/orders/' . $idOrder,
+                        ]
+                    ]
+                ));
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
     private function recoveryCartHtml(array $products): string
     {
         $productsHtml = '';

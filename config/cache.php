@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__.'/caching/redis.php';
 
+use App\Service\Providers\RedisCliProvider;
 use Illuminate\Cache\FileStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Filesystem\Filesystem;
@@ -14,7 +14,7 @@ if($cacheDriver === 'file') {
 
 if($cacheDriver === 'redis') {
     $store = new \Illuminate\Cache\RedisStore(
-        new RedisCache()
+        new RedisCliProvider()
     );
 }
 
