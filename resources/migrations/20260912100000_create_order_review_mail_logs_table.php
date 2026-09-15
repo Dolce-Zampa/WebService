@@ -8,7 +8,7 @@ final class CreateOrderReviewMailLogsTable extends AbstractMigration
 {
     public function up(): void
     {
-        $tableName = env('PS_TABLE_PREFIX', '') . 'order_review_mail_logs';
+        $tableName = 'fy8ie_order_review_mail_logs';
 
         if (!$this->hasTable($tableName)) {
             $table = $this->table($tableName);
@@ -16,6 +16,7 @@ final class CreateOrderReviewMailLogsTable extends AbstractMigration
                 ->addColumn('id_order', 'integer')
                 ->addColumn('id_customer', 'integer', ['null' => true])
                 ->addColumn('email', 'string', ['limit' => 255])
+                ->addColumn('status', 'string', ['limit' => 50, 'default' => 'pending'])
                 ->addColumn('sent_at', 'datetime')
                 ->addTimestamps()
                 ->addIndex(['id_order'], ['unique' => true, 'name' => 'uniq_order_review_mail_id_order'])
@@ -26,7 +27,7 @@ final class CreateOrderReviewMailLogsTable extends AbstractMigration
 
     public function down(): void
     {
-        $tableName = env('PS_TABLE_PREFIX', '') . 'order_review_mail_logs';
+        $tableName = 'fy8ie_order_review_mail_logs';
 
         if ($this->hasTable($tableName)) {
             $this->table($tableName)->drop()->save();

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Commands;
 
+use App\Facades\Queue;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Orders\Order;
 use PS\Webservice\Domain\Models\PS\Orders\OrderReviewMailLog;
 use PS\Webservice\Service\MailerInterface;
+use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -24,11 +27,13 @@ class SendReviewRequestMailCommand extends Command
     protected static $defaultDescription = 'Invia mail di richiesta recensione per gli ordini consegnati (evitando invii duplicati)';
 
     private MailerInterface $mailer;
+    private PrestashopServiceInterface $service;
 
-    public function __construct(MailerInterface $mailer)
+    public function __construct(MailerInterface $mailer, PrestashopServiceInterface $service)
     {
         parent::__construct();
         $this->mailer = $mailer;
+        $this->service = $service;
     }
 
     protected function configure(): void
@@ -106,10 +111,8 @@ class SendReviewRequestMailCommand extends Command
             $products = [];
             foreach ($order->details as $detail) {
                 $products[] = [
-                    'id_product' => $detail->product_id,
-                    'name' => $detail->product_name ?? 'Prodotto',
+                    'id_product' => $detail->id_product,
                     'quantity' => $detail->product_quantity ?? 1,
-                    'price' => $detail->product_price ?? 0,
                 ];
             }
 
@@ -119,19 +122,24 @@ class SendReviewRequestMailCommand extends Command
             }
 
             try {
-                // Invia la mail tramite il Mailer Service
-                $this->mailer->sendReviewRequestMail($email, $firstname, (int) $order->id_order, $products);
+                // Mettiamo in coda l'invio della mail tramite il servizio di coda
+                Queue::push('review-request-mail', [
+                    'email' => $email,
+                    'firstname' => $firstname,
+                    'id_order' => (int) $order->id_order,
+                    'products' => $products,
+                    'id_customer' => $customer->id_customer,
+                ]);
 
-                // Registra il log dell'invio per evitare doppi invii in futuro
                 OrderReviewMailLog::create([
                     'id_order' => $order->id_order,
-                    'id_customer' => $order->id_customer,
+                    'id_customer' => $customer->id_customer,
                     'email' => $email,
                     'sent_at' => new \DateTime(),
                 ]);
 
                 $sentCount++;
-                $io->success("Mail di richiesta recensione inviata per l'ordine #{$order->id_order} a <{$email}>");
+                $io->success("Mail di richiesta recensione in coda per l'ordine #{$order->id_order} a <{$email}>");
             } catch (\Throwable $e) {
                 $io->error("Errore durante l'invio mail per l'ordine #{$order->id_order}: " . $e->getMessage());
             }
