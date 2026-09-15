@@ -29,7 +29,7 @@ jobs:
 
     - name: Run test
       run: |
-        docker run --rm ghcr.io/dolce-zampa/webservice:${{ github.ref_name }} php vendor/bin/phpunit
+        docker run --rm ghcr.io/dolce-zampa/webservice:${{ github.ref_name }} vendor/bin/phpunit test
 
     - name: Push the Docker image
       run: |
