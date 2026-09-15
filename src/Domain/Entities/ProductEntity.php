@@ -10,6 +10,7 @@ use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\ProductBuilder;
 use PS\Webservice\Traits\ProductManipulation;
+use Stripe\Service\Climate\ProductService;
 
 class ProductEntity extends Entity implements ObjectInterface
 {
@@ -229,5 +230,10 @@ class ProductEntity extends Entity implements ObjectInterface
     public function isNormalized(): bool
     {
         return $this->isNormalized;
+    }
+
+    public static function createFromId(int $id, PrestashopServiceInterface $service): self
+    {
+        return new self(['id' => $id], $service);
     }
 }

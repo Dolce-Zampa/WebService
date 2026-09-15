@@ -49,6 +49,9 @@ require_once __DIR__ . '/../config/AWS/cognito-client.php';
 // s3
 require_once __DIR__ . '/../config/AWS/s3.php';
 
+// queue
+require_once __DIR__ . '/../config/queue.php';
+
 // Set up the Facade application
 Facade::setFacadeApplication([
     'log' => $logger,
@@ -59,4 +62,5 @@ Facade::setFacadeApplication([
     'public-repositories' => $container->get(\PS\Webservice\Repositories\PrestashopRepository::class),
     'payment-service' => $container->get(\PS\Webservice\Service\Payments\PaymentService::class),
     'aws-s3-service' => $s3Service,
+    'queue-service' => $queueService,
     ]);

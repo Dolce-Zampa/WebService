@@ -13,4 +13,6 @@ interface MailerInterface
     public function sendPremiumSignUpMail(string $email, string $username): void;
 
     public function sendRecoveryCartExpired(string $email, string $paymentUrl, array $products, string $cartTotal, $firstname = '');
+
+    public function sendReviewRequestMail(string $email, string $firstname, int $idOrder, array $products, string $reviewUrl = ''): void;
 }
