@@ -47,7 +47,7 @@ final class CartCouponControllerTest extends TestCase
         $request->method('getQueryParams')->willReturn([]);
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 'abc']);
+        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 4]);
 
         $this->assertSame(400, $result->getStatusCode());
     }
@@ -61,7 +61,7 @@ final class CartCouponControllerTest extends TestCase
 
         $cartService->expects($this->once())
             ->method('validateCoupon')
-            ->with('SAVE10', 'abc', 'cust', null)
+            ->with('SAVE10', 5, 'cust', null)
             ->willReturn(['valid' => true]);
 
         $controller = new CartController($cartService);
@@ -71,7 +71,7 @@ final class CartCouponControllerTest extends TestCase
         $request->method('getQueryParams')->willReturn(['customer_id' => 'cust']);
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 'abc']);
+        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 5]);
 
         $this->assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);

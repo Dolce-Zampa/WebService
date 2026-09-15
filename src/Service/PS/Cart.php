@@ -32,7 +32,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return CartEntity::create($response->toArray(), $this);
     }
 
-    public function getCartFromId(string $cartId, ?string $customerId = null, ?string $guestId = null): ?CartEntity
+    public function getCartFromId(int $cartId, ?int $customerId = null, ?int $guestId = null): ?CartEntity
     {
         $queryString = http_build_query([
             'id_cart' => $cartId,

@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
-use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;

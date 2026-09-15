@@ -71,7 +71,7 @@ class OrderEntity implements ObjectInterface
 			'total_paid_tax_incl' => (float) $this->data['total_paid_tax_incl'],
 			'total_paid_tax_excl' => (float) $this->data['total_paid_tax_excl'],
 			'customer' => $customer->toArray(),
-			'id_lang' => $this->data['id_lang'] ?? null, //FIXME: id_lang is not always present in the order data, should be determined based on the customer or cart data
+			'id_lang' => $this->data['id_lang'] ?? 1, //FIXME: id_lang is not always present in the order data, should be determined based on the customer or cart data
 		];
 		$data['customer']['delivery_address'] = $this->data['delivery_address'];
 		$data['customer']['invoice_address'] = $this->data['invoice_address'];

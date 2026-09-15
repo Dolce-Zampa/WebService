@@ -172,14 +172,22 @@ class StripeWebhookController extends OrderController
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
         $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
         $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
+        $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
             return;
         }
 
+        $orderToCreate = $metadata->toArray();
+        $orderToCreate['customer'] = json_decode($metadata->customer, true);
+        $orderToCreate['id_cart'] = $cartId;
+        $orderToCreate['id_carrier'] = $carrierId;
+        $orderToCreate['current_state'] = 0;
+        $orderToCreate['date_add'] = date('Y-m-d H:i:s');
+
         $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
-        $newOrder = OrderEntity::create($metadata, $this->orderService);
+        $newOrder = OrderEntity::create($orderToCreate, $this->orderService);
 
         $orderSession = $this->makeOrder($newOrder, $this->orderService);
         $paymentUrl = $this->stripeService->createPaymentSession($orderSession);
@@ -206,7 +214,7 @@ class StripeWebhookController extends OrderController
         $items = [];
         foreach ($cartProducts as $item) {
             $product = Product::find((int) $item['id_product']);
-            $idDefaultImage = ProductEntity::create(['id' => $item['id_product']], null)->getImages()[0]->id ?? 0;
+            $idDefaultImage = ProductEntity::create(['id' => $item['id_product']], $this->orderService)->getImages()[0]->id ?? 0;
 
             $items[] = [
                 'name' => $product->name,

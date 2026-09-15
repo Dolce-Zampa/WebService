@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Http\Controller\StripeWebhookController;
 use PS\Webservice\Repositories\OrderRepository;
 use PS\Webservice\Service\MailerInterface;

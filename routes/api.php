@@ -1,8 +1,10 @@
 <?php
+
 /**
  *  application apps
  */
-
+$app->add(new \PS\Webservice\Http\Middleware\DecodeIdMiddleware());
+$app->add(new \PS\Webservice\Http\Middleware\EncodeIdMiddleware());
 
 /** CLIENT APIs */
 $app->get('/api/health', PS\Webservice\Http\Controller\PrestashopController::class . ':healthCheck');

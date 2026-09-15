@@ -1,14 +1,16 @@
 <?php
 declare(strict_types=1);
 
+use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Http\Controller\OrderController;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Cart;
 use PS\Webservice\Service\PS\Order;
-use PHPUnit\Framework\TestCase;
+use PS\Webservice\Service\PS\Product;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -199,15 +201,15 @@ final class OrderSecurityTest extends TestCase
 
         $orderService->expects($this->once())
             ->method('getCartFromId')
-            ->with('10', '5', null)
+            ->with(10,5, null)
             ->willReturn(null);
 
         $controller = $this->createOrderController($orderService);
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn([
-            'id_cart' => '10',
-            'id_customer' => '5',
+            'id_cart' => 10,
+            'id_customer' => 5,
             'id_carrier' => 2,
         ]);
         $response = $this->createMock(ResponseInterface::class);
@@ -221,10 +223,15 @@ final class OrderSecurityTest extends TestCase
 
     public function test_create_order_uses_server_side_product_prices(): void
     {
+        $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
+
         $serviceMock = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getCartFromId', 'getCarrierDetail', 'getProductPriceById'])
+            ->onlyMethods(['getCartFromId', 'getCarrierDetail', 'getProductPriceById','getProductById'])
             ->getMock();
+        $productServiceMock = $this->createMock(Product::class);
+        $productServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
+        $serviceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
 
         $cartServiceStub = $this->getMockBuilder(Cart::class)
             ->disableOriginalConstructor()
@@ -244,8 +251,8 @@ final class OrderSecurityTest extends TestCase
 
         $carrierEntity = CarrierEntity::create([
             'id' => 2,
-            'name' => [['id' => '1', 'value' => 'Express']],
-            'delay' => [['id' => '1', 'value' => '1-2 days']],
+            'name' => [['id' => 1, 'value' => 'Express']],
+            'delay' => [['id' => 1, 'value' => '1-2 days']],
         ], $cartServiceStub);
 
         $serviceMock->expects($this->once())
@@ -269,8 +276,8 @@ final class OrderSecurityTest extends TestCase
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn([
             'id' => 1,
-            'id_cart' => '10',
-            'id_customer' => '5',
+            'id_cart' => 10,
+            'id_customer' => 5,
             'id_carrier' => 2,
             'paymentMethod' => 'stripe',
             'reference' => 'REF123',
@@ -316,7 +323,7 @@ final class OrderSecurityTest extends TestCase
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn([
-            'id_cart' => '10',
+            'id_cart' => 10,
         ]);
         $response = $this->createMock(ResponseInterface::class);
 
@@ -338,7 +345,7 @@ final class OrderSecurityTest extends TestCase
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn([
-            'id_customer' => '5',
+            'id_customer' => 5,
             // no id_cart
         ]);
         $response = $this->createMock(ResponseInterface::class);
@@ -357,15 +364,15 @@ final class OrderSecurityTest extends TestCase
 
         $orderService->expects($this->once())
             ->method('getCartFromId')
-            ->with('10', '5', null)
+            ->with(10, 5, null)
             ->willReturn(null);
 
         $controller = $this->createOrderController($orderService);
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn([
-            'id_cart' => '10',
-            'id_customer' => '5',
+            'id_cart' => 10,
+            'id_customer' => 5,
         ]);
         $response = $this->createMock(ResponseInterface::class);
 
