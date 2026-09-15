@@ -43,7 +43,6 @@ class CartController extends Controller {
         }
 
         $cart = $this->cartService->getCartFromId($cartId, $customerId, $guestId);
-        
         if(is_null($cart)) {
             return response([], 404);
         }

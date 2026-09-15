@@ -78,9 +78,9 @@ class OrderSession implements ObjectInterface
             // Only include IDs with positive integer values; null, empty strings, '0',
             // and negative values are excluded as all PrestaShop entity IDs must be > 0.
             'metadata' => [
-                'cart_id' => $this->decodeId($cartId, 'cart'),
-                'id_customer' => $this->decodeId($data['id_customer'], 'customer'),
-                'id_guest' => $this->decodeId($data['id_guest'], 'guest'),
+                'cart_id' => $cartId,
+                'id_customer' => $data['id_customer'],
+                'id_guest' => $data['id_guest'],
                 'id_carrier' => $data['id_carrier'],
                 'customer' => json_encode($customerDetails),
                 'coupon_code' => $data['discounts'][0]['coupon'] ?? null,

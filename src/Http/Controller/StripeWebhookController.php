@@ -4,21 +4,22 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Products\Product;
-use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Repositories\OrderRepository;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Traits\Order as OrderTrait;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class StripeWebhookController extends OrderController
 {
-    use UseCache;
+    use UseCache, OrderTrait;
     private Order $orderService;
     private MailjetService $mailjetService;
     protected PaymentGatewayInterface $stripeService;
@@ -169,28 +170,29 @@ class StripeWebhookController extends OrderController
         $metadata = $session->metadata;
         $customerDetails = json_decode($metadata->customer);
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
+        $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
+        $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
             return;
         }
 
-        $orderTable = $this->orderRepository->getProductFromAbbandonedCart($customerDetails->email, $cartId);
-        $orderSession = $metadata;
-        $orderSession['customer'] = $customerDetails;
+        $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
+        $newOrder = OrderEntity::create($metadata, $this->orderService);
 
-        $cart = $orderSession['cart_id'];
-        if(is_null($orderSession) || is_null($cart)) {
-            Log::warning("No order session or cart retrived in cache, skip ");
-            return;
+        $orderSession = $this->makeOrder($newOrder, $this->orderService);
+        $paymentUrl = $this->stripeService->createPaymentSession($orderSession);
+
+        // Server-side price validation: fetch each product price directly from the catalog.
+        // Never use prices from the cart payload or any frontend-supplied value.
+        foreach ($cart->toArray()['products'] ?? [] as $product) {
+            $this->addProduct($product);
         }
 
-        $order = OrderSession::create($orderSession, $this->cartService);
-        $paymentUrl = $this->stripeService->createPaymentSession($order);
         $lineItems = $this->lineItems($cart->toArray()['products']);
-
         // send email to customer with payment link and line items
-        $this->mailer->sendRecoveryCartExpired($customerDetails->email, $paymentUrl, $lineItems, (string) $order->total(), $customerDetails->firstname);
+        $this->mailer->sendRecoveryCartExpired($customerDetails->email, $paymentUrl, $lineItems, (string) $orderSession->total(), $customerDetails->firstname);
 
         Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
     }

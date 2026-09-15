@@ -76,7 +76,11 @@ class OrderEntity implements ObjectInterface
 		$data['customer']['delivery_address'] = $this->data['delivery_address'];
 		$data['customer']['invoice_address'] = $this->data['invoice_address'];
 		$data['customer']['phone'] = $this->data['customer']['phone_mobile'] ?? null; //FIXME: phone_mobile is used as a fallback for phone, but ideally should be determined based on the customer data
-		$data['cartRules'] = $this->data['cartRules'] ?? null;
+
+        $currentCartRule = $this->currentCartRule();
+        $data['cartRules'] = CartRuleEntity::create($currentCartRule, $this->service) ?? [];
+
+
 		$this->data = $data;
 	}
 
@@ -99,4 +103,11 @@ class OrderEntity implements ObjectInterface
 	{
 		return $this->data['cartRules'] ?? null;
 	}
+
+    private function currentCartRule(): array
+    {
+        $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
+        $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->service);
+        return $cartRules->toArray() ?? [];
+    }
 }

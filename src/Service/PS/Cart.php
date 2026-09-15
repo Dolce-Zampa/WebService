@@ -16,9 +16,6 @@ class Cart extends Carrier implements PrestashopServiceInterface {
 
     public function getCartListFromUserId(?string $customerId = null, ?string $guestId = null): ?CartEntity
     {
-        $customerId = $this->decodeId($customerId, 'customer');
-        $guestId = $this->decodeId($guestId, 'guest');
-
         $queryString = http_build_query([
             !is_null($customerId) ? 'id_customer' : 'id_guest' => !is_null($customerId) ? $customerId : $guestId
         ]);
@@ -38,9 +35,9 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     public function getCartFromId(string $cartId, ?string $customerId = null, ?string $guestId = null): ?CartEntity
     {
         $queryString = http_build_query([
-            'id_cart' => $this->decodeId($cartId, 'cart'),
-            'id_customer' => $this->decodeId($customerId, 'customer'),
-            'id_guest' => $this->decodeId($guestId, 'guest')
+            'id_cart' => $cartId,
+            'id_customer' => $customerId,
+            'id_guest' => $guestId,
         ]);
         $this->httpService->setUrl("/carts?{$queryString}");
 
@@ -133,9 +130,6 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     public function updateCart(array $product, string $cartId, string $customerId, bool $isGuest = false, ?string $op = 'up'): HttpServiceInterface
     {
         $type = $isGuest ? 'guest' : 'customer';
-        $customerId = $this->decodeId($customerId, $type);
-        $cartId = $this->decodeId($cartId, 'cart');
-
         $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
 
         //create a payload
@@ -244,15 +238,15 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     {
         $query = [
             'code' => $code,
-            'id_cart' => $this->decodeId($cartId, 'cart'),
+            'id_cart' => $cartId,
         ];
 
         if ($customerId !== null) {
-            $query['id_customer'] = $this->decodeId($customerId, 'customer');
+            $query['id_customer'] = $customerId;
         }
 
         if ($guestId !== null) {
-            $query['id_guest'] = $this->decodeId($guestId, 'guest');
+            $query['id_guest'] = $guestId;
         }
 
         $data = $this->invokeCartRules($query);
@@ -330,20 +324,20 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     public function deleteCart(string $cartId, ?string $customerId = null, ?string $guestId = null): HttpServiceInterface
     {
         $queryParams = [
-            'id_cart' => $this->decodeId($cartId, 'cart'),
+            'id_cart' => $cartId,
             'ws_key' => $this->httpService->getConfig()->apikey,
         ];
 
         $payload = [
-            'id_cart' => $this->decodeId($cartId, 'cart'),
+            'id_cart' => $cartId,
         ];
 
         if ($customerId !== null) {
-            $payload['id_customer'] = $this->decodeId($customerId, 'customer');
+            $payload['id_customer'] = $customerId;
         }
 
         if ($guestId !== null) {
-            $payload['id_customer'] = $this->decodeId($guestId, 'guest');
+            $payload['id_customer'] = $guestId;
         }
 
         $queryString = http_build_query($queryParams);

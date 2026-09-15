@@ -4,7 +4,9 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
+use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Service\PS\Product;
 
 final class OrderTest extends TestCase
 {
@@ -12,10 +14,33 @@ final class OrderTest extends TestCase
     // {"id_cart":"4wW30E1r","customer":{"firstname":"Marco","lastname":"De Felice","email":"marco.defelice@dolcezampa.com","phone":"3319843630"},"invoice_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"delivery_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"id_carrier":15,"payment_method":"stripe","is_guest":true,"cart_rules":[],"id_guest":"r8Ogyz50"}
     public function testCreateNewOrder(): void
     {
+        $this->createMock(Product::class)->method('getProductById')->willReturn(
+            ProductEntity::create(
+                [
+                    'id' => 204,
+                    'id_image' => 2647,
+                    'id_product_attribute' => 0,
+                    'id_customization' => 0,
+                    'name' => 'Collana Artigianale Halloween per Cani',
+                    'reference' => 'SKU2026FC2000204',
+                    'quantity' => 1,
+                    'price_wt' => 38,
+                    'total_wt' => 38,
+                    'customizations' => []
+                ],
+                $this->createMock(\PS\Webservice\Service\PS\Product::class)
+            )
+        );
         $requestMock = $this->createMock(\Psr\Http\Message\ServerRequestInterface::class);
         $responseMock = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
         $requestMock->method('getParsedBody')->willReturn([
+            'id' => 1,
             'id_cart' => '4wW30E1r',
+            'reference' => 'REF123',
+            'current_state' => 2,
+            'date_add' => '2026-01-01',
+            'total_paid_tax_incl' => 41.32,
+            'total_paid_tax_excl' => 38.00,
             'customer' => [
                 'firstname' => 'Marco',
                 'lastname' => 'De Felice',
@@ -45,10 +70,10 @@ final class OrderTest extends TestCase
 
         $orderServiceMock = $this->createMock(\PS\Webservice\Service\PS\Order::class);
         $cartEntity = CartEntity::create(
-            json_decode('{"id":"P9OEVPWj","id_customer":null,"id_guest":"QPOw8W9E","id_currency":1,"id_lang":1,"id_address_delivery":0,"id_address_invoice":0,"id_carrier":0,"secure_key":"d3ad39708e9fb664270e89dcb06d1040","totals":{"products_tax_incl":38,"shipping_tax_incl":3.32,"grand_total_tax_incl":41.32},"products":[{"id_product":204,"id_image":2647,"id_product_attribute":0,"id_customization":0,"name":"Collana Artigianale Halloween per Cani","reference":"SKU2026FC2000204","quantity":1,"price_wt":38,"total_wt":38,"customizations":[]}],"cart_rules":[]}'),
+            json_decode('{"id":204,"id_customer":null,"id_guest":123,"id_currency":1,"id_lang":1,"id_address_delivery":0,"id_address_invoice":0,"id_carrier":0,"secure_key":"d3ad39708e9fb664270e89dcb06d1040","totals":{"products_tax_incl":38,"shipping_tax_incl":3.32,"grand_total_tax_incl":41.32},"products":[{"id_product":204,"id_image":2647,"id_product_attribute":0,"id_customization":0,"name":"Collana Artigianale Halloween per Cani","reference":"SKU2026FC2000204","quantity":1,"price_wt":38,"total_wt":38,"customizations":[]}],"cart_rules":[]}', true),
             $orderServiceMock
         );
-        $orderServiceMock->method('getProductPriceById')->willReturn(38); 
+        $orderServiceMock->method('getProductPriceById')->willReturn(38.0); 
         $orderServiceMock->method('getCartFromId')->willReturn(
             $cartEntity
         );
@@ -83,7 +108,7 @@ final class OrderTest extends TestCase
 
 
         $paymentServiceMock = $this->createMock(\PS\Webservice\Service\Payments\PaymentGatewayInterface::class);
-        $paymentServiceMock->method('createPaymentSession')->willReturnCallback(function(OrderSession $orderSession) {
+        $paymentServiceMock->method('createPaymentSession')->willReturnCallback(function(OrderSession $orderSession): string {
             //check stripe keys
             //check Stripe payload is it correct
             $expectedSessionKeys = [
@@ -118,13 +143,15 @@ final class OrderTest extends TestCase
             }
 
             return 'http://checkout.url';
+
         });
 
         $controller = new \PS\Webservice\Http\Controller\OrderController($orderServiceMock, $paymentServiceMock);
         $response = $controller->createOrder($requestMock, $responseMock, []);
+        $body = json_decode((string) $response->getBody(), true);
 
-        $this->assertEquals('http://checkout.url', $response['payment_url']);
-        $this->assertEquals($cartEntity->toArray(), $response['cart']);
+        $this->assertEquals('http://checkout.url', $body['data']['payment_url']);
+        $this->assertEquals($cartEntity->toArray(), $body['data']['order']);
 
     }
 }

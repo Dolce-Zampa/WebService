@@ -113,13 +113,6 @@ class OrderController extends CartController
         }
     }
 
-    private function currentCartRule(): array
-    {
-        $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
-        $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->orderService);
-        return $cartRules->toArray() ?? [];
-    }
-
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
@@ -130,9 +123,6 @@ class OrderController extends CartController
         // Ownership check: require customer or guest identification — never trust anonymous cart access
         $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
         $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
-
-        $currentCartRule = $this->currentCartRule();
-        $payload['cartRules'] = CartRuleEntity::create($currentCartRule, $this->orderService) ?? [];
 
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required'], 403);
