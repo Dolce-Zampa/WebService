@@ -6,9 +6,32 @@ on:
       - 'v*.*.*'
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2' # Modifica con la versione di PHP che usi
+        tools: composer
+
+    - name: Install dependencies
+      run: composer install --prefer-dist --no-progress --no-interaction
+
+    - name: Create env file
+      run: |
+        cp .env.example .env
+
+    - name: Run test
+      run: vendor/bin/phpunit Test
+
   build:
     runs-on: ubuntu-latest
     environment: prod
+    needs: test
     permissions:
       contents: read
       packages: write
@@ -27,20 +50,25 @@ jobs:
       run: |
         docker build . --file Dockerfile --tag ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
 
-    - name: Run test
-      run: |
-        docker run --rm ghcr.io/dolce-zampa/webservice:${{ github.ref_name }} vendor/bin/phpunit Test
-
     - name: Push the Docker image
       run: |
         docker push ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
-        
-    - name: Deploy to Docker Swarm 
-      uses: appleboy/ssh-action@v1.2.0 
-      with: 
-        host: ${{ secrets.SWARM_HOST }} 
-        username: ${{ secrets.SWARM_USER }} 
-        key: ${{ secrets.SWARM_SSH_KEY }} 
-        script: | 
-          export WEBSERVICE_TAG=${{ github.ref_name }} cd /root/infrastructure && sh swarm-deploy.sh
+
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Deploy to Docker Swarm 
+        uses: appleboy/ssh-action@v1.2.0 
+        with: 
+          host: ${{ secrets.SWARM_HOST }} 
+          username: ${{ secrets.SWARM_USER }} 
+          key: ${{ secrets.SWARM_SSH_KEY }} 
+          script: | 
+            export WEBSERVICE_TAG=${{ github.ref_name }} cd /root/infrastructure && sh swarm-deploy.sh
 
