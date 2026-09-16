@@ -154,6 +154,7 @@ class StripeWebhookController extends OrderController
         try {
             $contactId = $this->mailjetService->createNewContact($email, $firstname, $lastname);
             $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
+            $this->mailjetService->setContactListSubscription($contactId);
         } catch (\Exception $e) {
             Log::critical('Stripe webhook: failed to create new contact in Mailjet for email ' . $email . ': ' . $e->getMessage());
         }
