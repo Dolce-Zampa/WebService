@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Commands;
 
-use App\Facades\Queue;
-use PS\Webservice\Domain\Entities\ProductEntity;
+use PS\Webservice\Facades\Queue;
 use PS\Webservice\Domain\Models\PS\Orders\Order;
 use PS\Webservice\Domain\Models\PS\Orders\OrderReviewMailLog;
 use PS\Webservice\Service\MailerInterface;
-use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;

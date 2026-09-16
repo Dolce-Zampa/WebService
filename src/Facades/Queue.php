@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Facades;
+namespace PS\Webservice\Facades;
 
 /**
  * Summary of RedisQueue
