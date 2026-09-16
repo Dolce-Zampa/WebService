@@ -25,15 +25,13 @@ class StripeWebhookController extends OrderController
     protected PaymentGatewayInterface $stripeService;
 
     private MailerInterface $mailer;
-    private OrderRepository $orderRepository;
 
-    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer, OrderRepository $orderRepository)
+    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer)
     {
         $this->orderService = $orderService;
         $this->mailjetService = $mailjetService;
         $this->stripeService = $stripeService;
         $this->mailer = $mailer;
-        $this->orderRepository = $orderRepository;
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
