@@ -18,6 +18,10 @@
         <ini name="error_log" value="storage/logs/test-error.log" />
 
         <env name="APP_KEY" value="testing" />
+        <env name="STRIPE_WEBHOOK_SECRET" value="your_stripe_webhook_secret" />
+
+        <env name="DB_CONNECTION" value="sqlite" />
+        <env name="DB_DATABASE" value=":memory:" />
     </php>
 
 </phpunit>

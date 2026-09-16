@@ -61,6 +61,7 @@ class CustomerController extends Controller
         try {
             $contactId = $this->mailjetService->createNewContact($customer->email, $customer->first_name ?? '', $customer->last_name ?? '');
             $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
+            $this->mailjetService->setContactListSubscription($contactId);
         } catch (\Exception $e) {
             Log::critical('Stripe CustomerController: failed to create new contact in Mailjet for email ' . $customer->email . ': ' . $e->getMessage());
         }

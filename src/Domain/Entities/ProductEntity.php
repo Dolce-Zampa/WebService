@@ -28,7 +28,7 @@ class ProductEntity extends Entity implements ObjectInterface
 
     protected bool $isNormalized = false;
 
-    public static function create(array $data, ?PrestashopServiceInterface $service): self
+    public static function create(array $data, PrestashopServiceInterface $service): self
     {
         $class = new self($data, $service);
         if(ProductValidator::isValid($class)) {

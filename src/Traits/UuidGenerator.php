@@ -30,7 +30,7 @@ trait UuidGenerator
 
         $decoded = $this->getHasher($type)->decode($hash);
         if (empty($decoded)) {
-            throw new \InvalidArgumentException('Invalid hash provided: ' . $hash);
+            return (int) $hash;
         }
         return (int) $decoded[0];
     }

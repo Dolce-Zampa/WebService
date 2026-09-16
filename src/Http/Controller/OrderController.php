@@ -3,20 +3,19 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
-use PS\Webservice\Domain\Entities\CartRuleEntity;
-use PS\Webservice\Domain\Entities\CustomerEntity;
+use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Traits\Order as OrderHelper;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class OrderController extends CartController
 {
-    use UseCache;
+    use UseCache, OrderHelper;
     private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
     private Order $orderService;
 
@@ -113,13 +112,6 @@ class OrderController extends CartController
         }
     }
 
-    private function currentCartRule(): array
-    {
-        $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
-        $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->orderService);
-        return $cartRules->toArray() ?? [];
-    }
-
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
@@ -130,9 +122,6 @@ class OrderController extends CartController
         // Ownership check: require customer or guest identification — never trust anonymous cart access
         $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
         $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
-
-        $currentCartRule = $this->currentCartRule();
-        $cartRules = CartRuleEntity::create($currentCartRule, $this->orderService) ?? [];
 
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required'], 403);
@@ -146,69 +135,13 @@ class OrderController extends CartController
         // Create payment session
         try {
             $paymentService = $this->stripeService;
-
-            //recuperiamo il corriere scelto dal cliente per aggiungerlo alla sessione di pagamento
-            $carrierId = $payload['id_carrier'] ?? null;
-            if (is_null($carrierId)) {
-                throw new \InvalidArgumentException('Carrier ID is required for payment session');
-            }
-
-            $carrierDetails = $this->orderService->getCarrierDetail($carrierId);
-            if (is_null($carrierDetails)) {
-                throw new \InvalidArgumentException('Invalid carrier ID: ' . $carrierId);
-            }
-
-            $orderSession = OrderSession::create([
-                'success_url' => $_ENV['STRIPE_SUCCESS_URL'] ?? '',
-                'cancel_url' => $_ENV['STRIPE_CANCEL_URL'] ?? '',
-                'cart_id' => $payload['id_cart'],
-                'id_customer' => $payload['id_customer'] ?? null,
-                'id_guest' => $payload['id_guest'] ?? null,
-                'id_carrier' => $carrierId,
-                'expires_at' => time() + 3600, // Scade tra 1 ora (3600 secondi)
-                'customer' => CustomerEntity::create([
-                    'id' => $payload['id_customer'] ?? null,
-                    'email' => $payload['customer']['email'] ?? null,
-                    'firstname' => $payload['customer']['firstname'] ?? null,
-                    'lastname' => $payload['customer']['lastname'] ?? null,
-                    'phone' => $payload['customer']['phone'] ?? null,
-                    'delivery_address' => $payload['delivery_address'] ?? null,
-                    'newsletter' => $payload['customer']['newsletter'] ?? false,
-                    'invoice_address' => $payload['invoice_address'] ?? $payload['delivery_address'],
-                ], $this->orderService)
-            ], $this->orderService);
+            $newOrder = OrderEntity::create($payload, $this->orderService);
+            $orderSession = $this->makeOrder($newOrder, $this->orderService);
 
             // Server-side price validation: fetch each product price directly from the catalog.
             // Never use prices from the cart payload or any frontend-supplied value.
             foreach ($cart->toArray()['products'] ?? [] as $product) {
-                $productId = (int) $product['id_product'];
-                // $serverPrice = $this->orderService->getProductPriceById($productId); // not correct
-                $serverPrice = $product['price_wt'];
-                $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
-                $orderSession->addLineItem(
-                    product: ProductEntity::create($product, $this->orderService),
-                    quantity: (int) $product['quantity'],
-                    price: $serverPrice
-                );
-            }
-
-            // add discount if there are cart rules applied to this cart - in a real implementation we would need to check if the cart rules are still valid and applicable to this cart before applying them to the payment session
-            foreach ($cartRules->toArray() as $rule) {
-                if (isset($payload['cart_rules'])) {
-                    foreach ($payload['cart_rules'] as $clientRule) {
-                        $this->manageDiscounts($orderSession, $clientRule);
-                    }
-                }
-            }
-
-            //check for free shipping cart rule
-            if ($this->checkForFreeShippingCartRule($cartRules, $orderSession) === false) {
-                $orderSession->addCarrierLineItem(
-                    name: $carrierDetails->name,
-                    quantity: 1,
-                    price: (float) $carrierDetails->price_with_tax,
-                    type: 'carrier'
-                );
+                $this->addProduct($product);
             }
 
             //save in cache the order session only for 24h
@@ -230,47 +163,6 @@ class OrderController extends CartController
                 'error' => $e->getMessage()
             ], 500);
         }
-    }
-
-    protected function manageDiscounts(OrderSession $orderSession, array $cartRules): void
-    {
-        $orderSession->addDiscount(new Discount(
-            name: $cartRules['code'],
-            amount_off: $this->mathReduction($orderSession, $cartRules['reduction_percent'] ?? null, $cartRules['reduction_amount'] ?? null),
-            code: $cartRules['code'],
-            duration: 'once'
-        ));
-    }
-
-    /**
-     * @deprecated 
-     */
-    private function mathReduction(OrderSession $currentOrder, ?float $reductionPercent = null, ?float $reductionAmount = null): float
-    {
-        return $reductionPercent;
-
-        $total = $currentOrder->total();
-
-        if (!empty($reductionPercent)) {
-            $reduction = ($total * ($reductionPercent / 100));
-        }
-
-        if (!empty($reductionAmount)) {
-            $reduction = $reductionAmount;
-        }
-
-        return max($reduction, 0);
-    }
-
-    private function checkForFreeShippingCartRule(CartRuleEntity $cartRules, OrderSession $totalToPay): bool
-    {
-        foreach ($cartRules->toArray() as $cartRule) {
-            if ($cartRule['rule']['rule'] == "free-shipping" && $cartRule['rule']['conditions']['minimum-spend'] <= $totalToPay->total()) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     public function initiatePayment(Request $request, Response $response, array $argv): Response

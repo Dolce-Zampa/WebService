@@ -29,9 +29,6 @@ class Order extends Cart implements PrestashopServiceInterface
 
     public function getOrderByCartId(int|string $cartId, int|string|null $customerId = null, int|string|null $guestId = null): ?OrderEntity
     {
-        if (is_string($cartId)) {
-            $cartId = $this->decodeId($cartId, 'cart');
-        }
 
         // find reference order from cache
         $cachedOrder = JsonDataStorage::carts()->createQuery()->where('id_cart', (string) $cartId)->fetchAll();
@@ -92,7 +89,7 @@ class Order extends Cart implements PrestashopServiceInterface
     public function orderDetails(string $orderId): ?OrderEntity
     {
         $queryString = http_build_query([
-            'id_order' => $this->decodeId($orderId, 'order'),
+            'id_order' => $orderId,
         ]);
         $this->httpService->setUrl("/orders?{$queryString}");
 

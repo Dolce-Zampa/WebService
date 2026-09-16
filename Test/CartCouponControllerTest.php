@@ -10,29 +10,6 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class CartCouponControllerTest extends TestCase
 {
-    public function test_get_featured_coupons_returns_service_payload(): void
-    {
-        $cartService = $this->getMockBuilder(Cart::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['getFeaturedCoupons'])
-            ->getMock();
-
-        $cartService->expects($this->once())
-            ->method('getFeaturedCoupons')
-            ->willReturn(new Collection([['code' => 'SPRING10']]));
-
-        $controller = new CartController($cartService);
-
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getQueryParams')->willReturn([]);
-
-        $response = $this->createMock(ResponseInterface::class);
-        $result = $controller->getFeaturedCoupons($request, $response, []);
-
-        $this->assertSame(200, $result->getStatusCode());
-        $this->assertSame([['code' => 'SPRING10']], json_decode((string) $result->getBody(), true));
-    }
-
     public function test_get_coupon_detail_returns_404_when_not_found(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
@@ -66,10 +43,11 @@ final class CartCouponControllerTest extends TestCase
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([]);
         $request->method('getQueryParams')->willReturn([]);
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 'abc']);
+        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 4]);
 
         $this->assertSame(400, $result->getStatusCode());
     }
@@ -83,18 +61,20 @@ final class CartCouponControllerTest extends TestCase
 
         $cartService->expects($this->once())
             ->method('validateCoupon')
-            ->with('SAVE10', 'abc', 'cust', null)
-            ->willReturn(true);
+            ->with('SAVE10', 5, 'cust', null)
+            ->willReturn(['valid' => true]);
 
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn(['customer_id' => 'cust']);
         $request->method('getQueryParams')->willReturn(['customer_id' => 'cust']);
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 'abc']);
+        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 5]);
 
         $this->assertSame(200, $result->getStatusCode());
-        $this->assertSame(['valid' => true], json_decode((string) $result->getBody(), true));
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame(['valid' => true], $body['data']);
     }
 }

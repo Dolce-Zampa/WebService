@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
@@ -59,23 +60,28 @@ class OrderEntity implements ObjectInterface
 
 	public function normalizeData(): void
 	{
-		$this->data['customer']['delivery_address'] = $this->data['delivery_address'];
-		$this->data['customer']['invoice_address'] = $this->data['invoice_address'];
-		$this->data['customer']['phone'] = $this->data['customer']['phone_mobile'] ?? null; //FIXME: phone_mobile is used as a fallback for phone, but ideally should be determined based on the customer data
-
-				// normalize customer data
 		$customer = CustomerEntity::create($this->data['customer'], $this->service);
-		$this->data = [
-			'id' => $this->encodeId($this->data['id'], 'order'),
+		$data = [
+			'id' => $this->data['id'],
+			'id_carrier' => $this->data['id_carrier'], //
 			'reference' => (string) $this->data['reference'],
-			'id_cart' => $this->encodeId($this->data['id_cart'], 'cart'),
+			'id_cart' => $this->data['id_cart'],
 			'current_state' => (int) $this->data['current_state'],
 			'date_add' => (string) $this->data['date_add'],
 			'total_paid_tax_incl' => (float) $this->data['total_paid_tax_incl'],
 			'total_paid_tax_excl' => (float) $this->data['total_paid_tax_excl'],
 			'customer' => $customer->toArray(),
-			'id_lang' => $this->data['id_lang'] ?? null, //FIXME: id_lang is not always present in the order data, should be determined based on the customer or cart data
+			'id_lang' => $this->data['id_lang'] ?? 1, //FIXME: id_lang is not always present in the order data, should be determined based on the customer or cart data
 		];
+		$data['customer']['delivery_address'] = $this->data['delivery_address'];
+		$data['customer']['invoice_address'] = $this->data['invoice_address'];
+		$data['customer']['phone'] = $this->data['customer']['phone_mobile'] ?? null; //FIXME: phone_mobile is used as a fallback for phone, but ideally should be determined based on the customer data
+
+        $currentCartRule = $this->currentCartRule();
+        $data['cartRules'] = CartRuleEntity::create($currentCartRule, $this->service) ?? [];
+
+
+		$this->data = $data;
 	}
 
 	public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData
@@ -91,5 +97,17 @@ class OrderEntity implements ObjectInterface
 	public function hash(): string
     {
         return md5(json_encode($this->data));
+    }
+
+	public function getCartRules(): ?CartRuleEntity
+	{
+		return $this->data['cartRules'] ?? null;
+	}
+
+    private function currentCartRule(): array
+    {
+        $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
+        $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->service);
+        return $cartRules->toArray() ?? [];
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Service\Providers;
+namespace PS\Webservice\Service\Providers;
 
 final class RedisCliProvider implements \Illuminate\Contracts\Redis\Factory
 {

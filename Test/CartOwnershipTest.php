@@ -29,11 +29,11 @@ final class CartOwnershipTest extends TestCase
 
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->getCart($request, $response, ['cartId' => '42']);
+        $result = $controller->getCart($request, $response, ['cartId' => 42]);
 
         $this->assertSame(403, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertArrayHasKey('error', $body);
+        $this->assertArrayHasKey('error', $body['data']);
     }
 
     public function test_get_cart_returns_404_when_cart_does_not_belong_to_customer(): void
@@ -52,11 +52,11 @@ final class CartOwnershipTest extends TestCase
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getQueryParams')->willReturn(['customer_id' => '99']);
+        $request->method('getQueryParams')->willReturn(['customer_id' => 99]);
 
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->getCart($request, $response, ['cartId' => '42']);
+        $result = $controller->getCart($request, $response, ['cartId' => 42]);
 
         $this->assertSame(404, $result->getStatusCode());
     }
@@ -76,11 +76,11 @@ final class CartOwnershipTest extends TestCase
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getQueryParams')->willReturn(['guest_id' => '7']);
+        $request->method('getQueryParams')->willReturn(['guest_id' => 7]);
 
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->getCart($request, $response, ['cartId' => '42']);
+        $result = $controller->getCart($request, $response, ['cartId' => 42]);
 
         $this->assertSame(404, $result->getStatusCode());
     }
@@ -109,11 +109,11 @@ final class CartOwnershipTest extends TestCase
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getQueryParams')->willReturn(['customer_id' => '5']);
+        $request->method('getQueryParams')->willReturn(['customer_id' => 5]);
 
         $response = $this->createMock(ResponseInterface::class);
 
-        $result = $controller->getCart($request, $response, ['cartId' => '42']);
+        $result = $controller->getCart($request, $response, ['cartId' => 42]);
 
         $this->assertSame(200, $result->getStatusCode());
     }

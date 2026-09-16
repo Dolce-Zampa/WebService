@@ -4,31 +4,36 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Products\Product;
+use PS\Webservice\Repositories\OrderRepository;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Traits\Order as OrderTrait;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class StripeWebhookController extends OrderController
 {
-    use UseCache;
+    use UseCache, OrderTrait;
     private Order $orderService;
     private MailjetService $mailjetService;
     protected PaymentGatewayInterface $stripeService;
 
     private MailerInterface $mailer;
+    private OrderRepository $orderRepository;
 
-    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer)
+    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer, OrderRepository $orderRepository)
     {
         $this->orderService = $orderService;
         $this->mailjetService = $mailjetService;
         $this->stripeService = $stripeService;
         $this->mailer = $mailer;
+        $this->orderRepository = $orderRepository;
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -149,6 +154,7 @@ class StripeWebhookController extends OrderController
         try {
             $contactId = $this->mailjetService->createNewContact($email, $firstname, $lastname);
             $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
+            $this->mailjetService->setContactListSubscription($contactId);
         } catch (\Exception $e) {
             Log::critical('Stripe webhook: failed to create new contact in Mailjet for email ' . $email . ': ' . $e->getMessage());
         }
@@ -163,36 +169,39 @@ class StripeWebhookController extends OrderController
     public function handleCheckoutSessionExpired(\Stripe\StripeObject $session): void
     {
         $metadata = $session->metadata;
+        $customerDetails = json_decode($metadata->customer);
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
+        $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
+        $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
+        $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
             return;
         }
 
-        // Create a stripe payment link and submit with email
-        /**
-         * @var array $orderSavedInCache
-         */
-        $orderSavedInCache = $this->getFromCache((string) $cartId);
-        if(is_null($orderSavedInCache)) {
-            Log::warning("No order session retrived in cache, skip ");
-        }
+        $orderToCreate = $metadata->toArray();
+        $orderToCreate['customer'] = json_decode($metadata->customer, true);
+        $orderToCreate['id_cart'] = $cartId;
+        $orderToCreate['id_carrier'] = $carrierId;
+        $orderToCreate['current_state'] = 0;
+        $orderToCreate['date_add'] = date('Y-m-d H:i:s');
 
-        $orderSession = $orderSavedInCache['orderSession'];
-        $cart = $orderSavedInCache['cart'];
+        $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
+        $newOrder = OrderEntity::create($orderToCreate, $this->orderService);
 
-        if(is_null($orderSession) || is_null($cart)) {
-            Log::warning("No order session or cart retrived in cache, skip ");
-            return;
-        }
-
+        $orderSession = $this->makeOrder($newOrder, $this->orderService);
         $paymentUrl = $this->stripeService->createPaymentSession($orderSession);
-        $customer = $orderSession->getCustomer();
-        $lineItems = $this->lineItems($cart->toArray()['products']);
 
+        // Server-side price validation: fetch each product price directly from the catalog.
+        // Never use prices from the cart payload or any frontend-supplied value.
+        foreach ($cart->toArray()['products'] ?? [] as $product) {
+            $this->addProduct($product);
+        }
+
+        $lineItems = $this->lineItems($cart->toArray()['products']);
         // send email to customer with payment link and line items
-        $this->mailer->sendRecoveryCartExpired($customer->email, $paymentUrl, $lineItems, (string) $orderSession->total(), $customer->firstname);
+        $this->mailer->sendRecoveryCartExpired($customerDetails->email, $paymentUrl, $lineItems, (string) $orderSession->total(), $customerDetails->firstname);
 
         Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
     }
@@ -206,7 +215,7 @@ class StripeWebhookController extends OrderController
         $items = [];
         foreach ($cartProducts as $item) {
             $product = Product::find((int) $item['id_product']);
-            $idDefaultImage = ProductEntity::create(['id' => $item['id_product']], null)->getImages()[0]->id ?? 0;
+            $idDefaultImage = ProductEntity::create(['id' => $item['id_product']], $this->orderService)->getImages()[0]->id ?? 0;
 
             $items[] = [
                 'name' => $product->name,

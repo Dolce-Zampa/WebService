@@ -19,11 +19,7 @@ final class PayloadServiceData
 
     public function normalizeData(array $toDecode = []): void
     {
-        foreach ($toDecode as $key => $entity) {
-            if (isset($this->data[$key])) {
-                $this->data[$key] = $this->decodeId($this->data[$key], $entity);
-            }
-        }
+        
     }
 
     public function __get(string $name): mixed
