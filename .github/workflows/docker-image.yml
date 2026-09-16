@@ -69,6 +69,8 @@ jobs:
           host: ${{ secrets.SWARM_HOST }} 
           username: ${{ secrets.SWARM_USER }} 
           key: ${{ secrets.SWARM_SSH_KEY }} 
-          script: | 
-            export WEBSERVICE_TAG=${{ github.ref_name }} cd /root/infrastructure && sh swarm-deploy.sh
+          script: |
+            export WEBSERVICE_TAG=${{ github.ref_name }}
+            cd /root/infrastructure
+            sh swarm-deploy.sh
 
