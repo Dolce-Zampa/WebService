@@ -82,7 +82,7 @@ class CustomerEntity implements ObjectInterface
         ];
 
         if(isset($customer['id'])) {
-            $normalized['id'] = $this->encodeId($customer['id'], 'customer');
+            $normalized['id'] = $customer['id'];
         }
 
         $customer['delivery_address']['phone_mobile'] = $customer['phone'] ?? null;

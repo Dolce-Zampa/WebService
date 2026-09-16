@@ -26,7 +26,7 @@ final class Rule
     public function normalizeData(array $toDecode = []): void
     {
         $rule = [
-            "id" => $this->encodeId((int) $this->data['id'], 'cart-rule'),
+            "id" => (int) $this->data['id'],
             "rule" => $this->data['rule'],
             "conditions" => $this->data['conditions'] ?? [],
         ];
