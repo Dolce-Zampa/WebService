@@ -80,7 +80,7 @@ while (true) {
 
         $mailer->sendReviewRequestMail($email, $firstname, $orderId, $products);
 
-        OrderReviewMailLog::update(
+        OrderReviewMailLog::updateOrCreate(
             ['sent_at' => new \DateTime(), 'status' => 'sent'],
             [
                 'id_order' => $orderId,
@@ -91,7 +91,7 @@ while (true) {
         Log::info("EmailWorker: review request mail sent successfully for order #{$orderId}");
     } catch (\Throwable $e) {
 
-        OrderReviewMailLog::update(
+        OrderReviewMailLog::updateOrCreate(
             ['sent_at' => new \DateTime(), 'status' => 'failed'],
             [
                 'id_order' => $orderId,
