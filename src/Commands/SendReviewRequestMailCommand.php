@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Commands;
 
-use PS\Webservice\Facades\Queue;
 use PS\Webservice\Domain\Models\PS\Orders\Order;
 use PS\Webservice\Domain\Models\PS\Orders\OrderReviewMailLog;
+use PS\Webservice\Facades\Queue;
 use PS\Webservice\Service\MailerInterface;
+use PS\Webservice\Service\RedisQueue;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -25,18 +26,20 @@ class SendReviewRequestMailCommand extends Command
     protected static $defaultDescription = 'Invia mail di richiesta recensione per gli ordini consegnati (evitando invii duplicati)';
 
     private MailerInterface $mailer;
+    private RedisQueue $queue;
 
-    public function __construct(MailerInterface $mailer)
+    public function __construct(MailerInterface $mailer, RedisQueue $queue)
     {
         parent::__construct();
         $this->mailer = $mailer;
+        $this->queue = $queue;
     }
 
     protected function configure(): void
     {
         $this
             ->setDescription(self::$defaultDescription)
-            ->addOption('state', 's', InputOption::VALUE_OPTIONAL, 'ID dello stato ordine consegnato', 5)
+            ->addOption('state', 's', InputOption::VALUE_OPTIONAL, 'ID dello stato ordine consegnato', 4)
             ->addOption('limit', 'l', InputOption::VALUE_OPTIONAL, 'Numero massimo di ordini da elaborare', 50)
             ->addOption('days', 'd', InputOption::VALUE_OPTIONAL, 'Considera ordini degli ultimi N giorni (0 = tutti)', 30)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Simula l\'esecuzione senza inviare mail né salvare i log');
@@ -119,7 +122,7 @@ class SendReviewRequestMailCommand extends Command
 
             try {
                 // Mettiamo in coda l'invio della mail tramite il servizio di coda
-                Queue::push('review-request-mail', [
+                $this->queue->push('review-request-mail', [
                     'email' => $email,
                     'firstname' => $firstname,
                     'id_order' => (int) $order->id_order,
