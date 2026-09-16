@@ -71,6 +71,5 @@ jobs:
           key: ${{ secrets.SWARM_SSH_KEY }} 
           script: |
             export WEBSERVICE_TAG=${{ github.ref_name }}
-            cd /root/infrastructure
-            sh swarm-deploy.sh
+            docker service update --image ghcr.io/dolce-zampa/webservice:${WEBSERVICE_TAG} dolcezampa_webservice
 
