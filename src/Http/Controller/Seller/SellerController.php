@@ -530,7 +530,7 @@ class SellerController
     {
         try {
             $manufacturer = $this->resolveAuthenticatedManufacturer($request);
-            $productId = (int) ($args['id'] ?? 0);
+            $productId = (int) ($args['id_product'] ?? 0);
             if ($productId <= 0) {
                 return response(['success' => false, 'message' => 'Product ID is required'], 400);
             }
@@ -557,7 +557,7 @@ class SellerController
 
         try {
             $manufacturer = $this->resolveAuthenticatedManufacturer($request);
-            $productId = (int) ($args['id'] ?? 0);
+            $productId = (int) ($args['id_product'] ?? 0);
             if ($productId <= 0) {
                 return response(['success' => false, 'message' => 'Product ID is required'], 400);
             }

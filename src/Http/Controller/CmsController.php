@@ -25,7 +25,7 @@ class CmsController extends Controller
 
     public function cmsDetail(Request $request, Response $response, array $args): Response
     {
-        $id = (int) $args['id'];
+        $id = (int) $args['id_cms'];
         $cms = $this->cmsService->cmsDetail($id);
 
         return response($cms->toArray());

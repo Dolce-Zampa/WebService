@@ -18,7 +18,7 @@ class BrandController extends Controller
 
     public function brandList(Request $request, Response $response, array $argv): Response
     {
-        $id = $argv['id'];
+        $id = $argv['id_manufacturer'];
         $category = $this->brandService->brandsList([
             'display' => 'full',
             'filter[id]' => $id
@@ -42,7 +42,7 @@ class BrandController extends Controller
 
     public function getManufacturerReviews(Request $request, Response $response, array $argv): Response
     {
-        $id = $argv['id'];
+        $id = $argv['id_manufacturer'];
         $reviews = $this->brandService->getReviews((int) $id);
 
         if (is_null($reviews)) {

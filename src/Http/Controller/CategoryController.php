@@ -18,7 +18,7 @@ class CategoryController extends Controller
 
     public function categoryListById(Request $request, Response $response, array $argv): Response
     {
-        $categoryId = $argv['id'];
+        $categoryId = $argv['id_category'];
         $category = $this->categoryService->categoriesList([
             'display' => 'full',
             'filter[id]' => $categoryId

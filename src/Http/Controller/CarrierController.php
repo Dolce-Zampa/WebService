@@ -40,7 +40,7 @@ class CarrierController extends Controller
      */
     public function getCarrier(Request $request, Response $response, array $args): Response
     {
-        $carrierId = (int) $args['id'];
+        $carrierId = (int) $args['id_carrier'];
 
         if ($carrierId <= 0) {
             return response([

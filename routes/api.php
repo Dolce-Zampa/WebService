@@ -3,8 +3,9 @@
 /**
  *  application apps
  */
-$app->add(new \PS\Webservice\Http\Middleware\DecodeIdMiddleware());
-$app->add(new \PS\Webservice\Http\Middleware\EncodeIdMiddleware());
+// Soluzione deprecata perchè non funziona correttamente con le rotte dinamiche
+// $app->add(new \PS\Webservice\Http\Middleware\DecodeIdMiddleware());
+// $app->add(new \PS\Webservice\Http\Middleware\EncodeIdMiddleware());
 
 /** CLIENT APIs */
 $app->get('/api/health', PS\Webservice\Http\Controller\PrestashopController::class . ':healthCheck');
@@ -24,21 +25,21 @@ $app->post('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http
 $app->group('/api', function () use ($app) {
 
     $app->get('/api/categories', PS\Webservice\Http\Controller\CategoryController::class . ':categoryList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('category-list'));
-    $app->get('/api/categories/{id}', PS\Webservice\Http\Controller\CategoryController::class . ':categoryListById')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('categories'));
+    $app->get('/api/categories/{id_category}', PS\Webservice\Http\Controller\CategoryController::class . ':categoryListById')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('categories'));
     $app->get('/api/product-list', PS\Webservice\Http\Controller\ProductController::class . ':productList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
     $app->get('/api/product-featured', PS\Webservice\Http\Controller\ProductController::class . ':featuredProducts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
     $app->get('/api/product-promotions', PS\Webservice\Http\Controller\ProductController::class . ':featuredPromotions')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products,promotions'));
     $app->get('/api/products', PS\Webservice\Http\Controller\ProductController::class . ':productByCategory')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
-    $app->get('/api/products/{id}/related', PS\Webservice\Http\Controller\ProductController::class . ':productsRelated')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
-    $app->get('/api/products/{id}', PS\Webservice\Http\Controller\ProductController::class . ':productById')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
+    $app->get('/api/products/{id_product}/related', PS\Webservice\Http\Controller\ProductController::class . ':productsRelated')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
+    $app->get('/api/products/{id_product}', PS\Webservice\Http\Controller\ProductController::class . ':productById')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
     $app->get('/api/product/reviews', PS\Webservice\Http\Controller\ProductController::class . ':getAllProductReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-reviews', 60));
     $app->get('/api/product/{slug}', PS\Webservice\Http\Controller\ProductController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
-    $app->post('/api/product/{id}/reviews', PS\Webservice\Http\Controller\ProductController::class . ':addProductReview');
+    $app->post('/api/product/{id_product}/reviews', PS\Webservice\Http\Controller\ProductController::class . ':addProductReview');
     $app->post('/api/product/customizzation/upload-file', PS\Webservice\Http\Controller\ProductController::class . ':uploadCustomizationFile');
     /** brands list */
     $app->get('/api/manufacturers', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
-    $app->get('/api/manufacturers/{id}', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturer-details'));
-    $app->get('/api/manufacturer/{id}/reviews', PS\Webservice\Http\Controller\BrandController::class . ':getManufacturerReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers', 10));
+    $app->get('/api/manufacturers/{id_manufacturer}', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturer-details'));
+    $app->get('/api/manufacturer/{id_manufacturer}/reviews', PS\Webservice\Http\Controller\BrandController::class . ':getManufacturerReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers', 10));
 
     /** Customer api */
     $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');
@@ -63,7 +64,7 @@ $app->group('/api', function () use ($app) {
     /** Carriers api */
     $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
     $app->get('/api/carriers/available', PS\Webservice\Http\Controller\CarrierController::class . ':availableCarriers')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
-    $app->get('/api/carriers/{id}', PS\Webservice\Http\Controller\CarrierController::class . ':getCarrier')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
+    $app->get('/api/carriers/{id_carrier}', PS\Webservice\Http\Controller\CarrierController::class . ':getCarrier')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
 
     /** search */
     $app->get('/api/search', PS\Webservice\Http\Controller\ProductController::class . ':searchProducts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('search'));
@@ -80,7 +81,7 @@ $app->group('/api', function () use ($app) {
 
     /** CMS */
     $app->get('/api/cms', PS\Webservice\Http\Controller\CmsController::class . ':cmsList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('cmslist'));
-    $app->get('/api/cms/{id}', PS\Webservice\Http\Controller\CmsController::class . ':cmsDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('cmsdetails'));
+    $app->get('/api/cms/{id_cms}', PS\Webservice\Http\Controller\CmsController::class . ':cmsDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('cmsdetails'));
 
     /** Configuration service API */
     $app->post('/api/config/cart-rules', PS\Webservice\Http\Controller\ConfigController::class . ':makeCartRulesConfig');  
@@ -107,11 +108,11 @@ $app->group('/api/seller', function() use ($app) {
     $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
     $app->post('/api/seller/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':products');
     $app->get('/api/seller/products/{sellerid}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':sellerProucts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 15));
-    $app->get('/api/seller/product/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',5));
-    $app->patch('/api/seller/products/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProduct');
-    $app->delete('/api/seller/products/{id}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProduct');
-    $app->put('/api/seller/products/{id}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProductDiscount');
-    $app->delete('/api/seller/products/{id}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProductDiscount');
+    $app->get('/api/seller/product/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',5));
+    $app->patch('/api/seller/products/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProduct');
+    $app->delete('/api/seller/products/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProduct');
+    $app->put('/api/seller/products/{id_product}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProductDiscount');
+    $app->delete('/api/seller/products/{iid_productd}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProductDiscount');
 
 })->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 

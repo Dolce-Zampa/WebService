@@ -7,6 +7,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Slim\Routing\RouteContext;
 
 class DecodeIdMiddleware implements MiddlewareInterface
 {
@@ -33,7 +34,6 @@ class DecodeIdMiddleware implements MiddlewareInterface
                 $queryParams[$field] = $this->decodeId($queryParams[$field], $field);
             }
         }
-        $request = $request->withQueryParams($queryParams);
 
         // Passa la request modificata all'handler, response invariata
         return $handler->handle($request);

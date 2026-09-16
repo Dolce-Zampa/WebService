@@ -161,7 +161,7 @@ class ProductController extends Controller
 
     public function productById(Request $request, Response $response, array $args)
     {
-        $id = isset($args['id']) ? (int) $args['id'] : null;
+        $id = isset($args['id_product']) ? (int) $args['id_product'] : null;
         if (!$id || $id <= 0) {
             return response([
                 'success' => false,
@@ -182,7 +182,7 @@ class ProductController extends Controller
 
     public function productsRelated(Request $request, Response $response, array $args)
     {
-        $id = $args['id'] ?? null;
+        $id = $args['id_product'] ?? null;
         if (!$id) {
             return response([
                 'success' => false,
@@ -223,7 +223,7 @@ class ProductController extends Controller
 
     public function addProductReview(Request $request, Response $response, array $args)
     {
-        $id = isset($args['id']) ? (int) $args['id'] : null;
+        $id = isset($args['id_product']) ? (int) $args['id_product'] : null;
         if (!$id || $id <= 0) {
             return response([
                 'success' => false,
