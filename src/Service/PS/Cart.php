@@ -127,7 +127,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
      * @param string $customerId
      * @return HttpServiceInterface
      */
-    public function updateCart(array $product, string $cartId, string $customerId, bool $isGuest = false, ?string $op = 'up'): HttpServiceInterface
+    public function updateCart(array $product, $cartId, $customerId, bool $isGuest = false, ?string $op = 'up'): HttpServiceInterface
     {
         $type = $isGuest ? 'guest' : 'customer';
         $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
