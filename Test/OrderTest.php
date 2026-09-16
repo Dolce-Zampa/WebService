@@ -11,10 +11,46 @@ use PS\Webservice\Service\PS\Product;
 
 final class OrderTest extends TestCase
 {
+    private $cache;
+    private $taggedCache;
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->cache = $this->createMock(\Illuminate\Cache\Repository::class);
+        $this->taggedCache = $this->createMock(\Illuminate\Cache\TaggedCache::class);
+
+        $this->cache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        $this->taggedCache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        $app = new \Illuminate\Container\Container();
+
+        $app->instance('cache', $this->cache);
+        $app->instance(
+            'log',
+            $this->createMock(\Psr\Log\LoggerInterface::class)
+        );
+
+        \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+        \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
+    }
 
     // {"id_cart":"4wW30E1r","customer":{"firstname":"Marco","lastname":"De Felice","email":"marco.defelice@dolcezampa.com","phone":"3319843630"},"invoice_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"delivery_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"id_carrier":15,"payment_method":"stripe","is_guest":true,"cart_rules":[],"id_guest":"r8Ogyz50"}
     public function test_create_new_order(): void
     {
+        $this->cache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        $this->taggedCache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
         $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
         $productServiceMock = $this->createMock(Product::class);
         $productServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
@@ -146,6 +182,14 @@ final class OrderTest extends TestCase
 
     public function test_create_new_order_from_recovery_abbandoned_cart(): void
     {
+        $this->cache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        $this->taggedCache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
         $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
         $productServiceMock = $this->createMock(Product::class);
         $productServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
@@ -263,6 +307,14 @@ final class OrderTest extends TestCase
 
     public function test_webhook_stripe_checkout_session_expired(): void
     {
+        $this->cache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        $this->taggedCache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
         // This test should simulate a Stripe checkout session expired event
         // and assert that the appropriate methods are called and the correct
         // data is passed to the mailer service.
@@ -370,7 +422,7 @@ final class OrderTest extends TestCase
                 $mailerServiceMock,
                 $orderRepositorymock
             ])
-            ->onlyMethods(['constructStripeEvent']) 
+            ->onlyMethods(['constructStripeEvent'])
             ->getMock();
 
         $controller->method('constructStripeEvent')
@@ -384,6 +436,14 @@ final class OrderTest extends TestCase
 
     public function text_stripe_webhook_session_completed()
     {
+        $this->cache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        $this->taggedCache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
         // This test should simulate a Stripe checkout session expired event
         // and assert that the appropriate methods are called and the correct
         // data is passed to the mailer service.
@@ -493,7 +553,7 @@ final class OrderTest extends TestCase
                 $mailerServiceMock,
                 $orderRepositorymock
             ])
-            ->onlyMethods(['constructStripeEvent']) 
+            ->onlyMethods(['constructStripeEvent'])
             ->getMock();
 
         $controller->method('constructStripeEvent')

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Cache;
+use Mockery;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
@@ -16,6 +18,30 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class OrderSecurityTest extends TestCase
 {
+    private $cache;
+    private $taggedCache;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->cache = $this->createMock(\Illuminate\Cache\Repository::class);
+        $this->taggedCache = $this->createMock(\Illuminate\Cache\TaggedCache::class);
+
+        $this->cache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        $this->taggedCache
+            ->method('tags')
+            ->willReturn($this->taggedCache);
+
+        \Illuminate\Support\Facades\Facade::setFacadeApplication([
+            'cache' => $this->cache,
+            'log' => $this->createMock(\Psr\Log\LoggerInterface::class),
+        ]);
+    }
+
     private function createOrderController(Order $orderService, ?PaymentGatewayInterface $stripeService = null): OrderController
     {
         $stripe = $stripeService ?? $this->createMock(PaymentGatewayInterface::class);
@@ -201,7 +227,7 @@ final class OrderSecurityTest extends TestCase
 
         $orderService->expects($this->once())
             ->method('getCartFromId')
-            ->with(10,5, null)
+            ->with(10, 5, null)
             ->willReturn(null);
 
         $controller = $this->createOrderController($orderService);
@@ -223,11 +249,19 @@ final class OrderSecurityTest extends TestCase
 
     public function test_create_order_uses_server_side_product_prices(): void
     {
+        $this->taggedCache
+            ->method('has')
+            ->willReturn(true);
+
+        $this->taggedCache
+            ->method('get')
+            ->willReturn(true);
+
         $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
 
         $serviceMock = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getCartFromId', 'getCarrierDetail', 'getProductPriceById','getProductById'])
+            ->onlyMethods(['getCartFromId', 'getCarrierDetail', 'getProductPriceById', 'getProductById'])
             ->getMock();
         $productServiceMock = $this->createMock(Product::class);
         $productServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));

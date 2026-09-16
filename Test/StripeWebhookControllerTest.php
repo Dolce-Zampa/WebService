@@ -14,6 +14,38 @@ use Psr\Http\Message\StreamInterface;
 
 final class StripeWebhookControllerTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $cache = $this->getMockBuilder(\Illuminate\Cache\Repository::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['has', 'get', 'put', 'forget', 'forever', 'tags'])
+            ->getMock();
+
+        $taggedCache = $this->getMockBuilder(\Illuminate\Cache\TaggedCache::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['has', 'get', 'tags'])
+            ->getMock();
+
+        $cache->method('tags')
+            ->with($this->anything())
+            ->willReturn($taggedCache);
+
+        $taggedCache->method('tags')
+            ->with($this->anything())
+            ->willReturn($taggedCache);
+
+        \Illuminate\Support\Facades\Facade::setFacadeApplication([
+            'cache' => $cache,
+            'log' => $this->createMock(\Psr\Log\LoggerInterface::class)
+        ]);
+
+        $this->cache = $cache;
+        $this->taggedCache = $taggedCache;
+        
+    }
+
     private function buildRequest(string $body, string $sigHeader = ''): ServerRequestInterface
     {
         $stream = $this->createMock(StreamInterface::class);
