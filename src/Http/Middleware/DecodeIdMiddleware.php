@@ -26,6 +26,15 @@ class DecodeIdMiddleware implements MiddlewareInterface
             $request = $request->withParsedBody($body);
         }
 
+        // Decode params
+        $queryParams = $request->getQueryParams();
+        foreach (EncodeIdMiddleware::FIELDS as $field) {
+            if (isset($queryParams[$field])) {
+                $queryParams[$field] = $this->decodeId($queryParams[$field], $field);
+            }
+        }
+        $request = $request->withQueryParams($queryParams);
+
         // Passa la request modificata all'handler, response invariata
         return $handler->handle($request);
     }

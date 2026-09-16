@@ -52,7 +52,7 @@ final class CartOwnershipTest extends TestCase
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getQueryParams')->willReturn(['customer_id' => 99]);
+        $request->method('getQueryParams')->willReturn(['id_customer' => 99]);
 
         $response = $this->createMock(ResponseInterface::class);
 
@@ -76,7 +76,7 @@ final class CartOwnershipTest extends TestCase
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getQueryParams')->willReturn(['guest_id' => 7]);
+        $request->method('getQueryParams')->willReturn(['id_guest' => 7]);
 
         $response = $this->createMock(ResponseInterface::class);
 
@@ -109,7 +109,7 @@ final class CartOwnershipTest extends TestCase
         $controller = new CartController($cartService);
 
         $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getQueryParams')->willReturn(['customer_id' => 5]);
+        $request->method('getQueryParams')->willReturn(['id_customer' => 5]);
 
         $response = $this->createMock(ResponseInterface::class);
 

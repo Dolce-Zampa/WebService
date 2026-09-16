@@ -20,7 +20,7 @@ use PS\Webservice\Traits\UuidGenerator;
 class Order extends Cart implements PrestashopServiceInterface
 {
 
-    use UuidGenerator, UseCache;
+    use UseCache;
 
     public function __construct(HttpServiceInterface $httpService)
     {
