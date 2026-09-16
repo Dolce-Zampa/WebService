@@ -81,22 +81,22 @@ while (true) {
         $mailer->sendReviewRequestMail($email, $firstname, $orderId, $products);
 
         OrderReviewMailLog::updateOrCreate(
-            ['sent_at' => new \DateTime(), 'status' => 'sent'],
             [
                 'id_order' => $orderId,
                 'id_customer' => $customerId
-            ]
+            ],
+            ['sent_at' => new \DateTime(), 'status' => 'sent'],
         );
 
         Log::info("EmailWorker: review request mail sent successfully for order #{$orderId}");
     } catch (\Throwable $e) {
 
         OrderReviewMailLog::updateOrCreate(
-            ['sent_at' => new \DateTime(), 'status' => 'failed'],
             [
                 'id_order' => $orderId,
                 'id_customer' => $customerId
-            ]
+            ],
+            ['sent_at' => new \DateTime(), 'status' => 'failed'],
         );
         Log::error("EmailWorker: failed to process job of type \"{$type}\": " . $e->getMessage());
     }
