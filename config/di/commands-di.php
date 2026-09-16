@@ -6,7 +6,6 @@ $container->set(\PS\Webservice\Service\MailerInterface::class, \DI\get(\PS\Webse
 
 $container->set(\PS\Webservice\Commands\SendReviewRequestMailCommand::class, function ($c) {
     return new \PS\Webservice\Commands\SendReviewRequestMailCommand(
-        $c->get(\PS\Webservice\Service\RedisQueue::class),
-        $c->get(\PS\Webservice\Service\PS\PrestashopServiceInterface::class)
+        $c->get(\PS\Webservice\Service\MailerInterface::class)
     );
 });

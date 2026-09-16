@@ -27,13 +27,11 @@ class SendReviewRequestMailCommand extends Command
     protected static $defaultDescription = 'Invia mail di richiesta recensione per gli ordini consegnati (evitando invii duplicati)';
 
     private MailerInterface $mailer;
-    private PrestashopServiceInterface $service;
 
-    public function __construct(MailerInterface $mailer, PrestashopServiceInterface $service)
+    public function __construct(MailerInterface $mailer)
     {
         parent::__construct();
         $this->mailer = $mailer;
-        $this->service = $service;
     }
 
     protected function configure(): void
