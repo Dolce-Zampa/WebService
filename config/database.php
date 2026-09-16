@@ -11,5 +11,10 @@ return [
         'charset'  => env('DB_CHARSET', 'utf8'),
         'collation'=> env('DB_COLLATION', 'utf8_unicode_ci'),
         'prefix'   => env('PS_TABLE_PREFIX', ''),
+    ],
+    'sqlite' => [
+        'driver'   => env('DB_CONNECTION','sqlite'),
+        'database' => env('DB_DATABASE', ':memory:'),
+        'prefix'   => '',
     ]
 ];
