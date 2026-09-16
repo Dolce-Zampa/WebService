@@ -43,7 +43,6 @@ final class StripeWebhookControllerTest extends TestCase
 
         $this->cache = $cache;
         $this->taggedCache = $taggedCache;
-        
     }
 
     private function buildRequest(string $body, string $sigHeader = ''): ServerRequestInterface

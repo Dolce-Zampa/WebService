@@ -10,4 +10,10 @@ class Product extends PsTable
     protected $table = 'product';
     protected $primaryKey = 'id_product';
 
+    protected $fillable = [
+        'id_product',
+        'name',
+        'price',
+    ];
+
 }

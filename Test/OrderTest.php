@@ -1,10 +1,12 @@
 <?php
 declare(strict_types=1);
 
+use Mockery;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
+use PS\Webservice\Domain\Models\PS\Products\Product as ProductModel;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Http\Controller\StripeWebhookController;
 use PS\Webservice\Service\PS\Product;
@@ -38,6 +40,8 @@ final class OrderTest extends TestCase
 
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
+
+      
     }
 
     // {"id_cart":"4wW30E1r","customer":{"firstname":"Marco","lastname":"De Felice","email":"marco.defelice@dolcezampa.com","phone":"3319843630"},"invoice_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"delivery_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"id_carrier":15,"payment_method":"stripe","is_guest":true,"cart_rules":[],"id_guest":"r8Ogyz50"}
@@ -189,6 +193,14 @@ final class OrderTest extends TestCase
         $this->taggedCache
             ->method('tags')
             ->willReturn($this->taggedCache);
+
+              \Illuminate\Database\Capsule\Manager::schema()->create('product', function ($table) {
+            $table->integer('id_product')->primary();
+            $table->string('name');
+            $table->decimal('price', 10, 2);
+        });
+
+
 
         $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
         $productServiceMock = $this->createMock(Product::class);
