@@ -72,4 +72,7 @@ jobs:
           script: |
             export WEBSERVICE_TAG=${{ github.ref_name }}
             docker service update --image ghcr.io/dolce-zampa/webservice:${WEBSERVICE_TAG} dolcezampa_webservice
+            docker service update --image ghcr.io/dolce-zampa/webservice:${WEBSERVICE_TAG} dolcezampa_worker-product-images
+            docker service update --image ghcr.io/dolce-zampa/webservice:${WEBSERVICE_TAG} dolcezampa_worker-reviews
+
 

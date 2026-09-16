@@ -203,7 +203,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                             'firstname' => $firstname,
                             'id_order' => $idOrder,
                             'products' => $products,
-                            'review_url' => $reviewUrl ?: env('APP_URL') . '/account/orders/' . $idOrder,
+                            'review_url' => env('APP_URL') . $products['url'] . "#v-pills-reviews",
                         ]
                     ]
                 ));
