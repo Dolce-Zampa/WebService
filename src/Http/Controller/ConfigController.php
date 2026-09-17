@@ -74,7 +74,7 @@ class ConfigController extends CartController
                 $this->tags($params['tags'])->flushTag();
             } 
             if(!empty($params['key']) && !empty($params['tags'])) {
-                $this->tags($params['tags'])->removeFromCache($params['key']);
+                $this->tags(['product-detail','api'])->removeFromCache($params['key']);
             }
 
             if(isset($value['category']) && !empty($value['category'])) {
