@@ -1,0 +1,42 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * Scheduler daemon.
+ *
+ * Esegue i job pianificati con Symfony Scheduler (Schedule "default"):
+ * - app:orders:send-review-request: ogni giorno alle 00:00
+ *
+ * Usage:
+ *   php bin/scheduler
+ */
+
+require_once __DIR__ . '/../bootstrap/app.php';
+
+use Illuminate\Support\Facades\Log;
+use PS\Webservice\Commands\Scheduler\AppScheduleProvider;
+use PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHandler;
+use Symfony\Component\Messenger\Handler\HandlersLocator;
+use Symfony\Component\Messenger\MessageBus;
+use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
+use Symfony\Component\Messenger\Worker;
+use Symfony\Component\Scheduler\Generator\MessageGenerator;
+use Symfony\Component\Scheduler\Messenger\SchedulerTransport;
+
+/** @var \DI\Container $container */
+$handler = $container->get(SendReviewRequestMailMessageHandler::class);
+
+$bus = new MessageBus([
+    new HandleMessageMiddleware(new HandlersLocator([
+        \PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessage::class => [$handler],
+    ])),
+]);
+
+$scheduleProvider = $container->get(AppScheduleProvider::class);
+$transport = new SchedulerTransport(new MessageGenerator($scheduleProvider, AppScheduleProvider::NAME));
+
+Log::info('Scheduler: avviato, schedule "' . AppScheduleProvider::NAME . '" in ascolto');
+
+$worker = new Worker(['scheduler' => $transport], $bus);
+$worker->run();

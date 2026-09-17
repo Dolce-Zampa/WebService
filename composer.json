@@ -44,7 +44,10 @@
         "predis/predis": "~3.4",
         "malirobot/aws-cognito": "~v1.0.3",
         "illuminate/validation": "^11.51",
-        "symfony/console": "^7.4"
+        "symfony/console": "^7.4",
+        "symfony/scheduler": "^7.4",
+        "symfony/messenger": "^7.4",
+        "dragonmantank/cron-expression": "^3.4"
     },
     "require-dev": {
         "nikic/php-parser": "^5.0",
