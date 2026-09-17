@@ -394,8 +394,10 @@ class MlabFactoryApiHelper
             throw new MlabFactoryApiException('Email is required for guest checkout.', 422);
         }
 
-        // Check if customer already exists with this email
-        $existingCustomerId = (int) Customer::customerExists($email, true);
+        // Check if customer already exists with this email. Guests must NOT be ignored here,
+        // otherwise a customer created by a previous guest checkout would never be matched and
+        // a new duplicate guest customer would be created on every subsequent checkout attempt.
+        $existingCustomerId = (int) Customer::customerExists($email, true, false);
 
         if ($existingCustomerId > 0) {
             // Customer already exists - use existing customer

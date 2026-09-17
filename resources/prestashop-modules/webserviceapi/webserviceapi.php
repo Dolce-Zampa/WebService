@@ -213,16 +213,13 @@ class webserviceapi extends PaymentModule
 
         $link = str_replace("http://aidyis-prod-backoffice.dolcezampa.com","",$this->context->link->getProductLink($product));
         $productUrl = "api_cache:/api".$link."?";
-        $categoryName = $this->getCategoryNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
+        $categories = Product::getProductCategories((int) $product->id);
         $brandName = $this->getBrandNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
 
         $tags = [];
         $tags[] = [
             "tags" => ['api'],
             "key" => $productUrl,
-        ];
-        $tags[] = [
-            "tags" => [$categoryName],
         ];
         $tags[] = [
             "tags" => [$brandName],
@@ -233,6 +230,11 @@ class webserviceapi extends PaymentModule
         $tags[] = [
             "tags" => [sha1((string) $product->name)],
         ];
+        foreach ($categories as $categoryId) {
+            $tags[] = [
+                "category" => [$categoryId],
+            ];
+        }
 
         $url = $webhookBaseUrl . '/api/webhooks/clear-cache';
         $payload = json_encode(

@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Models\PS\Products\Product as ProductModel;
+use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Http\Controller\StripeWebhookController;
 use PS\Webservice\Service\PS\Product;
@@ -154,7 +154,6 @@ final class OrderTest extends TestCase
                 'id_customer',
                 'id_guest',
                 'id_carrier',
-                'customer',
                 'coupon_code',
             ];
 
@@ -194,13 +193,27 @@ final class OrderTest extends TestCase
             ->method('tags')
             ->willReturn($this->taggedCache);
 
-              \Illuminate\Database\Capsule\Manager::schema()->create('product', function ($table) {
+        \Illuminate\Database\Capsule\Manager::schema()->create('product', function ($table) {
             $table->integer('id_product')->primary();
             $table->string('name');
             $table->decimal('price', 10, 2);
         });
 
+        \Illuminate\Database\Capsule\Manager::schema()->create('customer', function ($table) {
+            $table->integer('id_customer')->primary();
+            $table->string('firstname');
+            $table->string('lastname');
+            $table->string('email');
+        });
 
+        Customer::create(
+            [
+                'id_customer' => 456,
+                'firstname' => 'John',
+                'lastname' => 'Doe',
+                'email' => 'john.doe@example.com'
+            ]
+        );
 
         $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
         $productServiceMock = $this->createMock(Product::class);
@@ -212,11 +225,7 @@ final class OrderTest extends TestCase
         $metadata->id_customer = 456;
         $metadata->id_guest = null;
         $metadata->id_carrier = 1;
-        $metadata->customer = json_encode([
-            'email' => 'test@example.com',
-            'firstname' => 'John'
-        ]);
-
+        $metadata->customer_email = 'john.doe@example.com';
         $session->metadata = $metadata;
 
         $orderServiceMock = $this->createMock(\PS\Webservice\Service\PS\Order::class);
@@ -277,8 +286,9 @@ final class OrderTest extends TestCase
                 'id_customer',
                 'id_guest',
                 'id_carrier',
-                'customer',
                 'coupon_code',
+                'recovery_attempt',
+                'customer_email'
             ];
             $toCheck = $orderSession->toArray();
             foreach ($expectedSessionKeys as $key) {
@@ -296,7 +306,7 @@ final class OrderTest extends TestCase
 
         $mailerServiceMock = $this->createMock(\PS\Webservice\Service\MailerInterface::class);
         $mailerServiceMock->method('sendRecoveryCartExpired')->willReturnCallback(function ($customerEmail, $paymentUrl, $lineItems, $orderTotal, $customerFirstName) {
-            $this->assertEquals('test@example.com', $customerEmail);
+            $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
             $this->assertEquals('44.1', $orderTotal);
@@ -304,14 +314,12 @@ final class OrderTest extends TestCase
         });
 
         $mailjetServiceMock = $this->createMock(\PS\Webservice\Service\MailjetService::class);
-        $orderRepositorymock = $this->createMock(\PS\Webservice\Repositories\OrderRepository::class);
 
         $controller = new StripeWebhookController(
             $orderServiceMock,
             $mailjetServiceMock,
             $paymentServiceMock,
             $mailerServiceMock,
-            $orderRepositorymock
         );
         $controller->handleCheckoutSessionExpired($session);
 
@@ -397,8 +405,9 @@ final class OrderTest extends TestCase
                 'id_customer',
                 'id_guest',
                 'id_carrier',
-                'customer',
                 'coupon_code',
+                'recovery_attempt',
+                'customer_email'
             ];
             $toCheck = $orderSession->toArray();
             foreach ($expectedSessionKeys as $key) {
@@ -416,7 +425,7 @@ final class OrderTest extends TestCase
 
         $mailerServiceMock = $this->createMock(\PS\Webservice\Service\MailerInterface::class);
         $mailerServiceMock->method('sendRecoveryCartExpired')->willReturnCallback(function ($customerEmail, $paymentUrl, $lineItems, $orderTotal, $customerFirstName) {
-            $this->assertEquals('test@example.com', $customerEmail);
+            $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
             $this->assertEquals('44.1', $orderTotal);
@@ -545,7 +554,7 @@ final class OrderTest extends TestCase
 
         $mailerServiceMock = $this->createMock(\PS\Webservice\Service\MailerInterface::class);
         $mailerServiceMock->method('sendRecoveryCartExpired')->willReturnCallback(function ($customerEmail, $paymentUrl, $lineItems, $orderTotal, $customerFirstName) {
-            $this->assertEquals('test@example.com', $customerEmail);
+            $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
             $this->assertEquals('44.1', $orderTotal);

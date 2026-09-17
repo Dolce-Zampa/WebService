@@ -185,7 +185,8 @@ final class StripeWebhookControllerTest extends TestCase
                 'cart_id' => '42',
                 'id_customer' => '7',
                 'id_carrier' => '3',
-                'customer' => json_encode(['email' => 'mario@example.com', 'firstname' => 'Mario', 'lastname' => 'Rossi']),
+                'customer_email' => 'john.doe@example.com',
+                'customer' => json_encode(['email' => 'john.doe@example.com', 'firstname' => 'Mario', 'lastname' => 'Rossi']),
             ],
         ]);
 
@@ -218,9 +219,10 @@ final class StripeWebhookControllerTest extends TestCase
             'id' => 'cs_test_2',
             'amount_total' => 5000,
             'metadata' => [
-                'customer' => json_encode(['email' => 'x@example.com', 'firstname' => 'X', 'lastname' => 'Y']),
+                'customer_email' => 'john.doe@example.com',
+                'customer' => json_encode(['email' => 'john.doe@example.com', 'firstname' => 'X', 'lastname' => 'Y']),
             ],
-            'customer_details' => ['email' => 'x@example.com', 'name' => 'X'],
+            'customer_details' => ['email' => 'john.doe@example.com', 'name' => 'X', ],
         ]);
 
         $event = \Stripe\Event::constructFrom([
@@ -252,7 +254,8 @@ final class StripeWebhookControllerTest extends TestCase
             'metadata' => [
                 'cart_id' => '42',
                 'id_carrier' => '3',
-                'customer' => json_encode(['email' => 'x@example.com', 'firstname' => 'X', 'lastname' => 'Y']),
+                'customer_email' => 'john.doe@example.com',
+                'customer' => json_encode(['email' => 'john.doe@example.com', 'firstname' => 'X', 'lastname' => 'Y']),
             ],
         ]);
 
@@ -286,7 +289,7 @@ final class StripeWebhookControllerTest extends TestCase
             'metadata' => [
                 'cart_id' => '42',
                 'id_carrier' => '3',
-                'customer' => json_encode(['email' => 'x@example.com', 'firstname' => 'X', 'lastname' => 'Y']),
+                'customer' => json_encode(['email' => 'john.doe@example.com', 'firstname' => 'X', 'lastname' => 'Y']),
             ],
         ]);
 

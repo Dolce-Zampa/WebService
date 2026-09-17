@@ -9,6 +9,13 @@ class Customer extends PsTable
 {
     protected $table = 'customer';
     protected $primaryKey = 'id_customer';
+
+    protected $fillable = [
+        'id_customer',
+        'firstname',
+        'lastname',
+        'email'
+    ];
     
 
 }

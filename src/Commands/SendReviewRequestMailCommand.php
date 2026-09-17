@@ -110,7 +110,7 @@ class SendReviewRequestMailCommand extends Command
             $products = [];
             foreach ($order->details as $detail) {
                 $products[] = [
-                    'id_product' => $detail->id_product,
+                    'id_product' => $detail->product_id,
                     'quantity' => $detail->product_quantity ?? 1,
                 ];
             }

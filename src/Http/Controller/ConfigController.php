@@ -5,6 +5,7 @@ namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CouponEntity;
+use PS\Webservice\Domain\Enums\CategoriesMap;
 use PS\Webservice\Domain\Models\CouponStorage;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Traits\UseCache;
@@ -78,6 +79,10 @@ class ConfigController extends CartController
                 $this->tags($params['tags'])->flushTag();
             } else {
                 $this->tags($params['tags'])->removeFromCache($params['key']);
+            }
+
+            if(isset($value['category']) && !empty($value['category'])) {
+                $this->tags([CategoriesMap::getCategory((int) $value['category'])])->flushTag();
             }
 
         }

@@ -234,6 +234,6 @@ class ProductEntity extends Entity implements ObjectInterface
 
     public static function createFromId(int $id, PrestashopServiceInterface $service): self
     {
-        return new self(['id' => $id], $service);
+        return self::create(['id' => $id], $service);
     }
 }

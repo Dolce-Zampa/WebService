@@ -6,8 +6,8 @@ namespace PS\Webservice\Http\Controller;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
+use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\PS\Products\Product;
-use PS\Webservice\Repositories\OrderRepository;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
@@ -104,7 +104,8 @@ class StripeWebhookController extends OrderController
         $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : 14; //FIXME: default carrier id should be configurable, not hardcoded
         $couponCode = isset($metadata->coupon_code) ? (string) $metadata->coupon_code : null;
-        $customerDetails = json_decode($metadata->customer);
+        $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new \InvalidArgumentException('customer email is required in Stripe session metadata');
+        $customerDetails = Customer::where('email', $customerEmail)->firstOrFail();
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for session ' . $session->id);
@@ -167,23 +168,31 @@ class StripeWebhookController extends OrderController
     public function handleCheckoutSessionExpired(\Stripe\StripeObject $session): void
     {
         $metadata = $session->metadata;
-        $customerDetails = json_decode($metadata->customer);
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
         $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
         $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
+        $recoveryAttempt = isset($metadata->recovery_attempt) ? (bool) $metadata->recovery_attempt : false;
+        $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new \InvalidArgumentException('customer email is required in Stripe session metadata');
+        $customerDetails = Customer::where('email', $customerEmail)->firstOrFail();
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
             return;
         }
 
+        if($recoveryAttempt === true) {
+            // Skip processing if this is a recovery attempt to avoid infinite loops
+            return;
+        }
+
         $orderToCreate = $metadata->toArray();
-        $orderToCreate['customer'] = json_decode($metadata->customer, true);
+        $orderToCreate['customer'] = $customerDetails->toArray();
         $orderToCreate['id_cart'] = $cartId;
         $orderToCreate['id_carrier'] = $carrierId;
         $orderToCreate['current_state'] = 0;
         $orderToCreate['date_add'] = date('Y-m-d H:i:s');
+        $orderToCreate['recovery_attempt'] = true;
 
         $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
         $newOrder = OrderEntity::create($orderToCreate, $this->orderService);

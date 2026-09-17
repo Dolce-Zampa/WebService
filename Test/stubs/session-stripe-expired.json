@@ -80,7 +80,8 @@
         "id_carrier": "15",
         "cart_id": "456",
         "id_guest": "196",
-        "customer": "{\"email\":\"test@example.com\",\"password\":\"\",\"firstname\":\"John\",\"lastname\":\"De Felice\",\"phone\":\"3319843630\",\"newsletter\":false,\"delivery_address\":{\"alias\":\"home\",\"firstname\":\"Marco\",\"lastname\":\"De Felice\",\"address1\":\"Via Monte Rosa  13\",\"city\":\"Somma Lombardo\",\"postcode\":\"21019\",\"id_country\":10,\"phone_mobile\":\"3319843630\",\"id_state\":228},\"invoice_address\":null,\"uuid\":\"2fef0ede-f055-412f-b703-4ac2a3cd0054\"}"
+        "customer_email": "john.doe@example.com",
+        "customer": "{\"email\":\"john.doe@example.com\",\"password\":\"\",\"firstname\":\"John\",\"lastname\":\"De Felice\",\"phone\":\"3319843630\",\"newsletter\":false,\"delivery_address\":{\"alias\":\"home\",\"firstname\":\"Marco\",\"lastname\":\"De Felice\",\"address1\":\"Via Monte Rosa  13\",\"city\":\"Somma Lombardo\",\"postcode\":\"21019\",\"id_country\":10,\"phone_mobile\":\"3319843630\",\"id_state\":228},\"invoice_address\":null,\"uuid\":\"2fef0ede-f055-412f-b703-4ac2a3cd0054\"}"
       },
       "mode": "payment",
       "origin_context": null,

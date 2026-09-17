@@ -191,6 +191,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
     public function sendReviewRequestMail(string $email, string $firstname, int $idOrder, array $products, string $reviewUrl = ''): void
     {
         try {
+            $product = $products[0]->toArray();
             $this->httpService->setUrl('/mailer?debug=true');
             $this->httpService->invoke('POST',
                 new PayloadServiceData(
@@ -202,8 +203,8 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                         'template_vars' => [
                             'firstname' => $firstname,
                             'id_order' => $idOrder,
-                            'products' => $products,
-                            'review_url' => env('APP_URL') . $products['url'] . "#v-pills-reviews",
+                            'products' => $product,
+                            'review_url' => env('APP_URL') . $product['url'] . "#v-pills-reviews",
                         ]
                     ]
                 ));

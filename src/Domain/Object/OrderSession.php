@@ -82,8 +82,9 @@ class OrderSession implements ObjectInterface
                 'id_customer' => $data['id_customer'],
                 'id_guest' => $data['id_guest'],
                 'id_carrier' => $data['id_carrier'],
-                'customer' => json_encode($customerDetails),
                 'coupon_code' => $data['discounts'][0]['coupon'] ?? null,
+                'recovery_attempt' => $data['recovery_attempt'] ?? false,
+                'customer_email' => $customerDetails['email'] ?? throw new \InvalidArgumentException('customer email is required to create an order session'),
             ],
         ];
 

@@ -59,10 +59,7 @@ while (true) {
 
         //build products entity
         $products = array_map(function ($product) use ($productService) {
-            return [
-                ProductEntity::createFromId($product['id_product'], $productService),
-                'quantity' => $product['quantity'] ?? 1,
-            ];
+            return ProductEntity::createFromId($product['id_product'], $productService);
         }, $products);
 
         if ($orderId <= 0 || empty($email)) {
@@ -71,7 +68,7 @@ while (true) {
         }
 
         // Safety check against duplicate sends
-        if (OrderReviewMailLog::where('id_order', $orderId)->exists()) {
+        if (OrderReviewMailLog::where('id_order', $orderId)->where('status', 'sent')->exists()) {
             Log::info("EmailWorker: review request mail for order #{$orderId} was already sent. Skipping.");
             continue;
         }

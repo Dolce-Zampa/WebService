@@ -73,6 +73,11 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             $cart->id_customer = (int) $customer->id;
         }
 
+        // The cart's secure_key must match the customer's, otherwise PaymentModule::validateOrder()
+        // will reject the order with "Secure key does not match" (e.g. guest checkout, where the
+        // cart was created before the customer existed and therefore has a different secure_key).
+        $cart->secure_key = (string) $customer->secure_key;
+
         if (!$cart->update()) {
             throw new MlabFactoryApiException('Unable to update cart before order creation.', 500);
         }
