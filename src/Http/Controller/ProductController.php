@@ -122,7 +122,7 @@ class ProductController extends Controller
         ?string $category,
         ?string $manufacturer,
         array $paginationOptions,
-        string $sort = 'id_DESC',
+        string $sort = 'date_add_DESC',
         ?Filter $filter = null
     ): array {
         if ($manufacturer === null) {

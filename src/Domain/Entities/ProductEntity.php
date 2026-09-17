@@ -28,6 +28,50 @@ class ProductEntity extends Entity implements ObjectInterface
 
     protected bool $isNormalized = false;
 
+    public function __construct(array $data, PrestashopServiceInterface|null $service)
+    {
+        $this->service = $service;
+        $this->data = $data;
+
+        $entityId = $this->data['id'] ?? null;
+
+        if ($entityId === null) {
+            $this->normalizeData();
+            return;
+        }
+
+        $cacheKey = static::class . ':' . $entityId;
+
+        $tags = [
+            "entity",
+            $this->cacheTag,
+            $this->cacheTag . ':' . $entityId,
+        ];
+
+        if(array_key_exists('name', $this->data)) {
+            $tags[] = sha1((string) $this->data['name']);
+        }
+
+        $this->tags($tags);
+
+        $cached = $this->getFromCache($cacheKey);
+
+        if ($cached !== null) {
+            //check if the hash of the cached data is the same as the current data
+            $this->normalizeData();
+            if (isset($cached['hash']) && $cached['hash'] === $this->hash()) {
+                $this->data = $cached;
+                return;
+            }
+
+        }
+
+        // save the hash of the data to the cache to detect changes in the future
+        $this->data['hash'] = $this->hash();
+        $this->normalizeData();
+        $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
+    }
+
     public static function create(array $data, PrestashopServiceInterface $service): self
     {
         $class = new self($data, $service);

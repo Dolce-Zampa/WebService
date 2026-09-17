@@ -39,10 +39,10 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function productsList(array $displayOptions = ['display' => 'full'], ?Filter $filter = null): Collection
     {
-
+        $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
         if (!empty($displayOptions)) {
             $queryString = http_build_query($displayOptions);
-            $this->httpService->setUrl("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1&sort=[date_add_DESC]");
+            $this->httpService->setUrl("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1&sort=[$sorting]");
         } else {
             $this->httpService->setUrl("/products");
         }
