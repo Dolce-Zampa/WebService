@@ -75,26 +75,25 @@ while (true) {
 
         Log::info("EmailWorker: sending review request mail for order #{$orderId} to <{$email}>");
 
-        $mailer->sendReviewRequestMail($email, $firstname, $orderId, $products);
-
-        OrderReviewMailLog::updateOrCreate(
-            [
-                'id_order' => $orderId,
-                'id_customer' => $customerId
-            ],
-            ['sent_at' => new \DateTime(), 'status' => 'sent'],
-        );
+        $mailer->sendReviewRequestMail("marco.defelice890@gmail.com", $firstname, $orderId, $products);
+        
+        $log = OrderReviewMailLog::where('id_order', $orderId)->where('id_customer', $customerId)->first();
+        if ($log) {
+            $log->sent_at = new \DateTime();
+            $log->status = 'sent';
+            $log->save();
+        }
 
         Log::info("EmailWorker: review request mail sent successfully for order #{$orderId}");
     } catch (\Throwable $e) {
 
-        OrderReviewMailLog::updateOrCreate(
-            [
-                'id_order' => $orderId,
-                'id_customer' => $customerId
-            ],
-            ['sent_at' => new \DateTime(), 'status' => 'failed'],
-        );
+        $log = OrderReviewMailLog::where('id_order', $orderId)->where('id_customer', $customerId)->first();
+        if ($log) {
+            $log->sent_at = new \DateTime();
+            $log->status = 'failed';
+            $log->save();
+        }
+
         Log::error("EmailWorker: failed to process job of type \"{$type}\": " . $e->getMessage());
     }
 }
