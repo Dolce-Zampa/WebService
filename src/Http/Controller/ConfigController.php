@@ -70,9 +70,10 @@ class ConfigController extends CartController
                 "key" => $value['key'] ?? null
             ];
             
-            if(empty($params['key'])) {
+            if(empty($params['key']) && !empty($params['tags'])) {
                 $this->tags($params['tags'])->flushTag();
-            } else {
+            } 
+            if(!empty($params['key']) && !empty($params['tags'])) {
                 $this->tags($params['tags'])->removeFromCache($params['key']);
             }
 
