@@ -12,6 +12,7 @@ use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Traits\Order as OrderTrait;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -23,15 +24,28 @@ class StripeWebhookController extends OrderController
     private Order $orderService;
     private MailjetService $mailjetService;
     protected PaymentGatewayInterface $stripeService;
+    private ?PromotionService $promotionService = null;
 
     private MailerInterface $mailer;
 
-    public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer)
+    public function __construct(
+        Order $orderService,
+        MailjetService $mailjetService,
+        PaymentGatewayInterface $stripeService,
+        MailerInterface $mailer,
+        mixed $legacyDependency = null,
+        ?PromotionService $promotionService = null
+    )
     {
         $this->orderService = $orderService;
         $this->mailjetService = $mailjetService;
         $this->stripeService = $stripeService;
         $this->mailer = $mailer;
+        if ($legacyDependency instanceof PromotionService && $promotionService === null) {
+            $this->promotionService = $legacyDependency;
+        } else {
+            $this->promotionService = $promotionService;
+        }
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -57,6 +71,10 @@ class StripeWebhookController extends OrderController
 
         if ($event->type === 'checkout.session.completed') {
             try {
+                if ($this->promotionService !== null && $this->promotionService->isPromotionCheckoutSession($event->data->object)) {
+                    $this->promotionService->activatePromotionFromStripeSession($event->data->object);
+                    return response(['received' => true], 200);
+                }
                 $this->handleCheckoutSessionCompleted($event->data->object);
             } catch (\Exception $e) {
                 Log::critical('Stripe webhook: failed to process checkout.session.completed: ' . $e->getMessage());

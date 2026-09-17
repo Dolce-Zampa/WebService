@@ -29,6 +29,7 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/product-list', PS\Webservice\Http\Controller\ProductController::class . ':productList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
     $app->get('/api/product-featured', PS\Webservice\Http\Controller\ProductController::class . ':featuredProducts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
     $app->get('/api/product-promotions', PS\Webservice\Http\Controller\ProductController::class . ':featuredPromotions')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products,promotions'));
+    $app->post('/api/product-promotions/{promotionId}/click', PS\Webservice\Http\Controller\ProductController::class . ':recordPromotionClick');
     $app->get('/api/products', PS\Webservice\Http\Controller\ProductController::class . ':productByCategory')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
     $app->get('/api/products/{id_product}/related', PS\Webservice\Http\Controller\ProductController::class . ':productsRelated')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('products'));
     $app->get('/api/products/{id_product}', PS\Webservice\Http\Controller\ProductController::class . ':productById')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
@@ -113,6 +114,10 @@ $app->group('/api/seller', function() use ($app) {
     $app->delete('/api/seller/products/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProduct');
     $app->put('/api/seller/products/{id_product}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProductDiscount');
     $app->delete('/api/seller/products/{iid_productd}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProductDiscount');
+    $app->get('/api/seller/promotions/packages', PS\Webservice\Http\Controller\Seller\SellerController::class . ':promotionPackages');
+    $app->get('/api/seller/promotions/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':promotableProducts');
+    $app->post('/api/seller/promotions', PS\Webservice\Http\Controller\Seller\SellerController::class . ':createPromotion');
+    $app->post('/api/seller/promotions/{promotionId}/checkout', PS\Webservice\Http\Controller\Seller\SellerController::class . ':createPromotionCheckoutSession');
 
 })->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 

@@ -12,6 +12,7 @@ use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Facades\S3Service;
 use PS\Webservice\Http\Controller\Controller;
 use PS\Webservice\Service\PS\Product as ProductService;
+use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Traits\PaginationTrait;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -21,10 +22,12 @@ class ProductController extends Controller
     use PaginationTrait;
 
     private ProductService $productService;
+    private PromotionService $promotionService;
 
-    public function __construct(ProductService $productService)
+    public function __construct(ProductService $productService, PromotionService $promotionService)
     {
         $this->productService = $productService;
+        $this->promotionService = $promotionService;
     }
 
     public function productList(Request $request, Response $response)
@@ -213,12 +216,34 @@ class ProductController extends Controller
 
     public function featuredPromotions(Request $request, Response $response)
     {
-        $promotions = $this->productService->getFeaturedPromotions();
+        $queryParams = $request->getQueryParams();
+        $position = isset($queryParams['position']) && is_string($queryParams['position']) ? trim($queryParams['position']) : null;
+        $limit = isset($queryParams['limit']) ? (int) $queryParams['limit'] : 6;
+        $promotions = $this->promotionService->getActiveSponsoredProducts($position, $limit);
 
         return response([
             'success' => true,
             'data' => $promotions->toArray()
         ]);
+    }
+
+    public function recordPromotionClick(Request $request, Response $response, array $args): Response
+    {
+        $promotionId = (int) ($args['promotionId'] ?? 0);
+        if ($promotionId <= 0) {
+            return response(['success' => false, 'message' => 'Promotion ID is required'], 400);
+        }
+
+        try {
+            $this->promotionService->recordClick($promotionId);
+            return response(['success' => true], 200);
+        } catch (\RuntimeException $e) {
+            $status = $e->getCode();
+            if (!is_int($status) || $status < 400 || $status > 599) {
+                $status = 400;
+            }
+            return response(['success' => false, 'message' => $e->getMessage()], $status);
+        }
     }
 
     public function addProductReview(Request $request, Response $response, array $args)
