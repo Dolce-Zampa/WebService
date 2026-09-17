@@ -20,6 +20,7 @@ use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\PS\Mailer;
 use PS\Webservice\Service\PS\PrestashopService;
 use PS\Webservice\Service\PS\Product;
+use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Traits\FileResource;
 use PS\Webservice\Traits\PaginationTrait;
 use PS\Webservice\Traits\UseCache;
@@ -40,12 +41,13 @@ class SellerController
     protected RepositoryInterface $prestashopRepository;
     protected PrestashopService $prestashopService;
     protected Product $productService;
+    protected PromotionService $promotionService;
 
     protected MailjetService $mailjetService;
 
     const PASSWORD_VALIDATION = '/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[A-Z])(?=.*[a-z]).{8,}$/';
 
-    public function __construct(AuthService $authService, PrestashopService $prestashop, Mailer $mailer, RepositoryInterface $prestashopRepository, Product $productService, MailjetService $mailjetService)
+    public function __construct(AuthService $authService, PrestashopService $prestashop, Mailer $mailer, RepositoryInterface $prestashopRepository, Product $productService, MailjetService $mailjetService, PromotionService $promotionService)
     {
         $this->authService = $authService;
         $this->mailer = $mailer;
@@ -53,6 +55,7 @@ class SellerController
         $this->prestashopService = $prestashop;
         $this->productService = $productService;
         $this->mailjetService = $mailjetService;
+        $this->promotionService = $promotionService;
     }
 
     public function healthCheck(Request $request): ResponseInterface
@@ -521,6 +524,114 @@ class SellerController
                 $pagination['per_page'],
                 $totalProducts
             ));
+        } catch (\Throwable $e) {
+            return response(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+    }
+
+    public function promotionPackages(Request $request): ResponseInterface
+    {
+        try {
+            $position = $request->getQueryParams()['position'] ?? null;
+            $position = is_string($position) ? trim($position) : null;
+
+            $packages = $this->promotionService->getAvailablePackages($position);
+            return response(['success' => true, 'data' => $packages->toArray()]);
+        } catch (\Throwable $e) {
+            return response(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+    }
+
+    public function promotableProducts(Request $request): ResponseInterface
+    {
+        try {
+            $manufacturer = $this->resolveAuthenticatedManufacturer($request);
+            $pagination = $this->getPaginationParams($request->getQueryParams());
+            $products = $this->productService->getProductByManufacture(
+                (string) $manufacturer->id_manufacturer,
+                null,
+                ['limit' => $pagination['per_page'], 'page' => $pagination['page']],
+                'id_DESC'
+            );
+
+            $promotable = [];
+            foreach ($products as $product) {
+                $productData = $product->toArray();
+                $productId = (int) ($productData['id'] ?? 0);
+                if ($productId <= 0) {
+                    continue;
+                }
+
+                if (!$this->promotionService->isProductPromotable((int) $manufacturer->id_manufacturer, $productId)) {
+                    continue;
+                }
+
+                $promotable[] = $productData;
+            }
+
+            return response(['success' => true, 'data' => $promotable]);
+        } catch (\Throwable $e) {
+            return response(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+    }
+
+    public function createPromotion(Request $request): ResponseInterface
+    {
+        try {
+            $payload = $this->requireArrayPayload($request->getParsedBody());
+            $manufacturer = $this->resolveAuthenticatedManufacturer($request);
+            $productId = isset($payload['product_id']) ? (int) $payload['product_id'] : 0;
+            $packageId = isset($payload['package_id']) ? (int) $payload['package_id'] : 0;
+
+            if ($productId <= 0 || $packageId <= 0) {
+                return response(['success' => false, 'message' => 'product_id and package_id are required'], 400);
+            }
+
+            $promotion = $this->promotionService->createPromotionRequest((int) $manufacturer->id_manufacturer, $productId, $packageId);
+            return response(['success' => true, 'data' => $promotion->toArray()], 201);
+        } catch (\RuntimeException $e) {
+            $status = $e->getCode();
+            if (!is_int($status) || $status < 400 || $status > 599) {
+                $status = 400;
+            }
+            return response(['success' => false, 'message' => $e->getMessage()], $status);
+        } catch (\Throwable $e) {
+            return response(['success' => false, 'message' => $e->getMessage()], 400);
+        }
+    }
+
+    public function createPromotionCheckoutSession(Request $request, mixed $response = null, array $args = []): ResponseInterface
+    {
+        $payload = is_array($request->getParsedBody()) ? $request->getParsedBody() : [];
+
+        try {
+            $manufacturer = $this->resolveAuthenticatedManufacturer($request);
+            $promotionId = (int) ($args['promotionId'] ?? 0);
+            if ($promotionId <= 0) {
+                return response(['success' => false, 'message' => 'Promotion ID is required'], 400);
+            }
+
+            $session = $this->promotionService->createCheckoutSession(
+                (int) $manufacturer->id_manufacturer,
+                $promotionId,
+                isset($payload['success_url']) ? (string) $payload['success_url'] : null,
+                isset($payload['cancel_url']) ? (string) $payload['cancel_url'] : null
+            );
+
+            return response([
+                'success' => true,
+                'data' => [
+                    'promotion_id' => $promotionId,
+                    'stripe_session_id' => (string) $session->id,
+                    'payment_url' => (string) $session->url,
+                ],
+            ], 201);
+        } catch (\RuntimeException $e) {
+            $status = $e->getCode();
+            if (!is_int($status) || $status < 400 || $status > 599) {
+                $status = 400;
+            }
+            return response(['success' => false, 'message' => $e->getMessage()], $status);
         } catch (\Throwable $e) {
             return response(['success' => false, 'message' => $e->getMessage()], 400);
         }

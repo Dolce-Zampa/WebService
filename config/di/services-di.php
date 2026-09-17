@@ -26,6 +26,12 @@ $container->set(\PS\Webservice\Service\PS\Product::class, function ($c) {
     return $service;
 });
 
+$container->set(\PS\Webservice\Service\Promotions\PromotionService::class, function ($c) {
+    return new \PS\Webservice\Service\Promotions\PromotionService(
+        $c->get(\PS\Webservice\Service\PS\Product::class)
+    );
+});
+
 $container->set(\PS\Webservice\Service\PS\Image::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
     return new \PS\Webservice\Service\PS\Image($httpService);
