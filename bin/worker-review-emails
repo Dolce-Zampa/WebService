@@ -75,7 +75,7 @@ while (true) {
 
         Log::info("EmailWorker: sending review request mail for order #{$orderId} to <{$email}>");
 
-        $mailer->sendReviewRequestMail("marco.defelice890@gmail.com", $firstname, $orderId, $products);
+        $mailer->sendReviewRequestMail($email, $firstname, $orderId, $products);
         
         $log = OrderReviewMailLog::where('id_order', $orderId)->where('id_customer', $customerId)->first();
         if ($log) {
