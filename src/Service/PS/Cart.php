@@ -321,7 +321,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return is_array($data) ? $data : null;
     }
 
-    public function deleteCart(string $cartId, ?string $customerId = null, ?string $guestId = null): HttpServiceInterface
+    public function deleteCart($cartId, $customerId = null, $guestId = null): HttpServiceInterface
     {
         $queryParams = [
             'id_cart' => $cartId,
