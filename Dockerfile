@@ -16,6 +16,12 @@ RUN composer install \
 # Copia tutto il codice
 COPY . .
 
+# Installa Supervisor
+RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
+
+# Copia la configurazione di Supervisor
+COPY ./bin/supervisors /etc/supervisor/conf.d/
+
 # Permessi corretti
 RUN chown -R www-data:www-data /var/www/workdir
 RUN mkdir -p /var/www/workdir/storage/cache
