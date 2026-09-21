@@ -192,7 +192,7 @@ class StripeWebhookController extends OrderController
         }
 
         $orderToCreate = $metadata->toArray();
-        $orderToCreate['customer'] = $customerDetails->toArray();
+        $orderToCreate['customer'] = $customerDetails;
         $orderToCreate['id_cart'] = $cartId;
         $orderToCreate['id_carrier'] = $carrierId;
         $orderToCreate['current_state'] = 0;
