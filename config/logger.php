@@ -46,7 +46,7 @@ if ($logChannel === 'logtail' && env('APP_ENV') === 'production') {
 }
 
 $formatter = new \Monolog\Formatter\LineFormatter(
-    "[%datetime%] %level_name%: %message% %context% %extra%\n",
+    "[%channel%][%datetime%] %level_name%: %message% %context% %extra%\n",
     "Y-m-d H:i:s.v", // Formato timestamp più preciso
     true, // Allow inline line breaks
     true  // Ignore empty context and extra

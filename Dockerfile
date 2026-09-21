@@ -1,4 +1,4 @@
-FROM mlabfactory/php8-apache:v1.4.1
+FROM mlabfactory/php8-apache:v1.5.0
 
 # Imposta working directory (verifica sia quella corretta nell'immagine)
 WORKDIR /var/www/workdir
@@ -27,3 +27,4 @@ RUN cp .env.example .env
 # ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 
 EXPOSE 80
+
