@@ -206,6 +206,14 @@ final class OrderTest extends TestCase
             $table->string('email');
         });
 
+        $this->taggedCache->method('has')->willReturn(true);
+        $this->taggedCache->method('get')->willReturn([
+            'id_customer' => 456,
+            'firstname' => 'John',
+            'lastname' => 'Doe',
+            'email' => 'john.doe@example.com'
+        ]);
+
         Customer::create(
             [
                 'id_customer' => 456,
@@ -334,6 +342,14 @@ final class OrderTest extends TestCase
         $this->taggedCache
             ->method('tags')
             ->willReturn($this->taggedCache);
+
+        $this->taggedCache->method('has')->willReturn(true);
+        $this->taggedCache->method('get')->willReturn([
+            'id_customer' => 456,
+            'firstname' => 'John',
+            'lastname' => 'Doe',
+            'email' => 'john.doe@example.com'
+        ]);
 
         // This test should simulate a Stripe checkout session expired event
         // and assert that the appropriate methods are called and the correct
