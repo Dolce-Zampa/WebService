@@ -22,18 +22,18 @@ trait Order
         $this->orderService = $orderService;
         $orderSession = OrderSession::create([
             'cart_id' => $payload->id_cart,
-            'id_customer' => $payload->customer->id_customer ?? null,
-            'id_guest' => $payload->customer->id_guest ?? null,
+            'id_customer' => $payload->customer['id_customer'] ?? null,
+            'id_guest' => $payload->customer['id_guest'] ?? null,
             'id_carrier' => $payload->id_carrier,
             'customer' => CustomerEntity::create([
-                'id' => $payload->customer->id_customer ?? null,
-                'email' => $payload->customer->email ?? null,
-                'firstname' => $payload->customer->firstname ?? null,
-                'lastname' => $payload->customer->lastname ?? null,
-                'phone' => $payload->customer->phone ?? null,
-                'delivery_address' => $payload->customer->delivery_address ?? null,
-                'newsletter' => $payload->customer->newsletter ?? false,
-                'invoice_address' => $payload->customer->invoice_address ?? $payload->customer->delivery_address,
+                'id' => $payload->customer['id_customer'] ?? null,
+                'email' => $payload->customer['email'] ?? throw new \InvalidArgumentException('Customer email is required'),
+                'firstname' => $payload->customer['firstname'] ?? null,
+                'lastname' => $payload->customer['lastname'] ?? null,
+                'phone' => $payload->customer['phone'] ?? null,
+                'delivery_address' => $payload->customer['delivery_address'] ?? null,
+                'newsletter' => $payload->customer['newsletter'] ?? false,
+                'invoice_address' => $payload->customer['invoice_address'] ?? $payload->customer['delivery_address'],
             ], $this->orderService)
         ], $this->orderService);
         $this->orderSession = $orderSession;
