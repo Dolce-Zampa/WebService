@@ -13,12 +13,16 @@ use PS\Webservice\Service\PS\Order as OrderService;
 
 trait Order
 {
+    use UseCache;
     protected OrderSession $orderSession;
     protected int $carrierId;
     private OrderService $orderService;
 
     public function makeOrder(OrderEntity $payload, OrderService $orderService): OrderSession
     {
+        //save customer into cache 
+        $this->tags(['customer-order'])->setToCache($payload->customer['email'], $payload->customer, 36 * 60);
+
         $this->orderService = $orderService;
         $orderSession = OrderSession::create([
             'cart_id' => $payload->id_cart,

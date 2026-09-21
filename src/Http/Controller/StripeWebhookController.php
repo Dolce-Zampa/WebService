@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Customer;
@@ -174,7 +175,11 @@ class StripeWebhookController extends OrderController
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
         $recoveryAttempt = isset($metadata->recovery_attempt) ? (bool) $metadata->recovery_attempt : false;
         $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new \InvalidArgumentException('customer email is required in Stripe session metadata');
-        $customerDetails = Customer::where('email', $customerEmail)->firstOrFail();
+        $customerDetails = $this->tags(['customer-order'])->getFromCache($customerEmail);
+
+        if(empty($customerDetails)) {
+            throw new InvalidArgumentException("No customer details retrived from cache");
+        }
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
