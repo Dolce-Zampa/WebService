@@ -242,7 +242,7 @@ class CartController extends Controller {
     public function upsellingCart(Request $request): Response
     {
         $payload = $request->getQueryParams();
-        $idManufacturer = $payload['id_manufacturer'];
+        $idManufacturer = $payload['manufacturer'];
         $missingAmount = 20; // $payload['missing_amount'];
 
         // get product of the specified manufacturer that can fulfill the missing amount
