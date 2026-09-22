@@ -2,7 +2,8 @@
 
 $container->set(\PS\Webservice\Http\Controller\ProductController::class, function ($c) {
     $productService = $c->get(\PS\Webservice\Service\PS\Product::class);
-    return new \PS\Webservice\Http\Controller\ProductController($productService);
+    $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
+    return new \PS\Webservice\Http\Controller\ProductController($productService, $promotionService);
 });
 
 $container->set(\PS\Webservice\Http\Controller\CategoryController::class, function ($c) {
@@ -37,7 +38,8 @@ $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, f
     $repository = $c->get(\PS\Webservice\Repositories\ManufacturerRepository::class);
     $product = $c->get(\PS\Webservice\Service\PS\Product::class);
     $mailjet = $c->get(\PS\Webservice\Service\MailjetService::class);
-    return new \PS\Webservice\Http\Controller\Seller\SellerController($authService, $prestashopService,$mailer, $repository, $product, $mailjet);
+    $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
+    return new \PS\Webservice\Http\Controller\Seller\SellerController($authService, $prestashopService,$mailer, $repository, $product, $mailjet, $promotionService);
 });
 
 // CORREZIONE: $currierService → $carrierService
@@ -51,7 +53,8 @@ $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, f
     $mailjet = $c->get(\PS\Webservice\Service\MailjetService::class);
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
     $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
-    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService,$mailjet,$payment,$mailer);
+    $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
+    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService,$mailjet,$payment,$mailer, null, $promotionService);
 });
 
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {
