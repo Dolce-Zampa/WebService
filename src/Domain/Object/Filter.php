@@ -75,6 +75,17 @@ final class Filter
                 continue;
             }
 
+            if($filterKey === 'price' && is_array($filterValue)) {
+                $productPrice = round((float)$productData['price'], 2, PHP_ROUND_HALF_UP);
+                if(isset($filterValue['gte']) && $productPrice < $filterValue['gte']) {
+                    return true; // Product does not meet the minimum price requirement
+                }
+                if(isset($filterValue['lte']) && $productPrice > $filterValue['lte']) {
+                    return true; // Product exceeds the maximum price requirement
+                }
+                continue;
+            }
+
             if(is_array($filterValue)) {
                 if(isset($productData[$filterKey]) && is_array($productData[$filterKey])) {
                     if($this->matchRecursive($productData[$filterKey], $filterValue)) {

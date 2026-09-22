@@ -11,6 +11,7 @@
 $app->get('/api/health', PS\Webservice\Http\Controller\PrestashopController::class . ':healthCheck');
 
 /** Carts api */
+$app->get('/api/cart/product/upselling', PS\Webservice\Http\Controller\CartController::class . ':upsellingCart');
 $app->get('/api/cart/list/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':cartList');
 $app->get('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':getCart');
 $app->post('/api/cart', PS\Webservice\Http\Controller\CartController::class . ':createCart');

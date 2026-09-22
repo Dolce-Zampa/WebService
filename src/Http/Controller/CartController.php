@@ -5,6 +5,7 @@ namespace PS\Webservice\Http\Controller;
 
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\CartRuleEntity;
+use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Facades\JsonDataStorage;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -231,6 +232,30 @@ class CartController extends Controller {
         }
 
         return true;
+    }
+
+    /**
+     * Upselling cart with a new product
+     * @param Request $request
+     * @return void
+     */
+    public function upsellingCart(Request $request): Response
+    {
+        $payload = $request->getQueryParams();
+        $idManufacturer = $payload['id_manufacturer'];
+        $missingAmount = 20; // $payload['missing_amount'];
+
+        // get product of the specified manufacturer that can fulfill the missing amount
+        $filter = new Filter([
+            'price' => ['gte' => $missingAmount],
+        ]);
+        $productList = $this->cartService->getProductByManufacture($idManufacturer, null, [], 'price_ASC', $filter);
+        if($productList->count() === 0) {
+            return response(['products' => []]);
+        }
+
+        return response(['products' => $productList->toArray()]);
+
     }
 
 }
