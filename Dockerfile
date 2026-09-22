@@ -19,11 +19,6 @@ COPY . .
 # Installa Supervisor
 RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
 
-# Better stack 
-RUN curl -sSL https://telemetry.betterstack.com/setup-vector/docker/yQBZ6niNSi166cyhZx3e8a2t \
-  -o /tmp/setup-vector.sh && \
-  bash /tmp/setup-vector.sh
-
 # Copia la configurazione di Supervisor
 COPY ./bin/supervisors/scheduler.conf /etc/supervisor/scheduler.conf
 COPY ./bin/supervisors/worker-image.conf /etc/supervisor/worker-image.conf

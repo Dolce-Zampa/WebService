@@ -83,6 +83,8 @@ class ConfigController extends CartController
 
         }
 
+        Log::info('Cache cleared successfully ' . json_encode($payload['cache'] ?? []));
+
         return response(['message' => 'Cache cleared successfully'], 200);
     }
 
