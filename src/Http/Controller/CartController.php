@@ -243,13 +243,17 @@ class CartController extends Controller {
     {
         $payload = $request->getQueryParams();
         $idManufacturer = $payload['manufacturer'];
+        $pagination = [
+            'page' => 1,
+            'limit' => 3
+        ];
         $missingAmount = 20; // $payload['missing_amount'];
 
         // get product of the specified manufacturer that can fulfill the missing amount
         $filter = new Filter([
             'price' => ['gte' => $missingAmount],
         ]);
-        $productList = $this->cartService->getProductByManufacture($idManufacturer, null, [], 'price_ASC', $filter);
+        $productList = $this->cartService->getProductByManufacture($idManufacturer, null, $pagination, 'price_ASC', $filter);
         if($productList->count() === 0) {
             return response(['products' => []]);
         }
