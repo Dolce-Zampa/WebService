@@ -191,8 +191,8 @@ class StripeWebhookController extends OrderController
         $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
         $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
-        $recoveryAttempt = isset($metadata->recovery_attempt) ? (bool) $metadata->recovery_attempt : false;
-        $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new \InvalidArgumentException('customer email is required in Stripe session metadata');
+        $recoveryAttempt = isset($metadata->recovery_attempt) ? filter_var($metadata->recovery_attempt, FILTER_VALIDATE_BOOLEAN) : false;
+        $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new InvalidArgumentException('customer email is required in Stripe session metadata');
         $customerDetails = $this->tags(['customer-order'])->getFromCache($customerEmail);
 
         if(empty($customerDetails)) {
