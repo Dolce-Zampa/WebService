@@ -219,6 +219,7 @@ class StripeWebhookController extends OrderController
         $orderToCreate['date_add'] = date('Y-m-d H:i:s');
         $orderToCreate['recovery_attempt'] = true;
 
+        Log::info('Creating order for cart ' . $cartId . ' with customer ID ' . $customerId . ' and guest ID ' . $guestId);
         $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
         $newOrder = OrderEntity::create($orderToCreate, $this->orderService);
 
