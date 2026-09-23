@@ -188,16 +188,17 @@ class StripeWebhookController extends OrderController
     {
         $metadata = $session->metadata;
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
-        $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
-        $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
         $recoveryAttempt = isset($metadata->recovery_attempt) ? filter_var($metadata->recovery_attempt, FILTER_VALIDATE_BOOLEAN) : false;
         $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new InvalidArgumentException('customer email is required in Stripe session metadata');
         $customerDetails = $this->tags(['customer-order'])->getFromCache($customerEmail);
 
-        if(empty($customerDetails)) {
+        if(empty($customerDetails) || (!isset($customerDetails['id_customer']) && !isset($customerDetails['id_guest']))) {
             throw new InvalidArgumentException("No customer details retrived from cache");
         }
+
+        $customerId = $customerDetails['id_customer'];
+        $guestId = $customerDetails['id_guest'];
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);

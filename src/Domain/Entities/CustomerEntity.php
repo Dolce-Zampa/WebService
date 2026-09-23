@@ -79,6 +79,8 @@ class CustomerEntity implements ObjectInterface
             'lastname' => (string) $customer['lastname'],
             'phone' => (string) $customer['phone'],
             'newsletter' => (bool) $customer['newsletter'],
+            'id_guest' => $customer['id_guest'] ?? null,
+            'id_customer' => $customer['id_customer'] ?? null
         ];
 
         if(isset($customer['id'])) {
