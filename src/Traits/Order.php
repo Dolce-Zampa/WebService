@@ -20,14 +20,12 @@ trait Order
 
     public function makeOrder(OrderEntity $payload, OrderService $orderService): OrderSession
     {
-        //save customer into cache 
-        $this->tags(['customer-order'])->setToCache($payload->customer['email'], $payload->customer, 36 * 60);
 
         $this->orderService = $orderService;
         $orderSession = OrderSession::create([
             'cart_id' => $payload->id_cart,
-            'id_customer' => $payload->customer['id_customer'] ?? null,
-            'id_guest' => $payload->customer['id_guest'] ?? null,
+            'id_customer' => $payload->id_customer ?? null,
+            'id_guest' => $payload->id_guest ?? null,
             'id_carrier' => $payload->id_carrier,
             'customer' => CustomerEntity::create([
                 'id' => $payload->customer['id_customer'] ?? null,
@@ -42,6 +40,7 @@ trait Order
         ], $this->orderService);
         $this->orderSession = $orderSession;
 
+        $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
         $this->manageCartRules($payload);
 
         return $orderSession;

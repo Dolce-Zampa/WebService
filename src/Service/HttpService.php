@@ -84,9 +84,15 @@ class HttpService implements HttpServiceInterface
 
         } catch (\GuzzleHttp\Exception\RequestException $e) {
             // Gestisci l'errore (log, alert, ecc.)
+            $resp = '';
+            Log::critical("HTTP request failed: " . $e->getMessage());
+            if ($e->hasResponse()) {
+                $resp = $e->getResponse()->getBody()->getContents();
+                Log::critical("HTTP response: " . $resp);
+            }
             $this->httpCode = $e->hasResponse() ? $e->getResponse()->getStatusCode() : 500;
             $this->response = $e->getResponse();
-            $this->body = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : '';
+            $this->body = $resp;
         }
 
         return $this;

@@ -9,6 +9,7 @@ use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\PS\Products\Product;
+use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
@@ -190,15 +191,17 @@ class StripeWebhookController extends OrderController
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
         $recoveryAttempt = isset($metadata->recovery_attempt) ? filter_var($metadata->recovery_attempt, FILTER_VALIDATE_BOOLEAN) : false;
-        $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new InvalidArgumentException('customer email is required in Stripe session metadata');
-        $customerDetails = $this->tags(['customer-order'])->getFromCache($customerEmail);
+        /**
+         * @var OrderSession $orderSession
+         */
+        $orderSession = $this->tags(['order-session'])->getFromCache((string)$cartId);
 
-        if(empty($customerDetails) || (!isset($customerDetails['id_customer']) && !isset($customerDetails['id_guest']))) {
+        if(!isset($orderSession->id_customer) && !isset($orderSession->id_guest)) {
             throw new InvalidArgumentException("No customer details retrived from cache");
         }
 
-        $customerId = $customerDetails['id_customer'];
-        $guestId = $customerDetails['id_guest'];
+        $customerId = $orderSession->id_customer;
+        $guestId = $orderSession->id_guest;
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
@@ -212,7 +215,7 @@ class StripeWebhookController extends OrderController
         }
 
         $orderToCreate = $metadata->toArray();
-        $orderToCreate['customer'] = $customerDetails;
+        $orderToCreate['customer'] = $orderSession->customer;
         $orderToCreate['id_cart'] = $cartId;
         $orderToCreate['id_carrier'] = $carrierId;
         $orderToCreate['current_state'] = 0;
@@ -234,7 +237,7 @@ class StripeWebhookController extends OrderController
 
         $lineItems = $this->lineItems($cart->toArray()['products']);
         // send email to customer with payment link and line items
-        $this->mailer->sendRecoveryCartExpired($customerDetails['email'], $paymentUrl, $lineItems, (string) $orderSession->total(), $customerDetails['firstname']);
+        $this->mailer->sendRecoveryCartExpired($orderSession->getCustomer()->email, $paymentUrl, $lineItems, (string) $orderSession->total(), $orderSession->getCustomer()->firstname);
 
         Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
     }

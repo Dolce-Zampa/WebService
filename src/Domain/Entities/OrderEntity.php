@@ -64,6 +64,8 @@ class OrderEntity implements ObjectInterface
 		$data = [
 			'id' => $this->data['id'],
 			'id_carrier' => $this->data['id_carrier'], //
+			'id_guest' => $this->data['id_guest'],
+			'id_customer' => $this->data['id_customer'],
 			'reference' => (string) $this->data['reference'],
 			'id_cart' => $this->data['id_cart'],
 			'current_state' => (int) $this->data['current_state'],
