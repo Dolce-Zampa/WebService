@@ -206,6 +206,7 @@ class StripeWebhookController extends OrderController
 
         if($recoveryAttempt === true) {
             // Skip processing if this is a recovery attempt to avoid infinite loops
+            Log::info("Session already attempt");
             return;
         }
 
