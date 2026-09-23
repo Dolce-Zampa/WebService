@@ -5,6 +5,7 @@ use Mockery;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
+use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Object\OrderSession;
@@ -41,7 +42,7 @@ final class OrderTest extends TestCase
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
 
-      
+
     }
 
     // {"id_cart":"4wW30E1r","customer":{"firstname":"Marco","lastname":"De Felice","email":"marco.defelice@dolcezampa.com","phone":"3319843630"},"invoice_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"delivery_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"id_carrier":15,"payment_method":"stripe","is_guest":true,"cart_rules":[],"id_guest":"r8Ogyz50"}
@@ -185,6 +186,10 @@ final class OrderTest extends TestCase
 
     public function test_create_new_order_from_recovery_abbandoned_cart(): void
     {
+        $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
+        $productServiceMock = $this->createMock(Product::class);
+        $productMock = ProductEntity::create($productStub, $productServiceMock);
+
         $this->cache
             ->method('tags')
             ->willReturn($this->taggedCache);
@@ -207,12 +212,28 @@ final class OrderTest extends TestCase
         });
 
         $this->taggedCache->method('has')->willReturn(true);
-        $this->taggedCache->method('get')->willReturn([
-            'id_customer' => 456,
-            'firstname' => 'John',
-            'lastname' => 'Doe',
-            'email' => 'john.doe@example.com'
-        ]);
+        $this->taggedCache->method('get')->willReturnCallback(function ($key) use($productMock) {
+            return match ($key) {
+                '10379441e2371afb1ae23c4caffc79a91b3b5c4d' => $productMock->toArray(),
+                '40bd001563085fc35165329ea1ff5c5ecbdbbeef' => OrderSession::create([
+                    'cart_id' => 204,
+                    'id_customer' => null,
+                    'id_guest' => 123,
+                    'id_carrier' => 0,
+                    'customer' => CustomerEntity::create([
+                        'id' => null,
+                        'email' => 'john.doe@example.com',
+                        'firstname' => 'John',
+                        'lastname' => 'Doe',
+                        'phone' => null,
+                        'delivery_address' => null,
+                        'newsletter' => false,
+                        'invoice_address' => null,
+                    ], $this->createMock(\PS\Webservice\Service\PS\Order::class))
+                ], $this->createMock(\PS\Webservice\Service\PS\Order::class)),
+                default => null,
+            };
+        });
 
         Customer::create(
             [
@@ -222,10 +243,7 @@ final class OrderTest extends TestCase
                 'email' => 'john.doe@example.com'
             ]
         );
-
-        $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
-        $productServiceMock = $this->createMock(Product::class);
-        $productServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
+        $productServiceMock->method('getProductById')->willReturn($productMock);
 
         $session = new \Stripe\StripeObject();
         $metadata = new \Stripe\StripeObject();
@@ -335,6 +353,10 @@ final class OrderTest extends TestCase
 
     public function test_webhook_stripe_checkout_session_expired(): void
     {
+        $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
+        $productServiceMock = $this->createMock(Product::class);
+        $productMock = ProductEntity::create($productStub, $productServiceMock);
+
         $this->cache
             ->method('tags')
             ->willReturn($this->taggedCache);
@@ -344,12 +366,29 @@ final class OrderTest extends TestCase
             ->willReturn($this->taggedCache);
 
         $this->taggedCache->method('has')->willReturn(true);
-        $this->taggedCache->method('get')->willReturn([
-            'id_customer' => 456,
-            'firstname' => 'John',
-            'lastname' => 'Doe',
-            'email' => 'john.doe@example.com'
-        ]);
+        
+        $this->taggedCache->method('get')->willReturnCallback(function ($key) use ($productMock) {
+            return match ($key) {
+                '10379441e2371afb1ae23c4caffc79a91b3b5c4d' => $productMock->toArray(),
+                '51eac6b471a284d3341d8c0c63d0f1a286262a18' => OrderSession::create([
+                    'cart_id' => 204,
+                    'id_customer' => null,
+                    'id_guest' => 123,
+                    'id_carrier' => 0,
+                    'customer' => CustomerEntity::create([
+                        'id' => null,
+                        'email' => 'john.doe@example.com',
+                        'firstname' => 'John',
+                        'lastname' => 'Doe',
+                        'phone' => null,
+                        'delivery_address' => null,
+                        'newsletter' => false,
+                        'invoice_address' => null,
+                    ], $this->createMock(\PS\Webservice\Service\PS\Order::class))
+                ], $this->createMock(\PS\Webservice\Service\PS\Order::class)),
+                default => null,
+            };
+        });
 
         // This test should simulate a Stripe checkout session expired event
         // and assert that the appropriate methods are called and the correct
@@ -401,7 +440,7 @@ final class OrderTest extends TestCase
                 $orderServiceMock
             )
         );
-        $orderServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
+        $orderServiceMock->method('getProductById')->willReturn($productMock);
 
         $paymentServiceMock = $this->createMock(\PS\Webservice\Service\Payments\PaymentGatewayInterface::class);
         $paymentServiceMock->method('createPaymentSession')->willReturnCallback(function (OrderSession $orderSession): string {
