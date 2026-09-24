@@ -231,7 +231,7 @@ class StripeWebhookController extends OrderController
         $guestId = $metadataFromCache['id_guest'] ?? null;
         $customerDetails = $cachedSession->getCustomer();
 
-        if (!isset($customerId) && !isset($guestId)) {
+        if (!is_null($customerId) && !is_null($guestId)) {
             throw new InvalidArgumentException("No customer details retrived from cache");
         }
 
@@ -262,9 +262,8 @@ class StripeWebhookController extends OrderController
             $this->addProduct($product);
         }
 
-        $lineItems = $this->lineItems($cart->toArray()['products']);
         // send email to customer with payment link and line items
-        $this->mailer->sendRecoveryCartExpired($order->getCustomer()->email, $paymentUrl, $lineItems, (string) $order->total(), $order->getCustomer()->firstname);
+        $this->mailer->sendRecoveryCartExpired($order->getCustomer()->email, $paymentUrl, $this->getProducts(), (string) $order->total(), $order->getCustomer()->firstname);
 
         Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
     }
