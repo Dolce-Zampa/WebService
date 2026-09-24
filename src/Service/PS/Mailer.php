@@ -229,7 +229,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                     <tr>
 
                         <td width="90" valign="middle">
-                            <img src="' . htmlspecialchars($image) . '"
+                            <img src="' . $image . '"
                                 width="75"
                                 height="75"
                                 style="display:block;
@@ -238,7 +238,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                                         object-fit:cover;
                                         border-radius:10px;
                                         border:1px solid #E5D8C8;"
-                                alt="' . htmlspecialchars($name) . '">
+                                alt="' . $name . '">
                         </td>
 
                         <td valign="middle"
@@ -251,7 +251,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                                 font-weight:bold;
                                 color:#4F463B;">
                                 
-                                ' . htmlspecialchars($name) . '
+                                ' . $name . '
 
                             </div>
 

@@ -177,6 +177,6 @@ class HttpService implements HttpServiceInterface
 
     public function getUrl(): string
     {
-        return $this->url;
+        return $this->api ?? '';
     }
 }

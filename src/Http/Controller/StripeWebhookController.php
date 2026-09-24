@@ -53,6 +53,22 @@ class StripeWebhookController extends OrderController
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
     {
+    //     $this->orderSession = OrderSession::create(
+    //         [
+    //             'id_carrier' => 1,
+    //             'cart_id' => 553,
+    //             'customer' => CustomerEntity::create([], $this->orderService)
+    //         ], $this->orderService
+    //     );
+
+    //     $cart = $this->orderService->getCartFromId(553, null, 297);
+
+    //      foreach ($cart->toArray()['products'] ?? [] as $product) {
+    //         $this->addProduct($product);
+    //     }
+
+    //     $test = $this->getProducts();
+
         $payload = (string) $request->getBody();
         $sigHeader = $request->getHeaderLine('Stripe-Signature');
         $endpointSecret = $_ENV['STRIPE_WEBHOOK_SECRET'] ?? null;
