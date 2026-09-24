@@ -174,4 +174,9 @@ class HttpService implements HttpServiceInterface
     {
         $this->multipartData = $multipartData;
     }
+
+    public function getUrl(): string
+    {
+        return $this->url;
+    }
 }

@@ -219,13 +219,17 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
 
         foreach ($products as $product) {
 
+            $price = $product['price_data']['unit_amount'] / 100;
+            $image = $product['price_data']['product_data']['images'][0];
+            $name  = $product['price_data']['product_data']['name'];
+
             $productsHtml .= '
                 <table width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-bottom:1px solid #E8DED0; padding:15px 0;">
                     <tr>
 
                         <td width="90" valign="middle">
-                            <img src="' . htmlspecialchars($product['photo']) . '"
+                            <img src="' . htmlspecialchars($image) . '"
                                 width="75"
                                 height="75"
                                 style="display:block;
@@ -234,7 +238,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                                         object-fit:cover;
                                         border-radius:10px;
                                         border:1px solid #E5D8C8;"
-                                alt="' . htmlspecialchars($product['name']) . '">
+                                alt="' . htmlspecialchars($name) . '">
                         </td>
 
                         <td valign="middle"
@@ -247,7 +251,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                                 font-weight:bold;
                                 color:#4F463B;">
                                 
-                                ' . htmlspecialchars($product['name']) . '
+                                ' . htmlspecialchars($name) . '
 
                             </div>
 
@@ -262,7 +266,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                                 font-weight:bold;
                                 color:#A07F55;">
 
-                            €' . number_format((float)$product['price'], 2, ',', '.') . '
+                            €' . number_format((float)$price, 2, ',', '.') . '
 
                         </td>
 
