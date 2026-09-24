@@ -27,6 +27,7 @@ trait Order
             'id_customer' => $payload->id_customer ?? null,
             'id_guest' => $payload->id_guest ?? null,
             'id_carrier' => $payload->id_carrier,
+            'recovery_attempt' => $payload->recovery_attempt ?? false,
             'customer' => CustomerEntity::create([
                 'id' => $payload->customer['id_customer'] ?? null,
                 'email' => $payload->customer['email'] ?? throw new \InvalidArgumentException('Customer email is required'),
