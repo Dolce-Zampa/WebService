@@ -270,13 +270,13 @@ class StripeWebhookController extends OrderController
         $newOrder = OrderEntity::create($orderToCreate, $this->orderService);
 
         $order = $this->makeOrder($newOrder, $this->orderService);
-        $paymentUrl = $this->stripeService->createPaymentSession($order);
-
         // Server-side price validation: fetch each product price directly from the catalog.
         // Never use prices from the cart payload or any frontend-supplied value.
         foreach ($cart->toArray()['products'] ?? [] as $product) {
             $this->addProduct($product);
         }
+
+        $paymentUrl = $this->stripeService->createPaymentSession($order);
 
         // send email to customer with payment link and line items
         $this->mailer->sendRecoveryCartExpired($order->getCustomer()->email, $paymentUrl, $this->getProducts(), (string) $order->total(), $order->getCustomer()->firstname);
