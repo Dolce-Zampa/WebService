@@ -164,6 +164,72 @@ final class StripeWebhookControllerTest extends TestCase
         $this->assertTrue($body['data']['received']);
     }
 
+    public function test_handle_checkout_session_expired_accepts_array_from_cache(): void
+    {
+        $orderService = $this->createMock(Order::class);
+        $paymentService = $this->createMock(PaymentGatewayInterface::class);
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects($this->never())->method('sendRecoveryCartExpired');
+
+        $cachedSession = [
+            'cart_id' => 456,
+            'id_customer' => null,
+            'id_guest' => 196,
+            'id_carrier' => 15,
+            'customer' => [
+                'email' => 'john.doe@example.com',
+                'firstname' => 'John',
+                'lastname' => 'Doe',
+                'phone' => '3319843630',
+                'newsletter' => false,
+                'delivery_address' => null,
+                'invoice_address' => null,
+            ],
+        ];
+
+        $controller = new class($orderService, $this->createMock(MailjetService::class), $paymentService, $mailer, $cachedSession) extends StripeWebhookController {
+            protected array $tags = [];
+            private array $cachedSession;
+
+            public function __construct(Order $orderService, MailjetService $mailjetService, PaymentGatewayInterface $stripeService, MailerInterface $mailer, array $cachedSession)
+            {
+                parent::__construct($orderService, $mailjetService, $stripeService, $mailer);
+                $this->cachedSession = $cachedSession;
+            }
+
+            public function tags(array $tags): self
+            {
+                $this->tags = $tags;
+                return $this;
+            }
+
+            protected function getFromCache(string $key): mixed
+            {
+                return $this->cachedSession;
+            }
+
+            protected function setToCache(mixed $key, mixed $value, ?int $ttl = null): void
+            {
+                // Intentionally no-op for the regression test: the goal is to validate
+                // the array-backed cached session recovery flow and the customer hydration.
+            }
+        };
+
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test_expired_array_cache',
+            'metadata' => [
+                'cart_id' => '456',
+                'id_carrier' => '15',
+                'id_guest' => '196',
+                'recovery_attempt' => true,
+                'customer_email' => 'john.doe@example.com',
+            ],
+        ]);
+
+        $controller->handleCheckoutSessionExpired($session);
+        $this->addToAssertionCount(1);
+    }
+
     // ---------------------------------------------------------------------------
     // handleCheckoutSessionCompleted – happy path
     // ---------------------------------------------------------------------------

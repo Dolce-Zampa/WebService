@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Cache;
 trait UseCache
 {
 
-    private array $tags = [];
+    protected array $tags = [];
 
     protected function getFromCache(string $key): mixed
     {

@@ -5,6 +5,7 @@ namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
+use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Customer;
@@ -191,21 +192,41 @@ class StripeWebhookController extends OrderController
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
         $recoveryAttempt = isset($metadata->recovery_attempt) ? filter_var($metadata->recovery_attempt, FILTER_VALIDATE_BOOLEAN) : false;
-        /**
-         * @var OrderSession $oldOrderSession
-         */
-        $oldOrderSession = $this->tags(['order-session'])->getFromCache((string)$cartId);
-        $customerId = $oldOrderSession->metadata['id_customer'];
-        $guestId = $oldOrderSession->metadata['id_guest'];
-        $customerDetails = $oldOrderSession->getCustomer();
-
-        if(!isset($customerId) && !isset($guestId)) {
-            throw new InvalidArgumentException("No customer details retrived from cache");
-        }
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
             return;
+        }
+
+        $cachedSession = $this->tags(['order-session'])->getFromCache((string)$cartId);
+        if (is_array($cachedSession)) {
+            $customerData = $cachedSession['customer'] ?? [
+                'email' => $metadata->customer_email ?? null,
+                'firstname' => null,
+                'lastname' => null,
+                'phone' => null,
+                'newsletter' => false,
+            ];
+
+            if (!$customerData instanceof CustomerEntity && is_array($customerData)) {
+                $customerData = CustomerEntity::create($customerData, $this->orderService);
+            }
+
+            $cachedSession['customer'] = $customerData;
+            $cachedSession = OrderSession::create($cachedSession, $this->orderService);
+        }
+
+        if (!$cachedSession instanceof OrderSession) {
+            throw new InvalidArgumentException('No valid order session found in cache for cart ' . $cartId);
+        }
+
+        $metadataFromCache = $cachedSession->metadata ?? [];
+        $customerId = $metadataFromCache['id_customer'] ?? null;
+        $guestId = $metadataFromCache['id_guest'] ?? null;
+        $customerDetails = $cachedSession->getCustomer();
+
+        if (!isset($customerId) && !isset($guestId)) {
+            throw new InvalidArgumentException("No customer details retrived from cache");
         }
 
         if($recoveryAttempt === true) {
