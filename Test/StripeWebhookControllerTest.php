@@ -172,19 +172,22 @@ final class StripeWebhookControllerTest extends TestCase
         $mailer->expects($this->never())->method('sendRecoveryCartExpired');
 
         $cachedSession = [
-            'cart_id' => 456,
-            'id_customer' => null,
-            'id_guest' => 196,
-            'id_carrier' => 15,
-            'customer' => [
-                'email' => 'john.doe@example.com',
-                'firstname' => 'John',
-                'lastname' => 'Doe',
-                'phone' => '3319843630',
-                'newsletter' => false,
-                'delivery_address' => null,
-                'invoice_address' => null,
+            'orderSession' => [
+                'cart_id' => 456,
+                'id_customer' => null,
+                'id_guest' => 196,
+                'id_carrier' => 15,
+                'customer' => [
+                    'email' => 'john.doe@example.com',
+                    'firstname' => 'John',
+                    'lastname' => 'Doe',
+                    'phone' => '3319843630',
+                    'newsletter' => false,
+                    'delivery_address' => null,
+                    'invoice_address' => null,
+                ],
             ],
+            'cart' => ['products' => []],
         ];
 
         $controller = new class($orderService, $this->createMock(MailjetService::class), $paymentService, $mailer, $cachedSession) extends StripeWebhookController {
@@ -210,8 +213,7 @@ final class StripeWebhookControllerTest extends TestCase
 
             protected function setToCache(mixed $key, mixed $value, ?int $ttl = null): void
             {
-                // Intentionally no-op for the regression test: the goal is to validate
-                // the array-backed cached session recovery flow and the customer hydration.
+                // Intentionally no-op for the regression test.
             }
         };
 
@@ -222,6 +224,43 @@ final class StripeWebhookControllerTest extends TestCase
                 'id_carrier' => '15',
                 'id_guest' => '196',
                 'recovery_attempt' => true,
+                'customer_email' => 'john.doe@example.com',
+            ],
+        ]);
+
+        $controller->handleCheckoutSessionExpired($session);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_handle_checkout_session_expired_returns_200_when_cache_is_missing(): void
+    {
+        $orderService = $this->createMock(Order::class);
+        $paymentService = $this->createMock(PaymentGatewayInterface::class);
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects($this->never())->method('sendRecoveryCartExpired');
+
+        $controller = new class($orderService, $this->createMock(MailjetService::class), $paymentService, $mailer) extends StripeWebhookController {
+            protected array $tags = [];
+
+            public function tags(array $tags): self
+            {
+                $this->tags = $tags;
+                return $this;
+            }
+
+            protected function getFromCache(string $key): mixed
+            {
+                return null;
+            }
+        };
+
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test_expired_missing_cache',
+            'metadata' => [
+                'cart_id' => '456',
+                'id_carrier' => '15',
+                'id_guest' => '196',
+                'recovery_attempt' => false,
                 'customer_email' => 'john.doe@example.com',
             ],
         ]);

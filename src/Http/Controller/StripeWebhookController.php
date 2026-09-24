@@ -199,6 +199,11 @@ class StripeWebhookController extends OrderController
         }
 
         $cachedSession = $this->tags(['order-session'])->getFromCache((string)$cartId);
+
+        if (is_array($cachedSession) && array_key_exists('orderSession', $cachedSession)) {
+            $cachedSession = $cachedSession['orderSession'];
+        }
+
         if (is_array($cachedSession)) {
             $customerData = $cachedSession['customer'] ?? [
                 'email' => $metadata->customer_email ?? null,
@@ -217,7 +222,8 @@ class StripeWebhookController extends OrderController
         }
 
         if (!$cachedSession instanceof OrderSession) {
-            throw new InvalidArgumentException('No valid order session found in cache for cart ' . $cartId);
+            Log::warning('Stripe webhook: no cached order session found for expired cart ' . $cartId . '; skipping recovery and returning 200 OK');
+            return;
         }
 
         $metadataFromCache = $cachedSession->metadata ?? [];
