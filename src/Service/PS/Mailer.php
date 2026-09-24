@@ -223,12 +223,16 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
             $image = $product['price_data']['product_data']['images'][0];
             $name  = $product['price_data']['product_data']['name'];
 
+            if(empty($image) || strpos($image, 'Corriere') !== 0) {
+                continue;
+            }
+
             $productsHtml .= '
                 <table width="100%" cellpadding="0" cellspacing="0" border="0"
                     style="border-bottom:1px solid #E8DED0; padding:15px 0;">
                     <tr>
 
-                        <td width="90" valign="middle">
+                        <td valign="middle">
                             <img src="' . $image . '"
                                 width="75"
                                 height="75"
@@ -257,7 +261,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
 
                         </td>
 
-                        <td width="100"
+                        <td
                             valign="middle"
                             align="right"
                             style="
