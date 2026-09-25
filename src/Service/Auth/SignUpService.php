@@ -89,7 +89,7 @@ class SignUpService extends UserService
         } catch (\Exception $e) {
             Log::critical($e->getMessage());
             if ($isNewUser === true) {
-                AwsCognitoClient::deleteUser($data->auth_token);
+                AwsCognitoClient::deleteUserAsAdmin((string) $sub);
             }
             return false;
         }

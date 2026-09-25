@@ -108,6 +108,7 @@ class SellerController
                 'email' => 'email|max:64',
                 'shop_name' => 'required|max:255',
                 'address' => 'required|max:255',
+                'city' => 'required|max:255',
             ]);
 
             $collection = collect([
@@ -170,7 +171,7 @@ class SellerController
         if ($sub === null) {
             Log::error('Missing Cognito sub after sign up');
             if (($signup['is_new_user'] ?? false) === true) {
-                AwsCognitoClient::deleteUser($bodyParams['email']);
+                $this->deleteNewCognitoUser($signup, $bodyParams['email'] ?? null);
             }
             return response(['error' => 'Sign up failed'], 500);
         }
@@ -246,7 +247,7 @@ class SellerController
         } catch (\Throwable $e) {
             Log::error("Failed to save user: " . $e->getMessage());
             if (($signup['is_new_user'] ?? false) === true) {
-                AwsCognitoClient::deleteUser($bodyParams['email']);
+                $this->deleteNewCognitoUser($signup, $bodyParams['email'] ?? null);
             }
             return response(['error' => 'Failed to save seller profile'], 500);
         }
@@ -724,6 +725,21 @@ class SellerController
         }
 
         return $payload;
+    }
+
+    private function deleteNewCognitoUser(array $signup, ?string $email): void
+    {
+        $username = (string) ($signup['sub'] ?? $email ?? '');
+        if ($username === '') {
+            Log::warning('Unable to rollback Cognito seller: missing username');
+            return;
+        }
+
+        try {
+            AwsCognitoClient::deleteUserAsAdmin($username);
+        } catch (\Throwable $cleanupException) {
+            Log::error('Unable to rollback Cognito seller: ' . $cleanupException->getMessage());
+        }
     }
 
     private function resolveAuthenticatedManufacturer(Request $request): Manufacturer
