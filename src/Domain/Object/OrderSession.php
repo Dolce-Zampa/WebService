@@ -73,7 +73,7 @@ class OrderSession implements ObjectInterface
             // ],
             'success_url' => $_ENV['STRIPE_SUCCESS_URL'] ?? '',
             'cancel_url' => $_ENV['STRIPE_CANCEL_URL'] ?? '',
-            'expires_at' => time() + 3600, // Scade tra 1 ora (3600 secondi)
+            'expires_at' => $data['expires_at'] ?? time() + 3600, // Scade tra 1 ora (3600 secondi)
             'line_items' => $data['line_items'] ?? [],
             // Only include IDs with positive integer values; null, empty strings, '0',
             // and negative values are excluded as all PrestaShop entity IDs must be > 0.

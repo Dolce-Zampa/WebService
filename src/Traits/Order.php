@@ -27,6 +27,7 @@ trait Order
             'id_customer' => $payload->id_customer ?? null,
             'id_guest' => $payload->id_guest ?? null,
             'id_carrier' => $payload->id_carrier,
+            'expires_at' => $payload->expires_at ?? time() + 3600,
             'recovery_attempt' => $payload->recovery_attempt ?? false,
             'customer' => CustomerEntity::create([
                 'id' => $payload->customer['id_customer'] ?? null,

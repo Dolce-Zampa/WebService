@@ -73,6 +73,7 @@ class OrderEntity implements ObjectInterface
 			'total_paid_tax_incl' => (float) $this->data['total_paid_tax_incl'],
 			'total_paid_tax_excl' => (float) $this->data['total_paid_tax_excl'],
 			'customer' => $customer->toArray(),
+			'expires_at' => $this->data['expires_at'] ?? time() + 3600,
 			'recovery_attempt' => $this->data['recovery_attempt'] ?? false,
 			'id_lang' => $this->data['id_lang'] ?? 1, //FIXME: id_lang is not always present in the order data, should be determined based on the customer or cart data
 		];

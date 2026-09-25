@@ -264,10 +264,12 @@ class StripeWebhookController extends OrderController
         $orderToCreate['current_state'] = 0;
         $orderToCreate['date_add'] = date('Y-m-d H:i:s');
         $orderToCreate['recovery_attempt'] = true;
+        $orderToCreate['expires_at'] = time() + 86400;
 
         Log::info('Creating order for cart ' . $cartId . ' with customer ID ' . $customerId . ' and guest ID ' . $guestId);
         $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
         $newOrder = OrderEntity::create($orderToCreate, $this->orderService);
+
 
         $order = $this->makeOrder($newOrder, $this->orderService);
         // Server-side price validation: fetch each product price directly from the catalog.
