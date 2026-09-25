@@ -369,8 +369,8 @@ class ProductController extends Controller
      */
     public function uploadCustomizationFile(Request $request, Response $response)
     {
-        $idProduct = $request->getParsedBody()['id_product'];
-        $uuid = $request->getParsedBody()['uuid'];
+        $parsedBody = $request->getParsedBody();
+        $idProduct = $parsedBody['id_product'] ?? null;
 
         $uploadedFiles = $request->getUploadedFiles();
         if (empty($uploadedFiles['file'])) {
@@ -381,10 +381,60 @@ class ProductController extends Controller
         }
 
         $file = $uploadedFiles['file'];
-        S3Service::uploadFile("customization/{$idProduct}/{$uuid}", $file->getFilePath());
+
+        // 1. Controllo errori di upload (es. limiti del php.ini superati)
+        if ($file->getError() !== UPLOAD_ERR_OK) {
+            return response([
+                'success' => false,
+                'message' => 'File upload error code: ' . $file->getError(),
+            ], 400);
+        }
+
+        // 2. Recupero sicuro del percorso temporaneo (Standard PSR-7)
+        $filePath = $file->getStream()->getMetadata('uri');
+        if (empty($filePath)) {
+            return response([
+                'success' => false,
+                'message' => 'Could not resolve temporary file path',
+            ], 500);
+        }
+
+        // 3. Validazione di sicurezza reale: verifica che sia un'immagine e non uno script camuffato
+        $imageInfo = @getimagesize($filePath);
+        if ($imageInfo === false) {
+            return response([
+                'success' => false,
+                'message' => 'Invalid image file',
+            ], 400);
+        }
+
+        // 4. Controllo del MIME type reale
+        $allowedMimeTypes = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+        ];
+
+        $mimeType = $imageInfo['mime'];
+        if (!array_key_exists($mimeType, $allowedMimeTypes)) {
+            return response([
+                'success' => false,
+                'message' => 'Invalid file type. Only JPEG, PNG, and GIF are allowed.',
+            ], 400);
+        }
+
+        // 5. Generazione di un nome file sicuro e univoco basato sull'estensione del MIME type
+        $extension = $allowedMimeTypes[$mimeType];
+        $safeFilename = \Illuminate\Support\Str::uuid() . '.' . $extension;
+
+        $s3Path = "customization/{$idProduct}/{$safeFilename}";
+
+        // 6. Upload su S3
+        S3Service::uploadFile($s3Path, $filePath);
 
         return response([
             'success' => true,
+            'path' => $s3Path,
         ]);
     }
 }

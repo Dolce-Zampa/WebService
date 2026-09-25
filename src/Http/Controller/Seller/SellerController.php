@@ -179,17 +179,6 @@ class SellerController
 
         $uuid = Uuid::uuid4()->toString();
 
-        try {
-            $this->mailer->sendSignupSellerMail($bodyParams['email'], $name);
-            if(($bodyParams['premium'] ?? 0) == 1){
-                $this->mailer->sendPremiumSignUpMail($bodyParams['email'], $name);
-            }
-
-        } catch (\Throwable $e) {
-            Log::error("Failed to send sign up email: " . $e->getMessage());
-            return response(['error' => 'Failed to send sign up email'], 500);
-        }
-
         // save user in prestashop database
         try {
             //upload avatar
@@ -251,6 +240,16 @@ class SellerController
                 $this->deleteNewCognitoUser($signup, $bodyParams['email'] ?? null);
             }
             return response(['error' => 'Failed to save seller profile'], 500);
+        }
+
+        try {
+            $this->mailer->sendSignupSellerMail($bodyParams['email'], $name);
+            if(($bodyParams['premium'] ?? 0) == 1){
+                $this->mailer->sendPremiumSignUpMail($bodyParams['email'], $name);
+            }
+
+        } catch (\Throwable $e) {
+            Log::critical("Failed to send sign up email: " . $e->getMessage());
         }
 
         try {

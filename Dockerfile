@@ -6,6 +6,9 @@ WORKDIR /var/www/workdir
 # Copia solo composer per sfruttare cache Docker
 COPY composer.json composer.lock ./
 
+# Copia il file di configurazione PHP personalizzato
+COPY ./bin/apache/php/custom.ini /usr/local/etc/php/conf.d/custom-dz.ini
+
 # Installa dipendenze production
 RUN composer install \
     --no-dev \

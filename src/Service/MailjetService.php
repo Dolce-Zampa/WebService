@@ -68,7 +68,7 @@ class MailjetService
      * @param int $listId
      * @return bool
      */
-    public function setContactListSubscription(int $contactId, int $listId = self::CONTACT_LIST_ID): void
+    public function setContactListSubscription(int $contactId, int|string $listId = self::CONTACT_LIST_ID): void
     {
         $this->httpService->setUrl('/v3/REST/listrecipient');
 
