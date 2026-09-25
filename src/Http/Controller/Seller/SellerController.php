@@ -99,6 +99,7 @@ class SellerController
             $name = trim(((string) ($bodyParams['first_name'] ?? '')) . ' ' . ((string) ($bodyParams['last_name'] ?? '')));
         }
 
+        $this->normalizeLegacySellerAddress($bodyParams);
         $bodyParams['name'] = $name;
 
         try {
@@ -725,6 +726,26 @@ class SellerController
         }
 
         return $payload;
+    }
+
+    /** @param array<string, mixed> $bodyParams */
+    private function normalizeLegacySellerAddress(array &$bodyParams): void
+    {
+        if (!empty($bodyParams['city']) || !is_string($bodyParams['address'])) {
+            return;
+        }
+
+        $parts = [];
+        $pattern = '/^\s*(.+?)\s*,\s*(\d+)\s*,\s*(\d{5})\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*(.+?)\s*$/';
+        if (preg_match($pattern, $bodyParams['address'], $parts) !== 1) {
+            return;
+        }
+
+        $bodyParams['address'] = trim($parts[1]) . ', ' . trim($parts[2]);
+        $bodyParams['zip_code'] ??= trim($parts[3]);
+        $bodyParams['city'] = trim($parts[4]);
+        $bodyParams['state'] ??= trim($parts[5]);
+        $bodyParams['country'] ??= trim($parts[6]);
     }
 
     private function deleteNewCognitoUser(array $signup, ?string $email): void

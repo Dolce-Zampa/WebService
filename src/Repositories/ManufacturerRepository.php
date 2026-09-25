@@ -170,11 +170,16 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
      */
     private function createOrUpdateSupplierAddress(Supplier $supplier, ManufactureEntity $manufacture): void
     {
+        $city = trim((string) $manufacture->city);
+        if ($city === '') {
+            throw new \InvalidArgumentException('Seller city is required before saving the supplier address');
+        }
+
         $supplier->address()->updateOrCreate(
             ['id_supplier' => $supplier->id_supplier],
             [
                 'address1' => $manufacture->address,
-                'city' => $manufacture->city,
+                'city' => $city,
                 'postcode' => $manufacture->postcode,
                 'id_country' => $manufacture->id_country ?? 11,
                 'dni' => $manufacture->fiscal_code,

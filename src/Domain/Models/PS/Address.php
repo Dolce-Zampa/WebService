@@ -17,7 +17,7 @@ class Address extends PsTable
         'id_country',
         'address',
         'city',
-        'zip_code',
+        'postcode',
         'country',
         'state',
         'alias',
