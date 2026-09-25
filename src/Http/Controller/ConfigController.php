@@ -88,4 +88,11 @@ class ConfigController extends CartController
         return response(['message' => 'Cache cleared successfully'], 200);
     }
 
+    public function sitemap(Request $request, Response $response, array $argv): Response
+    {
+        $prestashopSitemap = file_get_contents("https://www.dolcezampa.com/1_it_0_sitemap.xml");
+        $response->getBody()->write(str_replace('https://aidyis-prod-backoffice.dolcezampa.com', 'https://www.dolcezampa.com', $prestashopSitemap));
+        return $response->withHeader('Content-Type', 'application/xml');
+    }
+
 }

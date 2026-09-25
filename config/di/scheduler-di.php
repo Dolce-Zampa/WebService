@@ -11,3 +11,8 @@ $container->set(\PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHa
         $c->get(\PS\Webservice\Commands\SendReviewRequestMailCommand::class)
     );
 });
+$container->set(\PS\Webservice\Commands\Scheduler\GenerateSitemapHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\GenerateSitemapHandler(
+        $c->get(\PS\Webservice\Commands\GenerateSitemap::class)
+    );
+});

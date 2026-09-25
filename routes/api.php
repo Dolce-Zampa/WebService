@@ -87,6 +87,7 @@ $app->group('/api', function () use ($app) {
 
     /** Configuration service API */
     $app->post('/api/config/cart-rules', PS\Webservice\Http\Controller\ConfigController::class . ':makeCartRulesConfig');  
+    $app->get('/api/config/sitemap', PS\Webservice\Http\Controller\ConfigController::class . ':sitemap');
 
     /** MODULES */
     $app->post('/api/modules/welcome-coupon', PS\Webservice\Http\Controller\PrestashopController::class . ':welcomeCoupon');  

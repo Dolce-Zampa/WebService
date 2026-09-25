@@ -20,6 +20,9 @@ final class AppScheduleProvider implements ScheduleProviderInterface
             ->add(
                 // Esegue ogni giorno alla mezzanotte (Europe/Rome)
                 RecurringMessage::cron('0 0 * * *', new SendReviewRequestMailMessage())
+            )
+            ->add(
+                RecurringMessage::cron('10 * * * *', new GenerateSitemap())
             );
     }
 }

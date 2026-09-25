@@ -6,6 +6,6 @@
  */
 
 return [
-    \PS\Webservice\Commands\ExampleCommand::class,
+    \PS\Webservice\Commands\GenerateSitemap::class,
     \PS\Webservice\Commands\SendReviewRequestMailCommand::class,
 ];
