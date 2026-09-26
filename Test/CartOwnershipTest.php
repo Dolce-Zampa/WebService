@@ -219,4 +219,41 @@ final class CartOwnershipTest extends TestCase
         $body = json_decode((string) $result->getBody(), true);
         $this->assertSame(['valid' => true], $body['data']);
     }
+
+    public function test_validate_coupon_supports_guest_cart_ownership(): void
+    {
+        $cartService = $this->getMockBuilder(Cart::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId', 'validateCoupon'])
+            ->getMock();
+
+        $stubCartService = $this->getMockBuilder(Cart::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $cartEntity = CartEntity::create(['id' => 4, 'products' => []], $stubCartService);
+
+        $cartService->expects($this->once())
+            ->method('getCartFromId')
+            ->with('4', null, 'guest-4')
+            ->willReturn($cartEntity);
+
+        $cartService->expects($this->once())
+            ->method('validateCoupon')
+            ->with('SAVE10', '4', null, 'guest-4')
+            ->willReturn(['valid' => true]);
+
+        $controller = new CartController($cartService, $this->createRepositoryMock());
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $response = $this->createMock(ResponseInterface::class);
+        $request->method('getParsedBody')->willReturn(['id_guest' => 'guest-4']);
+
+        $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 4]);
+
+        $this->assertSame(200, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame(['valid' => true], $body['data']);
+    }
 }

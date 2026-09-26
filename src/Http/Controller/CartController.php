@@ -81,6 +81,11 @@ class CartController extends Controller {
             $payload['customerId'] = $ownerContext['customerId'];
             $payload['id_customer'] = $ownerContext['customerId'];
             unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
+        } else {
+            $payload['customerId'] = $ownerContext['guestId'];
+            $payload['guestId'] = $ownerContext['guestId'];
+            $payload['id_guest'] = $ownerContext['guestId'];
+            $payload['isGuest'] = true;
         }
 
         $ownerId = $ownerContext['guestId'] !== null
@@ -118,7 +123,10 @@ class CartController extends Controller {
             $payload['id_customer'] = $ownerContext['customerId'];
             unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
         } else {
+            $payload['customerId'] = $ownerContext['guestId'];
+            $payload['guestId'] = $ownerContext['guestId'];
             $payload['id_guest'] = $ownerContext['guestId'];
+            $payload['isGuest'] = true;
         }
 
         $cart = $this->cartService->newCart($payload);
