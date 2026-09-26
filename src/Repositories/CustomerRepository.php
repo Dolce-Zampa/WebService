@@ -22,6 +22,9 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
             ->where('email', $customer->email)
             ->first();
 
+        $isSeller = $customer->get('is_seller');
+        $id_default_group = $isSeller ? 5 : 2; // Example: 3 for sellers, 1 for regular customers
+
         if ($existingCustomer) {
             // Se esiste un cliente con la stessa email, aggiorna il record esistente
             $this->db->table(Customer::tableName())
@@ -39,7 +42,8 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
                     'newsletter_date_add' => $customer->newsletter_date_add ?? null,
                     'max_payment_days' => 0,
-                    'secure_key' => sha1($customer->email)
+                    'secure_key' => sha1($customer->email),
+                    'id_default_group' => $id_default_group
                 ]);
         } else if($existingCustomer) { //se esiste ritorna errore
             throw new RuntimeException("Customer with email already exists.");
@@ -62,7 +66,8 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
                     'newsletter_date_add' => $customer->newsletter_date_add ?? null,
                     'max_payment_days' => 0,
-                    'secure_key' => sha1($customer->email)
+                    'secure_key' => sha1($customer->email),
+                    'id_default_group' => $id_default_group
                 ]);
         }
 
