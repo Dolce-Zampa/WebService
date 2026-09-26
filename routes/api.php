@@ -88,6 +88,9 @@ $app->group('/api', function () use ($app) {
     /** Configuration service API */
     $app->post('/api/config/cart-rules', PS\Webservice\Http\Controller\ConfigController::class . ':makeCartRulesConfig');  
     $app->get('/api/config/sitemap', PS\Webservice\Http\Controller\ConfigController::class . ':sitemap');
+    $app->get('/api/config/countries', PS\Webservice\Http\Controller\ConfigController::class . ':countries');
+    $app->get('/api/config/states', PS\Webservice\Http\Controller\ConfigController::class . ':states');
+    $app->get('/api/config/states/{id_country}', PS\Webservice\Http\Controller\ConfigController::class . ':states');
 
     /** MODULES */
     $app->post('/api/modules/welcome-coupon', PS\Webservice\Http\Controller\PrestashopController::class . ':welcomeCoupon');  

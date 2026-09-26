@@ -8,6 +8,7 @@ use Illuminate\Database\Capsule\Manager as DB;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
+use PS\Webservice\Domain\Models\PS\State;
 use PS\Webservice\Domain\Models\PS\Suppliers\Supplier;
 use Ramsey\Uuid\Uuid;
 
@@ -175,13 +176,17 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
             throw new \InvalidArgumentException('Seller city is required before saving the supplier address');
         }
 
+        // Get id state and id country for the supplier address
+        $state = State::where('name', $manufacture->state)->first();
+
         $supplier->address()->updateOrCreate(
             ['id_supplier' => $supplier->id_supplier],
             [
                 'address1' => $manufacture->address,
                 'city' => $city,
                 'postcode' => $manufacture->postcode,
-                'id_country' => $manufacture->id_country ?? 11,
+                'id_country' => $state->id_country,
+                'id_city' => $state->id_state,
                 'dni' => $manufacture->fiscal_code,
                 'phone_mobile' => $manufacture->phone_number,
                 'vat_number' => $manufacture->vat_number,

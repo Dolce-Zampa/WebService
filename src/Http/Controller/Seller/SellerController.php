@@ -160,9 +160,10 @@ class SellerController
             return response(['error' => 'Validation error: ' . $e->getMessage()], 400);
         }
 
-        $signup = $this->authService->signUp(
-            ManufactureEntity::create($data->toArray(), $this->prestashopService)
-        );
+        // $signup = $this->authService->signUp(
+        //     ManufactureEntity::create($data->toArray(), $this->prestashopService)
+        // );
+        $signup['sub'] = "AAA";
         if ($signup === false) {
             Log::error("Sign up failed");
             return response(['error' => 'Sign up failed'], 400);

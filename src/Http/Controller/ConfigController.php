@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CouponEntity;
 use PS\Webservice\Domain\Enums\CategoriesMap;
 use PS\Webservice\Domain\Models\CouponStorage;
+use PS\Webservice\Domain\Models\PS\State;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -93,6 +94,21 @@ class ConfigController extends CartController
         $prestashopSitemap = file_get_contents("https://aidyis-prod-backoffice.dolcezampa.com/1_it_0_sitemap.xml");
         $response->getBody()->write(str_replace('https://aidyis-prod-backoffice.dolcezampa.com', 'https://www.dolcezampa.com', $prestashopSitemap));
         return $response->withHeader('Content-Type', 'application/xml');
+    }
+
+    public function countries(Request $request, Response $response, array $argv): Response
+    {
+        return response(["id_country" => 10, "name" => "Italia"], 200);
+    }
+
+    public function states(Request $request, Response $response, array $argv): Response
+    {
+        if(isset($argv['id_country']) && !empty($argv['id_country'])) {
+            $states = State::where('id_country', $argv['id_country'])->get();
+        } else {
+            $states = State::all();
+        }
+        return response($states->toArray(), 200);
     }
 
 }
