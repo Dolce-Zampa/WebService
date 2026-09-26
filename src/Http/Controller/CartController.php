@@ -63,7 +63,12 @@ class CartController extends Controller {
 
     public function updateCart(Request $request, Response $response, array $argv): Response
     {
-        $payload = $this->requireArrayPayload($request->getParsedBody());
+        try {
+            $payload = $this->requireArrayPayload($request->getParsedBody());
+        } catch (\InvalidArgumentException $e) {
+            return response(['error' => $e->getMessage()], 400);
+        }
+
         $cartId = $argv['cartId'];
         $ownerContext = $this->resolveOwnerContext($request, $payload);
         if ($ownerContext instanceof Response) {
@@ -77,16 +82,7 @@ class CartController extends Controller {
             return response([], 404);
         }
 
-        if ($ownerContext['customerId'] !== null) {
-            $payload['customerId'] = $ownerContext['customerId'];
-            $payload['id_customer'] = $ownerContext['customerId'];
-            unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
-        } else {
-            $payload['customerId'] = $ownerContext['guestId'];
-            $payload['guestId'] = $ownerContext['guestId'];
-            $payload['id_guest'] = $ownerContext['guestId'];
-            $payload['isGuest'] = true;
-        }
+        $payload = $this->normalizeOwnerPayload($payload, $ownerContext);
 
         $ownerId = $ownerContext['guestId'] !== null
             ? $ownerContext['guestId']
@@ -112,22 +108,18 @@ class CartController extends Controller {
 
     public function createCart(Request $request, Response $response, array $argv): Response
     {
-        $payload = $this->requireArrayPayload($request->getParsedBody());
+        try {
+            $payload = $this->requireArrayPayload($request->getParsedBody());
+        } catch (\InvalidArgumentException $e) {
+            return response(['error' => $e->getMessage()], 400);
+        }
+
         $ownerContext = $this->resolveOwnerContext($request, $payload);
         if ($ownerContext instanceof Response) {
             return $ownerContext;
         }
 
-        if ($ownerContext['customerId'] !== null) {
-            $payload['customerId'] = $ownerContext['customerId'];
-            $payload['id_customer'] = $ownerContext['customerId'];
-            unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
-        } else {
-            $payload['customerId'] = $ownerContext['guestId'];
-            $payload['guestId'] = $ownerContext['guestId'];
-            $payload['id_guest'] = $ownerContext['guestId'];
-            $payload['isGuest'] = true;
-        }
+        $payload = $this->normalizeOwnerPayload($payload, $ownerContext);
 
         $cart = $this->cartService->newCart($payload);
 
@@ -369,6 +361,22 @@ class CartController extends Controller {
 
             return response(['error' => $e->getMessage()], $status);
         }
+    }
+
+    protected function normalizeOwnerPayload(array $payload, array $ownerContext): array
+    {
+        if (($ownerContext['customerId'] ?? null) !== null) {
+            $payload['customerId'] = $ownerContext['customerId'];
+            $payload['id_customer'] = $ownerContext['customerId'];
+            unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
+            return $payload;
+        }
+
+        $payload['customerId'] = $ownerContext['guestId'] ?? null;
+        $payload['guestId'] = $ownerContext['guestId'] ?? null;
+        $payload['id_guest'] = $ownerContext['guestId'] ?? null;
+        $payload['isGuest'] = true;
+        return $payload;
     }
 
 }

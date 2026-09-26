@@ -157,12 +157,7 @@ class OrderController extends CartController
             return response(['error' => 'Cart ID is required'], 400);
         }
 
-        if ($customerId !== null) {
-            $payload['id_customer'] = $customerId;
-            unset($payload['id_guest'], $payload['guestId'], $payload['is_guest']);
-        } else {
-            $payload['id_guest'] = $guestId;
-        }
+        $payload = $this->normalizeOwnerPayload($payload, $ownerContext);
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response([], 404);
