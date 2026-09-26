@@ -23,7 +23,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
             ->first();
 
         $isSeller = $customer->get('is_seller');
-        $id_default_group = $isSeller ? 5 : 2; // Example: 3 for sellers, 1 for regular customers
+        $id_default_group = $isSeller ? 5 : 3; 
 
         if ($existingCustomer) {
             // Se esiste un cliente con la stessa email, aggiorna il record esistente
