@@ -47,12 +47,12 @@ class CartController extends Controller {
     public function getCart(Request $request, Response $response, array $argv): Response
     {
         $cartId = (int) $argv['cartId'];
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
+        $ownerContext = $this->resolveOwnerContext($request, $request->getQueryParams());
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
-        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
+        $cart = $this->cartService->getCartFromId($cartId, $ownerContext['customerId'], $ownerContext['guestId']);
         if(is_null($cart)) {
             return response([], 404);
         }
@@ -65,21 +65,31 @@ class CartController extends Controller {
     {
         $payload = $this->requireArrayPayload($request->getParsedBody());
         $cartId = $argv['cartId'];
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
         $operation = isset( $payload['op']) ? (string) $payload['op'] : 'up';
 
-        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
+        $cart = $this->cartService->getCartFromId($cartId, $ownerContext['customerId'], $ownerContext['guestId']);
         if (is_null($cart)) {
             return response([], 404);
         }
 
-        $payload['customerId'] = $authenticatedCustomerId;
-        $payload['id_customer'] = $authenticatedCustomerId;
-        $cart = $this->cartService->updateCart($payload, $cartId, $authenticatedCustomerId, false, $operation);
+        if ($ownerContext['customerId'] !== null) {
+            $payload['customerId'] = $ownerContext['customerId'];
+            $payload['id_customer'] = $ownerContext['customerId'];
+            unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
+        }
+
+        $cart = $this->cartService->updateCart(
+            $payload,
+            $cartId,
+            $ownerContext['customerId'] ?? $ownerContext['guestId'],
+            $ownerContext['guestId'] !== null,
+            $operation
+        );
         
         if($cart->failed()) {
             return response([
@@ -94,14 +104,19 @@ class CartController extends Controller {
     public function createCart(Request $request, Response $response, array $argv): Response
     {
         $payload = $this->requireArrayPayload($request->getParsedBody());
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
-        $payload['customerId'] = $authenticatedCustomerId;
-        $payload['id_customer'] = $authenticatedCustomerId;
-        unset($payload['id_guest'], $payload['guestId'], $payload['isGuest']);
+        if ($ownerContext['customerId'] !== null) {
+            $payload['customerId'] = $ownerContext['customerId'];
+            $payload['id_customer'] = $ownerContext['customerId'];
+            unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
+        } else {
+            $payload['id_guest'] = $ownerContext['guestId'];
+        }
+
         $cart = $this->cartService->newCart($payload);
 
         if($cart->failed()) {
@@ -117,17 +132,18 @@ class CartController extends Controller {
     public function deleteCart(Request $request, Response $response, array $argv): Response
     {
         $cartId = $argv['cartId'];
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
+        $payload = is_array($request->getParsedBody()) ? $request->getParsedBody() : [];
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
-        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
+        $cart = $this->cartService->getCartFromId($cartId, $ownerContext['customerId'], $ownerContext['guestId']);
         if (is_null($cart)) {
             return response([], 404);
         }
 
-        $result = $this->cartService->deleteCart($cartId, $authenticatedCustomerId, null);
+        $result = $this->cartService->deleteCart($cartId, $ownerContext['customerId'], $ownerContext['guestId']);
         
         if($result->failed()) {
             return response([
@@ -160,17 +176,23 @@ class CartController extends Controller {
     {
         $code = (string) ($argv['code'] ?? '');
         $cartId = (string) ($argv['cartId'] ?? '');
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
+        $payload = is_array($request->getParsedBody()) ? $request->getParsedBody() : [];
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
-        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
+        $cart = $this->cartService->getCartFromId($cartId, $ownerContext['customerId'], $ownerContext['guestId']);
         if (is_null($cart)) {
             return response([], 404);
         }
 
-        $isValid = $this->cartService->validateCoupon($code, $cartId, (string) $authenticatedCustomerId, null);
+        $isValid = $this->cartService->validateCoupon(
+            $code,
+            $cartId,
+            $ownerContext['customerId'] !== null ? (string) $ownerContext['customerId'] : null,
+            $ownerContext['guestId'] !== null ? (string) $ownerContext['guestId'] : null
+        );
         return response($isValid);
     }
 
@@ -308,6 +330,42 @@ class CartController extends Controller {
         try {
             return $this->resolveAuthenticatedCustomerId($request);
         } catch (\Throwable $e) {
+            $status = (int) $e->getCode();
+            if ($status < 400 || $status > 599) {
+                $status = 401;
+            }
+
+            return response(['error' => $e->getMessage()], $status);
+        }
+    }
+
+    protected function resolveOwnerContext(Request $request, array $payload): array|Response
+    {
+        try {
+            return [
+                'customerId' => $this->resolveAuthenticatedCustomerId($request),
+                'guestId' => null,
+            ];
+        } catch (\Throwable $e) {
+            $guestId = $payload['id_guest'] ?? $payload['guestId'] ?? null;
+            $isGuest = (bool) ($payload['isGuest'] ?? $payload['is_guest'] ?? false);
+            if (($guestId === null || $guestId === '') && $isGuest === true && isset($payload['customerId'])) {
+                $guestId = $payload['customerId'];
+            }
+
+            if ($guestId !== null && $guestId !== '') {
+                return [
+                    'customerId' => null,
+                    'guestId' => $guestId,
+                ];
+            }
+
+            foreach (['id_customer', 'customerId'] as $customerKey) {
+                if (isset($payload[$customerKey]) && $payload[$customerKey] !== '') {
+                    return response(['error' => 'Unauthorized'], 401);
+                }
+            }
+
             $status = (int) $e->getCode();
             if ($status < 400 || $status > 599) {
                 $status = 401;

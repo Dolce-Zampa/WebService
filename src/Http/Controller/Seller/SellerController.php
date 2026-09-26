@@ -267,7 +267,7 @@ class SellerController
         );
     }
 
-    public function sellerProucts(Request $request, mixed $response = null, array $args = []): ResponseInterface
+    public function sellerProducts(Request $request, mixed $response = null, array $args = []): ResponseInterface
     {
         try {
             $manufacturer = $this->resolveAuthenticatedManufacturer($request);

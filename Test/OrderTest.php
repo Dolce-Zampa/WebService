@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use Mockery;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;

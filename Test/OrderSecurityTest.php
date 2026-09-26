@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Cache;
-use Mockery;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
@@ -256,6 +254,34 @@ final class OrderSecurityTest extends TestCase
             'id_customer' => 999,
             'id_carrier' => 2,
         ]);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->createOrder($request, $response, []);
+
+        $this->assertSame(404, $result->getStatusCode());
+    }
+
+    public function test_create_order_still_supports_guest_ownership_context(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId'])
+            ->getMock();
+
+        $orderService->expects($this->once())
+            ->method('getCartFromId')
+            ->with(10, null, 'guest-7')
+            ->willReturn(null);
+
+        $controller = $this->createOrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([
+            'id_cart' => 10,
+            'id_guest' => 'guest-7',
+            'id_carrier' => 2,
+        ]);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->createOrder($request, $response, []);

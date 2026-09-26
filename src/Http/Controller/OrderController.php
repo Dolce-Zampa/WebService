@@ -80,12 +80,13 @@ class OrderController extends CartController
             ], 400);
         }
 
-        $customerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
-        if ($customerId instanceof Response) {
-            return $customerId;
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
-        $guestId = null;
+        $customerId = $ownerContext['customerId'];
+        $guestId = $ownerContext['guestId'];
 
         $cartId = $payload['id_cart'] ?? null;
         if ($cartId === null) {
@@ -135,19 +136,24 @@ class OrderController extends CartController
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $this->requireArrayPayload($request->getParsedBody());
-        $customerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
-        if ($customerId instanceof Response) {
-            return $customerId;
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
-        $guestId = null;
+        $customerId = $ownerContext['customerId'];
+        $guestId = $ownerContext['guestId'];
 
         if (!isset($payload['id_cart'])) {
             return response(['error' => 'Cart ID is required'], 400);
         }
 
-        $payload['id_customer'] = $customerId;
-        unset($payload['id_guest'], $payload['guestId'], $payload['is_guest']);
+        if ($customerId !== null) {
+            $payload['id_customer'] = $customerId;
+            unset($payload['id_guest'], $payload['guestId'], $payload['is_guest']);
+        } else {
+            $payload['id_guest'] = $guestId;
+        }
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response([], 404);
