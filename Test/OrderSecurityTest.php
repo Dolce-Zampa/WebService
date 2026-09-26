@@ -226,6 +226,7 @@ final class OrderSecurityTest extends TestCase
             'id_carrier' => 2,
         ]);
         $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('');
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->createOrder($request, $response, []);
@@ -282,6 +283,7 @@ final class OrderSecurityTest extends TestCase
             'id_carrier' => 2,
         ]);
         $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('');
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->createOrder($request, $response, []);

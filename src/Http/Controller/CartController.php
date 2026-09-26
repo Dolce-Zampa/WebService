@@ -6,6 +6,7 @@ namespace PS\Webservice\Http\Controller;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Object\Filter;
+use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Repositories\PrestashopRepository;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -314,7 +315,26 @@ class CartController extends Controller {
     {
         $sub = $request->getAttribute('user_id');
         if (!is_string($sub) || $sub === '') {
-            throw new \RuntimeException('Unauthorized', 401);
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader === '') {
+                throw new \RuntimeException('Unauthorized', 401);
+            }
+
+            $authToken = str_replace('Bearer ', '', $authHeader);
+            if ($authToken === '') {
+                throw new \RuntimeException('Unauthorized', 401);
+            }
+
+            try {
+                $decodedToken = AwsCognitoClient::decodeAccessToken($authToken);
+            } catch (\Throwable) {
+                throw new \RuntimeException('Unauthorized', 401);
+            }
+
+            $sub = $decodedToken['sub'] ?? null;
+            if (!is_string($sub) || $sub === '') {
+                throw new \RuntimeException('Unauthorized', 401);
+            }
         }
 
         $customerId = $this->prestashopRepository?->findUserIdFromSub($sub);
@@ -347,6 +367,17 @@ class CartController extends Controller {
                 'guestId' => null,
             ];
         } catch (\Throwable $e) {
+            $hasAuthenticatedPrincipal = (is_string($request->getAttribute('user_id')) && $request->getAttribute('user_id') !== '')
+                || $request->getHeaderLine('Authorization') !== '';
+            if ($hasAuthenticatedPrincipal) {
+                $status = (int) $e->getCode();
+                if ($status < 400 || $status > 599) {
+                    $status = 401;
+                }
+
+                return response(['error' => $e->getMessage()], $status);
+            }
+
             $guestId = $payload['id_guest'] ?? $payload['guestId'] ?? null;
             $isGuest = (bool) ($payload['isGuest'] ?? $payload['is_guest'] ?? false);
             if (($guestId === null || $guestId === '') && $isGuest === true && isset($payload['customerId'])) {

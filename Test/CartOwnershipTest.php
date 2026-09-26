@@ -37,6 +37,7 @@ final class CartOwnershipTest extends TestCase
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('');
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->getCart($request, $response, ['cartId' => 42]);
@@ -144,6 +145,7 @@ final class CartOwnershipTest extends TestCase
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('');
         $request->method('getQueryParams')->willReturn(['id_guest' => 'guest-42']);
         $response = $this->createMock(ResponseInterface::class);
 
