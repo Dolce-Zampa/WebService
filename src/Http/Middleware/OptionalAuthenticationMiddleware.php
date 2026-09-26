@@ -34,7 +34,7 @@ class OptionalAuthenticationMiddleware implements MiddlewareInterface
                 return $handler->handle($request);
             }
         } catch (\Throwable $e) {
-            Log::error('Optional authentication error: ' . $e->getMessage(), ['exception' => $e]);
+            Log::error('Optional authentication error while decoding access token', ['exception' => $e]);
         }
 
         return $this->unauthorized('Unauthorized: Invalid token');

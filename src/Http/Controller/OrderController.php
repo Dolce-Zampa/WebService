@@ -22,7 +22,7 @@ class OrderController extends CartController
 
     protected PaymentGatewayInterface $stripeService;
 
-    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, ?PrestashopRepository $prestashopRepository = null)
+    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, PrestashopRepository $prestashopRepository)
     {
         $this->cartService = $orderService;
         $this->prestashopRepository = $prestashopRepository;

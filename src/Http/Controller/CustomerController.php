@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Facades\AwsCognitoClient;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Repositories\CustomerRepository;
-use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\PS\Customer;
@@ -21,15 +21,12 @@ class CustomerController extends Controller
     private Customer $customerService;
     protected Mailer $mailer;
     private AuthService $authService;
-    /**
-     * @var CustomerRepository $prestashopRepository
-     */
-    private RepositoryInterface $prestashopRepository;
+    private PrestashopRepository $prestashopRepository;
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
     private MailjetService $mailjetService;
     private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
 
-    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer, MailjetService $mailjetService)
+    public function __construct(Customer $customerService, AuthService $authService, PrestashopRepository $prestashopRepository, Mailer $mailer, MailjetService $mailjetService)
     {
         $this->customerService = $customerService;
         $this->authService = $authService;

@@ -14,9 +14,9 @@ use PS\Webservice\Service\PS\Cart;
 
 class CartController extends Controller {
     protected Cart $cartService;
-    protected ?PrestashopRepository $prestashopRepository;
+    protected PrestashopRepository $prestashopRepository;
 
-    public function __construct(Cart $cartService, ?PrestashopRepository $prestashopRepository = null)
+    public function __construct(Cart $cartService, PrestashopRepository $prestashopRepository)
     {
         $this->cartService = $cartService;
         $this->prestashopRepository = $prestashopRepository;
@@ -318,7 +318,7 @@ class CartController extends Controller {
     {
         return $this->resolveAuthenticatedCustomerIdUsing(
             $request,
-            fn (string $sub): ?int => $this->prestashopRepository?->findUserIdFromSub($sub)
+            fn (string $sub): ?int => $this->prestashopRepository->findUserIdFromSub($sub)
         );
     }
 
