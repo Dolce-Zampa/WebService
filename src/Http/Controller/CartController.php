@@ -371,15 +371,6 @@ class CartController extends Controller {
                 'guestId' => null,
             ];
         } catch (\Throwable $e) {
-            if ((int) $e->getCode() === 403) {
-                $status = (int) $e->getCode();
-                if ($status < 400 || $status > 599) {
-                    $status = 401;
-                }
-
-                return response(['error' => $e->getMessage()], $status);
-            }
-
             $guestId = $payload['id_guest'] ?? $payload['guestId'] ?? null;
             $isGuest = (bool) ($payload['isGuest'] ?? $payload['is_guest'] ?? false);
             if (($guestId === null || $guestId === '') && $isGuest === true && isset($payload['customerId'])) {
@@ -391,6 +382,15 @@ class CartController extends Controller {
                     'customerId' => null,
                     'guestId' => $guestId,
                 ];
+            }
+
+            if ((int) $e->getCode() === 403) {
+                $status = (int) $e->getCode();
+                if ($status < 400 || $status > 599) {
+                    $status = 401;
+                }
+
+                return response(['error' => $e->getMessage()], $status);
             }
 
             foreach (['id_customer', 'customerId'] as $customerKey) {
