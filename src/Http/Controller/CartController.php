@@ -120,7 +120,6 @@ class CartController extends Controller {
         }
 
         $payload = $this->normalizeOwnerPayload($payload, $ownerContext);
-
         $cart = $this->cartService->newCart($payload);
 
         if($cart->failed()) {
@@ -379,5 +378,4 @@ class CartController extends Controller {
         $payload['isGuest'] = true;
         return $payload;
     }
-
 }

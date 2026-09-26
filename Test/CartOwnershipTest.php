@@ -183,7 +183,6 @@ final class CartOwnershipTest extends TestCase
         $this->assertSame(200, $result->getStatusCode());
     }
 
-
     public function test_validate_coupon_uses_authenticated_customer_and_cart_ownership(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
@@ -219,7 +218,6 @@ final class CartOwnershipTest extends TestCase
         $body = json_decode((string) $result->getBody(), true);
         $this->assertSame(['valid' => true], $body['data']);
     }
-
     public function test_validate_coupon_supports_guest_cart_ownership(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
