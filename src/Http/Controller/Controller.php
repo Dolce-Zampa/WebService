@@ -39,4 +39,25 @@ class Controller {
 
         return response(['error' => $e->getMessage()], $status);
     }
+
+    protected function resolveAuthenticatedCustomerIdFromRepository(Request $request, object $repository): int
+    {
+        if (!method_exists($repository, 'findUserIdFromSub')) {
+            throw new \RuntimeException('Forbidden', 403);
+        }
+
+        return $this->resolveAuthenticatedCustomerIdUsing(
+            $request,
+            fn (string $sub): ?int => $repository->findUserIdFromSub($sub)
+        );
+    }
+
+    protected function resolveAuthenticatedCustomerIdOrDenyFromRepository(Request $request, object $repository): int|Response
+    {
+        try {
+            return $this->resolveAuthenticatedCustomerIdFromRepository($request, $repository);
+        } catch (\Throwable $e) {
+            return $this->buildAuthorizationErrorResponse($e);
+        }
+    }
 }

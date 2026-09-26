@@ -145,7 +145,7 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
         }
@@ -165,7 +165,7 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
         }
@@ -186,7 +186,7 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
         }
@@ -212,7 +212,7 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
         }
@@ -268,22 +268,6 @@ class CustomerController extends Controller
         return true;
     }
 
-    private function resolveAuthenticatedCustomerId(Request $request): int
-    {
-        return $this->resolveAuthenticatedCustomerIdUsing(
-            $request,
-            fn (string $sub): ?int => $this->prestashopRepository->findUserIdFromSub($sub)
-        );
-    }
-
-    private function resolveAuthenticatedCustomerIdOrDeny(Request $request): int|Response
-    {
-        try {
-            return $this->resolveAuthenticatedCustomerId($request);
-        } catch (\Throwable $e) {
-            return $this->buildAuthorizationErrorResponse($e);
-        }
-    }
 
     protected function validateLoginPayload(array $payload): bool
     {

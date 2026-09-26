@@ -177,6 +177,33 @@ final class OrderSecurityTest extends TestCase
         $this->assertFalse($body['data']['success']);
     }
 
+    public function test_confirm_order_supports_guest_ownership_context(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderByCartId'])
+            ->getMock();
+
+        $orderService->expects($this->once())
+            ->method('getOrderByCartId')
+            ->with(42, null, 'guest-42')
+            ->willReturn(null);
+
+        $controller = $this->createOrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([
+            'id_cart' => 42,
+            'id_guest' => 'guest-42',
+        ]);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->confirmOrder($request, $response, []);
+
+        $this->assertSame(202, $result->getStatusCode());
+    }
+
     public function test_confirm_order_returns_500_when_order_state_is_missing(): void
     {
         $orderService = $this->getMockBuilder(Order::class)

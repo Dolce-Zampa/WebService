@@ -25,7 +25,7 @@ class CartController extends Controller {
     public function getCartList(Request $request, Response $response, array $argv): Response
     {
         $customerId = (int) ($argv['customerId'] ?? 0);
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
         }
@@ -322,28 +322,11 @@ class CartController extends Controller {
         return $payload;
     }
 
-    protected function resolveAuthenticatedCustomerId(Request $request): int
-    {
-        return $this->resolveAuthenticatedCustomerIdUsing(
-            $request,
-            fn (string $sub): ?int => $this->prestashopRepository->findUserIdFromSub($sub)
-        );
-    }
-
-    protected function resolveAuthenticatedCustomerIdOrDeny(Request $request): int|Response
-    {
-        try {
-            return $this->resolveAuthenticatedCustomerId($request);
-        } catch (\Throwable $e) {
-            return $this->buildAuthorizationErrorResponse($e);
-        }
-    }
-
     protected function resolveOwnerContext(Request $request, array $payload): array|Response
     {
         try {
             return [
-                'customerId' => $this->resolveAuthenticatedCustomerId($request),
+                'customerId' => $this->resolveAuthenticatedCustomerIdFromRepository($request, $this->prestashopRepository),
                 'guestId' => null,
             ];
         } catch (\Throwable $e) {
