@@ -34,10 +34,21 @@ class CachingMiddleware implements MiddlewareInterface
         $uri = $request->getUri()->getPath();
 
         $queryParams = http_build_query($request->getQueryParams());
-        $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
-        $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
+        $principalCacheKey = '';
+        $userId = $request->getAttribute('user_id');
+        if (is_string($userId) && $userId !== '') {
+            $principalCacheKey = ':user=' . $userId;
+        } else {
+            $authHeader = $request->getHeaderLine('Authorization');
+            if ($authHeader !== '') {
+                $principalCacheKey = ':auth=' . sha1($authHeader);
+            }
+        }
 
-        $this->tags(array_merge($this->tag,['api'], $tagEstract,));
+        $cacheKey = 'api_cache:' . $uri . '?' . $queryParams . $principalCacheKey;
+        $tagExtract = $this->extractTagsFromParams($request->getQueryParams());
+
+        $this->tags(array_merge($this->tag,['api'], $tagExtract,));
 
         //if param have no_cache=1 skip cache
         $skipCache = false;

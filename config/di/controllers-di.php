@@ -25,10 +25,17 @@ $container->set(\PS\Webservice\Http\Controller\CustomerController::class, functi
     return new \PS\Webservice\Http\Controller\CustomerController($customerService, $authService, $repository, $mailer, $mailjet);
 });
 
+$container->set(\PS\Webservice\Http\Controller\CartController::class, function ($c) {
+    $cartService = $c->get(\PS\Webservice\Service\PS\Cart::class);
+    $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
+    return new \PS\Webservice\Http\Controller\CartController($cartService, $repository);
+});
+
 $container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
-    return new \PS\Webservice\Http\Controller\OrderController($orderService,$payment);
+    $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
+    return new \PS\Webservice\Http\Controller\OrderController($orderService, $payment, $repository);
 });
 
 $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, function ($c) {
