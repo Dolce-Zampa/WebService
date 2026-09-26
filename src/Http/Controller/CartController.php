@@ -322,7 +322,8 @@ class CartController extends Controller {
                 'guestId' => null,
             ];
         } catch (\Throwable $e) {
-            if (is_string($request->getAttribute('user_id')) && $request->getAttribute('user_id') !== '') {
+            $userId = $request->getAttribute('user_id');
+            if (is_string($userId) && $userId !== '') {
                 return $this->buildAuthorizationErrorResponse($e);
             }
 
