@@ -24,7 +24,8 @@ class OrderController extends CartController
 
     public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, ?PrestashopRepository $prestashopRepository = null)
     {
-        parent::__construct($orderService, $prestashopRepository);
+        $this->cartService = $orderService;
+        $this->prestashopRepository = $prestashopRepository;
         $this->stripeService = $stripeService;
         $this->orderService = $orderService;
     }

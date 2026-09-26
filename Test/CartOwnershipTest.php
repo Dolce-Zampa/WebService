@@ -88,6 +88,35 @@ final class CartOwnershipTest extends TestCase
         $this->assertSame(403, $result->getStatusCode());
     }
 
+    public function test_get_cart_list_uses_authenticated_customer_when_path_matches(): void
+    {
+        $cartService = $this->getMockBuilder(Cart::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartListFromUserId'])
+            ->getMock();
+
+        $stubCartService = $this->getMockBuilder(Cart::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $cartEntity = CartEntity::create(['id' => 42, 'products' => []], $stubCartService);
+
+        $cartService->expects($this->once())
+            ->method('getCartListFromUserId')
+            ->with('5')
+            ->willReturn($cartEntity);
+
+        $controller = new CartController($cartService, $this->createRepositoryMock(5));
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->getCartList($request, $response, ['customerId' => 5]);
+
+        $this->assertSame(200, $result->getStatusCode());
+    }
+
     public function test_get_cart_returns_200_for_verified_owner(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
