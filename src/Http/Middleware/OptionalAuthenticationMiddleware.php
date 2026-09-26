@@ -19,12 +19,12 @@ class OptionalAuthenticationMiddleware implements MiddlewareInterface
         }
 
         if (strpos($authHeader, 'Bearer ') !== 0) {
-            return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Invalid token']));
+            return response(['error' => 'Unauthorized: Invalid token'], 401);
         }
 
         $authToken = substr($authHeader, 7);
         if ($authToken === '') {
-            return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Empty token']));
+            return response(['error' => 'Unauthorized: Empty token'], 401);
         }
 
         try {
@@ -37,6 +37,6 @@ class OptionalAuthenticationMiddleware implements MiddlewareInterface
             Log::error('Optional authentication error: ' . $e->getMessage(), ['exception' => $e]);
         }
 
-        return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Invalid token']));
+        return response(['error' => 'Unauthorized: Invalid token'], 401);
     }
 }

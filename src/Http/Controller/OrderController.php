@@ -135,7 +135,15 @@ class OrderController extends CartController
 
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
-        $payload = $this->requireArrayPayload($request->getParsedBody());
+        $payload = $request->getParsedBody();
+        if (!is_array($payload)) {
+            return response([
+                'success' => false,
+                'status' => 'invalid_payload',
+                'error' => 'Invalid payload format'
+            ], 400);
+        }
+
         $ownerContext = $this->resolveOwnerContext($request, $payload);
         if ($ownerContext instanceof Response) {
             return $ownerContext;

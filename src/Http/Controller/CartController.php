@@ -83,10 +83,14 @@ class CartController extends Controller {
             unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
         }
 
+        $ownerId = $ownerContext['guestId'] !== null
+            ? $ownerContext['guestId']
+            : $ownerContext['customerId'];
+
         $cart = $this->cartService->updateCart(
             $payload,
             $cartId,
-            $ownerContext['customerId'] ?? $ownerContext['guestId'],
+            $ownerId,
             $ownerContext['guestId'] !== null,
             $operation
         );
