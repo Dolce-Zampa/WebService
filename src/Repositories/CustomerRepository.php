@@ -28,13 +28,18 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                 ->where('id_customer', $existingCustomer->id_customer)
                 ->update([
                     'sub' => $customer->sub,
-                    'passwd' => $customer->password,
+                    'passwd' => sha1($customer->password),
                     'birthday' => $customer->birthday,
                     'firstname' => $customer->firstname,
                     'lastname' => $customer->lastname,
                     'newsletter' => $customer->newsletter,
                     'date_upd' => Carbon::now(),
                     'uuid' => $customer->uuid,
+                    'active' => 1,
+                    'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
+                    'newsletter_date_add' => $customer->newsletter_date_add ?? null,
+                    'max_payment_days' => 0,
+                    'secure_key' => sha1($customer->email)
                 ]);
         } else if($existingCustomer) { //se esiste ritorna errore
             throw new RuntimeException("Customer with email already exists.");
@@ -44,7 +49,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                 ->insert([
                     'sub' => $customer->sub,
                     'email' => $customer->email,
-                    'passwd' => $customer->password,
+                    'passwd' => sha1($customer->password),
                     'uuid' => $customer->uuid,
                     'birthday' => $customer->birthday,
                     'firstname' => $customer->firstname,
@@ -53,6 +58,11 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'id_gender' => $customer->id_gender,
                     'date_add' => Carbon::now(),
                     'date_upd' => Carbon::now(),
+                    'active' => 1,
+                    'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
+                    'newsletter_date_add' => $customer->newsletter_date_add ?? null,
+                    'max_payment_days' => 0,
+                    'secure_key' => sha1($customer->email)
                 ]);
         }
 
