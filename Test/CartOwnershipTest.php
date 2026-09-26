@@ -179,7 +179,7 @@ final class CartOwnershipTest extends TestCase
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getAttribute')->with('user_id')->willReturn(null);
-        $request->method('getHeaderLine')->with('Authorization')->willReturn('Basic stale-token');
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('Bearer ');
         $request->method('getQueryParams')->willReturn(['id_guest' => 'guest-42']);
         $response = $this->createMock(ResponseInterface::class);
 

@@ -377,10 +377,7 @@ class CartController extends Controller {
                 $guestId = $payload['customerId'];
             }
 
-            $hasAuthenticatedPrincipal = (is_string($request->getAttribute('user_id')) && $request->getAttribute('user_id') !== '')
-                || strpos($request->getHeaderLine('Authorization'), 'Bearer ') === 0;
-
-            if ($guestId !== null && $guestId !== '' && !$hasAuthenticatedPrincipal) {
+            if ($guestId !== null && $guestId !== '') {
                 return [
                     'customerId' => null,
                     'guestId' => $guestId,

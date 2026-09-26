@@ -291,6 +291,35 @@ final class OrderSecurityTest extends TestCase
         $this->assertSame(404, $result->getStatusCode());
     }
 
+    public function test_create_order_still_supports_guest_ownership_with_invalid_bearer_token(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId'])
+            ->getMock();
+
+        $orderService->expects($this->once())
+            ->method('getCartFromId')
+            ->with(10, null, 'guest-7')
+            ->willReturn(null);
+
+        $controller = $this->createOrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([
+            'id_cart' => 10,
+            'id_guest' => 'guest-7',
+            'id_carrier' => 2,
+        ]);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('Bearer ');
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->createOrder($request, $response, []);
+
+        $this->assertSame(404, $result->getStatusCode());
+    }
+
     // -------------------------------------------------------- server-side prices
 
     public function test_create_order_uses_server_side_product_prices(): void
