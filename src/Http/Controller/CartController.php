@@ -320,7 +320,11 @@ class CartController extends Controller {
                 throw new \RuntimeException('Unauthorized', 401);
             }
 
-            $authToken = str_replace('Bearer ', '', $authHeader);
+            if (strpos($authHeader, 'Bearer ') !== 0) {
+                throw new \RuntimeException('Unauthorized', 401);
+            }
+
+            $authToken = substr($authHeader, 7);
             if ($authToken === '') {
                 throw new \RuntimeException('Unauthorized', 401);
             }
@@ -367,9 +371,7 @@ class CartController extends Controller {
                 'guestId' => null,
             ];
         } catch (\Throwable $e) {
-            $hasAuthenticatedPrincipal = (is_string($request->getAttribute('user_id')) && $request->getAttribute('user_id') !== '')
-                || $request->getHeaderLine('Authorization') !== '';
-            if ($hasAuthenticatedPrincipal) {
+            if ((int) $e->getCode() === 403) {
                 $status = (int) $e->getCode();
                 if ($status < 400 || $status > 599) {
                     $status = 401;

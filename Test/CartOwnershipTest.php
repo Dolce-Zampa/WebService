@@ -154,6 +154,40 @@ final class CartOwnershipTest extends TestCase
         $this->assertSame(200, $result->getStatusCode());
     }
 
+    public function test_get_cart_allows_guest_ownership_even_with_stale_auth_header(): void
+    {
+        $cartService = $this->getMockBuilder(Cart::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId'])
+            ->getMock();
+
+        $stubCartService = $this->getMockBuilder(Cart::class)
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $cartEntity = CartEntity::create(
+            ['id' => 42, 'products' => []],
+            $stubCartService
+        );
+
+        $cartService->expects($this->once())
+            ->method('getCartFromId')
+            ->with(42, null, 'guest-42')
+            ->willReturn($cartEntity);
+
+        $controller = new CartController($cartService, $this->createRepositoryMock());
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('Basic stale-token');
+        $request->method('getQueryParams')->willReturn(['id_guest' => 'guest-42']);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->getCart($request, $response, ['cartId' => 42]);
+
+        $this->assertSame(200, $result->getStatusCode());
+    }
+
     public function test_validate_coupon_uses_authenticated_customer_and_cart_ownership(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
