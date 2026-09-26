@@ -270,9 +270,14 @@ class SellerController
     public function sellerProucts(Request $request, mixed $response = null, array $args = []): ResponseInterface
     {
         try {
+            $manufacturer = $this->resolveAuthenticatedManufacturer($request);
             $sellerId = $this->resolveManufacturerIdBySellerIdentifier($args['sellerid'] ?? null);
             if ($sellerId === null) {
                 return response(['success' => false, 'message' => 'Seller ID is required'], 400);
+            }
+
+            if ((int) $manufacturer->id_manufacturer !== $sellerId) {
+                return response(['success' => false, 'message' => 'Forbidden'], 403);
             }
 
             $productList = $this->prestashopRepository->getProductAddToCart($sellerId);

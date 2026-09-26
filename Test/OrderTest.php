@@ -10,6 +10,7 @@ use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Http\Controller\StripeWebhookController;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\PS\Product;
 
 final class OrderTest extends TestCase
@@ -62,6 +63,7 @@ final class OrderTest extends TestCase
 
         $requestMock = $this->createMock(\Psr\Http\Message\ServerRequestInterface::class);
         $responseMock = $this->createMock(\Psr\Http\Message\ResponseInterface::class);
+        $requestMock->method('getAttribute')->with('user_id')->willReturn('customer-sub');
         $requestMock->method('getParsedBody')->willReturn([
             'id' => 1,
             'id_cart' => 1,
@@ -175,7 +177,15 @@ final class OrderTest extends TestCase
 
         });
 
-        $controller = new \PS\Webservice\Http\Controller\OrderController($orderServiceMock, $paymentServiceMock);
+        $repository = $this->getMockBuilder(PrestashopRepository::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findUserIdFromSub'])
+            ->getMock();
+        $repository->method('findUserIdFromSub')
+            ->with('customer-sub')
+            ->willReturn(456);
+
+        $controller = new \PS\Webservice\Http\Controller\OrderController($orderServiceMock, $paymentServiceMock, $repository);
         $response = $controller->createOrder($requestMock, $responseMock, []);
         $body = json_decode((string) $response->getBody(), true);
 

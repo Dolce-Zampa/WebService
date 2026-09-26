@@ -7,22 +7,34 @@ use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Facades\JsonDataStorage;
+use PS\Webservice\Repositories\PrestashopRepository;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PS\Webservice\Service\PS\Cart;
 
 class CartController extends Controller {
     protected Cart $cartService;
+    protected ?PrestashopRepository $prestashopRepository;
 
-    public function __construct(Cart $cartService)
+    public function __construct(Cart $cartService, ?PrestashopRepository $prestashopRepository = null)
     {
         $this->cartService = $cartService;
+        $this->prestashopRepository = $prestashopRepository;
     }
 
     public function getCartList(Request $request, Response $response, array $argv): Response
     {
-        $customerId = $argv['customerId'];
-        $cartList = $this->cartService->getCartListFromUserId($customerId);
+        $customerId = (int) ($argv['customerId'] ?? 0);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
+        }
+
+        if ($authenticatedCustomerId !== $customerId) {
+            return response(['error' => 'Forbidden'], 403);
+        }
+
+        $cartList = $this->cartService->getCartListFromUserId((string) $authenticatedCustomerId);
         
         if(is_null($cartList)) {
             return response([], 404);
@@ -35,15 +47,12 @@ class CartController extends Controller {
     public function getCart(Request $request, Response $response, array $argv): Response
     {
         $cartId = (int) $argv['cartId'];
-        $queryParams = $request->getQueryParams();
-        $customerId = (int) isset($queryParams['id_customer']) ? $queryParams['id_customer'] : null;
-        $guestId =(int) isset($queryParams['id_guest']) ? $queryParams['id_guest'] : null;
-
-        if ($customerId === null && $guestId === null) {
-            return response(['error' => 'Customer ID or guest ID is required to access cart'], 403);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
         }
 
-        $cart = $this->cartService->getCartFromId($cartId, $customerId, $guestId);
+        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
         if(is_null($cart)) {
             return response([], 404);
         }
@@ -54,18 +63,23 @@ class CartController extends Controller {
 
     public function updateCart(Request $request, Response $response, array $argv): Response
     {
-        $payload = $request->getParsedBody();
+        $payload = $this->requireArrayPayload($request->getParsedBody());
         $cartId = $argv['cartId'];
-        $isGuest = (bool) $payload['isGuest'] ?? false;
-        $customerId = $payload['customerId'];
-        $operation = isset( $payload['op']) ? (string) $payload['op'] : 'up';
-
-        if (!is_array($payload)) {
-            throw new \InvalidArgumentException('Invalid payload format', 400);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
         }
 
-        //find customerId from cookie session
-        $cart = $this->cartService->updateCart($payload, $cartId, $customerId, $isGuest, $operation);
+        $operation = isset( $payload['op']) ? (string) $payload['op'] : 'up';
+
+        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
+        if (is_null($cart)) {
+            return response([], 404);
+        }
+
+        $payload['customerId'] = $authenticatedCustomerId;
+        $payload['id_customer'] = $authenticatedCustomerId;
+        $cart = $this->cartService->updateCart($payload, $cartId, $authenticatedCustomerId, false, $operation);
         
         if($cart->failed()) {
             return response([
@@ -79,13 +93,15 @@ class CartController extends Controller {
 
     public function createCart(Request $request, Response $response, array $argv): Response
     {
-        $payload = $request->getParsedBody();
-
-        if (!is_array($payload)) {
-            throw new \InvalidArgumentException('Invalid payload format', 400);
+        $payload = $this->requireArrayPayload($request->getParsedBody());
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
         }
 
-        //find customerId from cookie session
+        $payload['customerId'] = $authenticatedCustomerId;
+        $payload['id_customer'] = $authenticatedCustomerId;
+        unset($payload['id_guest'], $payload['guestId'], $payload['isGuest']);
         $cart = $this->cartService->newCart($payload);
 
         if($cart->failed()) {
@@ -101,18 +117,17 @@ class CartController extends Controller {
     public function deleteCart(Request $request, Response $response, array $argv): Response
     {
         $cartId = $argv['cartId'];
-        $cartId = $argv['cartId'];
-        $params = $request->getParsedBody();
-        $payload = $request->getParsedBody();
-        $isGuest = (bool) $params['isGuest'] ?? false;
-        $customerId = empty($isGuest) ? $payload['customerId'] : null;
-        $guestId = $isGuest == true ? $payload['customerId'] : null;
-
-        if ($customerId === null && $guestId === null) {
-            return response(['error' => 'Customer ID or guest ID is required to delete cart'], 403);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
         }
 
-        $result = $this->cartService->deleteCart($cartId, $customerId, $guestId);
+        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
+        if (is_null($cart)) {
+            return response([], 404);
+        }
+
+        $result = $this->cartService->deleteCart($cartId, $authenticatedCustomerId, null);
         
         if($result->failed()) {
             return response([
@@ -145,15 +160,17 @@ class CartController extends Controller {
     {
         $code = (string) ($argv['code'] ?? '');
         $cartId = (string) ($argv['cartId'] ?? '');
-        $params = $request->getParsedBody();
-        $customerId = isset($params['customer_id']) ? (string) $params['customer_id'] : null;
-        $guestId = isset($params['guest_id']) ? (string) $params['guest_id'] : null;
-
-        if ($customerId === null && $guestId === null) {
-            return response(['error' => 'Either customer_id or guest_id must be provided as a query parameter'], 400);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
         }
 
-        $isValid = $this->cartService->validateCoupon($code, $cartId, $customerId, $guestId);
+        $cart = $this->cartService->getCartFromId($cartId, $authenticatedCustomerId, null);
+        if (is_null($cart)) {
+            return response([], 404);
+        }
+
+        $isValid = $this->cartService->validateCoupon($code, $cartId, (string) $authenticatedCustomerId, null);
         return response($isValid);
     }
 
@@ -260,6 +277,44 @@ class CartController extends Controller {
 
         return response(['products' => $productList->toArray()]);
 
+    }
+
+    protected function requireArrayPayload(mixed $payload): array
+    {
+        if (!is_array($payload)) {
+            throw new \InvalidArgumentException('Invalid payload format', 400);
+        }
+
+        return $payload;
+    }
+
+    protected function resolveAuthenticatedCustomerId(Request $request): int
+    {
+        $sub = $request->getAttribute('user_id');
+        if (!is_string($sub) || $sub === '') {
+            throw new \RuntimeException('Unauthorized', 401);
+        }
+
+        $customerId = $this->prestashopRepository?->findUserIdFromSub($sub);
+        if (!is_int($customerId) || $customerId <= 0) {
+            throw new \RuntimeException('Forbidden', 403);
+        }
+
+        return $customerId;
+    }
+
+    protected function resolveAuthenticatedCustomerIdOrDeny(Request $request): int|Response
+    {
+        try {
+            return $this->resolveAuthenticatedCustomerId($request);
+        } catch (\Throwable $e) {
+            $status = (int) $e->getCode();
+            if ($status < 400 || $status > 599) {
+                $status = 401;
+            }
+
+            return response(['error' => $e->getMessage()], $status);
+        }
     }
 
 }

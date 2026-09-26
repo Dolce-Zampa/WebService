@@ -12,15 +12,15 @@ $app->get('/api/health', PS\Webservice\Http\Controller\PrestashopController::cla
 
 /** Carts api */
 $app->get('/api/cart/product/upselling', PS\Webservice\Http\Controller\CartController::class . ':upsellingCart')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('upselling-cart'));
-$app->get('/api/cart/list/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':cartList');
-$app->get('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':getCart');
-$app->post('/api/cart', PS\Webservice\Http\Controller\CartController::class . ':createCart');
-$app->post('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':updateCart');
-$app->delete('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':deleteCart');
+$app->get('/api/cart/list/{customerId}', PS\Webservice\Http\Controller\CartController::class . ':getCartList')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+$app->get('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':getCart')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+$app->post('/api/cart', PS\Webservice\Http\Controller\CartController::class . ':createCart')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+$app->post('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':updateCart')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+$app->delete('/api/cart/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':deleteCart')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 $app->get('/api/cart-rules', PS\Webservice\Http\Controller\CartController::class . ':getCartRules');
 $app->get('/api/cart-rules/coupon/featured', PS\Webservice\Http\Controller\CartController::class . ':getFeaturedCoupons');
 $app->get('/api/cart-rules/coupon/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');
-$app->post('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':validateCoupon');
+$app->post('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':validateCoupon')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
 /** Password reset */
 $app->group('/api', function () use ($app) {
@@ -58,10 +58,10 @@ $app->group('/api', function () use ($app) {
     $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
     /** Order api */
-    $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder');
-    $app->get('/api/order/history/{customerId}', PS\Webservice\Http\Controller\OrderController::class . ':orderHistory');
-    $app->post('/api/order', PS\Webservice\Http\Controller\OrderController::class . ':createOrder');
-    $app->post('/api/order/confirm', PS\Webservice\Http\Controller\OrderController::class . ':confirmOrder');
+    $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->get('/api/order/history/{customerId}', PS\Webservice\Http\Controller\OrderController::class . ':orderHistory')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->post('/api/order', PS\Webservice\Http\Controller\OrderController::class . ':createOrder')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->post('/api/order/confirm', PS\Webservice\Http\Controller\OrderController::class . ':confirmOrder')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
     /** Carriers api */
     $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));

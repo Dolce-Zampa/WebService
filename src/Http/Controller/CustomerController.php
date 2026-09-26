@@ -148,14 +148,16 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $serviceResponse = $this->customerService->getAccount($customerId);
-        try {
-            $getAccountFromCognito = $this->authService->check($request);
-        } catch (\Throwable $e) {
-            Log::error('Customer Cognito check failed: ' . $e->getMessage());
-            return response(['message' => 'Unable to retrieve customer account'], 401);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
         }
 
+        if ($authenticatedCustomerId !== $customerId) {
+            return response(['error' => 'Forbidden'], 403);
+        }
+
+        $serviceResponse = $this->customerService->getAccount($customerId);
         return $this->buildServiceResponse($serviceResponse);
     }
 
@@ -164,6 +166,15 @@ class CustomerController extends Controller
         $customerId = (int) ($argv['customerId'] ?? 0);
         if ($customerId <= 0) {
             throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
+        }
+
+        if ($authenticatedCustomerId !== $customerId) {
+            return response(['error' => 'Forbidden'], 403);
         }
 
         $payload = $this->requireArrayPayload($request->getParsedBody());
@@ -176,6 +187,15 @@ class CustomerController extends Controller
         $customerId = (int) ($argv['customerId'] ?? 0);
         if ($customerId <= 0) {
             throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
+        }
+
+        if ($authenticatedCustomerId !== $customerId) {
+            return response(['error' => 'Forbidden'], 403);
         }
 
         $serviceResponse = $this->customerService->getAddresses($customerId);
@@ -193,6 +213,15 @@ class CustomerController extends Controller
         $customerId = (int) ($argv['customerId'] ?? 0);
         if ($customerId <= 0) {
             throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
+        }
+
+        if ($authenticatedCustomerId !== $customerId) {
+            return response(['error' => 'Forbidden'], 403);
         }
 
         $payload = $this->requireArrayPayload($request->getParsedBody());
@@ -240,6 +269,35 @@ class CustomerController extends Controller
         $this->validateDeliveryAddress($customer['delivery_address']);
 
         return true;
+    }
+
+    private function resolveAuthenticatedCustomerId(Request $request): int
+    {
+        $sub = $request->getAttribute('user_id');
+        if (!is_string($sub) || $sub === '') {
+            throw new \RuntimeException('Unauthorized', 401);
+        }
+
+        $customerId = $this->prestashopRepository->findUserIdFromSub($sub);
+        if (!is_int($customerId) || $customerId <= 0) {
+            throw new \RuntimeException('Forbidden', 403);
+        }
+
+        return $customerId;
+    }
+
+    private function resolveAuthenticatedCustomerIdOrDeny(Request $request): int|Response
+    {
+        try {
+            return $this->resolveAuthenticatedCustomerId($request);
+        } catch (\Throwable $e) {
+            $status = (int) $e->getCode();
+            if ($status < 400 || $status > 599) {
+                $status = 401;
+            }
+
+            return response(['error' => $e->getMessage()], $status);
+        }
     }
 
     protected function validateLoginPayload(array $payload): bool
