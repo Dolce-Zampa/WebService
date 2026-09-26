@@ -19,12 +19,12 @@ class OptionalAuthenticationMiddleware implements MiddlewareInterface
         }
 
         if (strpos($authHeader, 'Bearer ') !== 0) {
-            return response(['error' => 'Unauthorized: Invalid token'], 401);
+            return $this->unauthorized('Unauthorized: Invalid token');
         }
 
         $authToken = substr($authHeader, 7);
         if ($authToken === '') {
-            return response(['error' => 'Unauthorized: Empty token'], 401);
+            return $this->unauthorized('Unauthorized: Empty token');
         }
 
         try {
@@ -37,6 +37,13 @@ class OptionalAuthenticationMiddleware implements MiddlewareInterface
             Log::error('Optional authentication error: ' . $e->getMessage(), ['exception' => $e]);
         }
 
-        return response(['error' => 'Unauthorized: Invalid token'], 401);
+        return $this->unauthorized('Unauthorized: Invalid token');
+    }
+
+    private function unauthorized(string $message): ResponseInterface
+    {
+        $response = new \Slim\Psr7\Response(401);
+        $response->getBody()->write(json_encode(['error' => $message]));
+        return $response->withHeader('Content-Type', 'application/json');
     }
 }

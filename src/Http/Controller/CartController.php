@@ -316,17 +316,10 @@ class CartController extends Controller {
 
     protected function resolveAuthenticatedCustomerId(Request $request): int
     {
-        $sub = $request->getAttribute('user_id');
-        if (!is_string($sub) || $sub === '') {
-            throw new \RuntimeException('Unauthorized', 401);
-        }
-
-        $customerId = $this->prestashopRepository?->findUserIdFromSub($sub);
-        if (!is_int($customerId) || $customerId <= 0) {
-            throw new \RuntimeException('Forbidden', 403);
-        }
-
-        return $customerId;
+        return $this->resolveAuthenticatedCustomerIdUsing(
+            $request,
+            fn (string $sub): ?int => $this->prestashopRepository?->findUserIdFromSub($sub)
+        );
     }
 
     protected function resolveAuthenticatedCustomerIdOrDeny(Request $request): int|Response
@@ -334,12 +327,7 @@ class CartController extends Controller {
         try {
             return $this->resolveAuthenticatedCustomerId($request);
         } catch (\Throwable $e) {
-            $status = (int) $e->getCode();
-            if ($status < 400 || $status > 599) {
-                $status = 401;
-            }
-
-            return response(['error' => $e->getMessage()], $status);
+            return $this->buildAuthorizationErrorResponse($e);
         }
     }
 
@@ -352,12 +340,7 @@ class CartController extends Controller {
             ];
         } catch (\Throwable $e) {
             if (is_string($request->getAttribute('user_id')) && $request->getAttribute('user_id') !== '') {
-                $status = (int) $e->getCode();
-                if ($status < 400 || $status > 599) {
-                    $status = 401;
-                }
-
-                return response(['error' => $e->getMessage()], $status);
+                return $this->buildAuthorizationErrorResponse($e);
             }
 
             $guestId = $payload['id_guest'] ?? $payload['guestId'] ?? null;

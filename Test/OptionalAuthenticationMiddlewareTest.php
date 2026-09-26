@@ -55,4 +55,37 @@ final class OptionalAuthenticationMiddlewareTest extends TestCase
 
         $this->assertSame(401, $response->getStatusCode());
     }
+
+    public function test_adds_user_id_for_valid_bearer_token(): void
+    {
+        \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+        \Illuminate\Support\Facades\Facade::setFacadeApplication([
+            'aws-cognito-client' => new class {
+                public function decodeAccessToken(string $accessToken): array
+                {
+                    return ['sub' => 'customer-sub'];
+                }
+            },
+        ]);
+
+        $middleware = new OptionalAuthenticationMiddleware();
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('Bearer' . ' valid-token');
+
+        $requestWithUser = $this->createMock(ServerRequestInterface::class);
+        $request->expects($this->once())
+            ->method('withAttribute')
+            ->with('user_id', 'customer-sub')
+            ->willReturn($requestWithUser);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->once())
+            ->method('handle')
+            ->with($requestWithUser)
+            ->willReturn($response);
+
+        $this->assertSame($response, $middleware->process($request, $handler));
+    }
 }
