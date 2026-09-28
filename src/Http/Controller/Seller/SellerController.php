@@ -259,6 +259,14 @@ class SellerController
             Log::critical('Stripe SellerController: failed to create new contact in Mailjet for email ' . $entity->email . ': ' . $e->getMessage());
         }
 
+        // confirm cognito password
+        try {
+            $this->cognitoService->confirmPassword($signup['username'], $bodyParams['password']);
+        } catch (\Throwable $e) {
+            Log::error("Failed to confirm Cognito password: " . $e->getMessage());
+            return response(['error' => 'Failed to confirm Cognito password'], 500);
+        }
+
         return response(
             [
             ]

@@ -94,6 +94,11 @@ class SignUpService extends UserService
             return false;
         }
 
+        AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
+        if (is_string($data->get('password')) && trim((string) $data->get('password')) !== '') {
+            AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
+        }
+
         $this->updateUserSellerAttributes($data);
 
         if (!is_string($sub) || $sub === '') {
@@ -110,11 +115,6 @@ class SignUpService extends UserService
 
     public function updateUserSellerAttributes(ObjectInterface $data): void
     {
-        AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
-        if (is_string($data->get('password')) && trim((string) $data->get('password')) !== '') {
-            AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
-        }
-
         AwsCognitoClient::updateUserAttributes($data->get('email'), [
             'custom:seller' => (int) ($data->get('is_seller')),
             'custom:is_premium' => (int) ($data->get('premium', 0)),
