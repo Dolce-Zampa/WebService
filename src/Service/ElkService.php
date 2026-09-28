@@ -19,6 +19,8 @@ class ElkService
     public function inxedProduct(int $productId)
     {
         // Implementation for indexing a single product in ElasticSearch
+        $product = ProductEntity::createFromId($productId, $this->productService);
+        return $this->buildProductDocument($product);
     }
 
     public function bulkIndexProducts(array $productIds)
@@ -26,10 +28,9 @@ class ElkService
         // Implementation for indexing multiple products in ElasticSearch
     }
 
-    protected function buildProductDocument(int $productId): array
+    protected function buildProductDocument(ProductEntity $product): array
     {
         // Implementation for building the product document to be indexed in ElasticSearch
-        $product = ProductEntity::createFromId($productId, $this->productService);
         $p = $product->toArray();
         // --- Categorie ---
         $categories = [];
