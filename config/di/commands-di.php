@@ -10,3 +10,9 @@ $container->set(\PS\Webservice\Commands\SendReviewRequestMailCommand::class, fun
         $c->get(\PS\Webservice\Service\RedisQueue::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class, function ($c) {
+    return new \PS\Webservice\Commands\ElasticSearch\CreateIndexElk(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
+    );
+});

@@ -16,6 +16,13 @@ $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
     return new \PS\Webservice\Service\HttpService($webserviceConfig);
 });
 
+$container->set(\Elastic\Elasticsearch\ClientBuilder::class, function ($c) {
+    $client = Elastic\Elasticsearch\ClientBuilder::create()
+        ->setHosts(['http://tuo-ip:9200']) // Indirizzo del server ES
+        ->build();
+    return $client;
+}); 
+
 
 $container->set(\PS\Webservice\Service\PS\Product::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
