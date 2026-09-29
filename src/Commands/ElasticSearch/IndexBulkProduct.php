@@ -2,7 +2,8 @@
 
 namespace PS\Webservice\Commands\ElasticSearch;
 
-use Elastic\Elasticsearch\ClientBuilder;
+use Elastic\Elasticsearch\Client;
+use PS\Webservice\Service\ElkService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -18,11 +19,13 @@ class IndexBulkProduct extends Command
     protected static $defaultName = 'elk:index-bulk';
     protected static $defaultDescription = 'Index multiple products on elastic search';
 
-    private ClientBuilder $client;
+    private Client $client;
+    private ElkService $elkService;
 
-    public function __construct(ClientBuilder $clientBuilder)
+    public function __construct(Client $clientBuilder, ElkService $elkService)
     {
         $this->client = $clientBuilder;
+        $this->elkService = $elkService;
         parent::__construct();
     }
 
@@ -35,6 +38,15 @@ class IndexBulkProduct extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $productIds = array_map('intval', explode(',', $input->getArgument('product_ids') ?? ''));
+        if(count($productIds) >= 1) {
+            $this->elkService->bulkIndexProducts($productIds);
+        }
+
+        $categoryId = (int) $input->getArgument('category_id');
+        if($categoryId > 0) {
+            $this->elkService->bulkIndexCategory($categoryId);
+        }
         return Command::SUCCESS;
     }
 }

@@ -1,37 +1,58 @@
 <?php
 namespace PS\Webservice\Service;
 
-use Elastic\Elasticsearch\ClientBuilder;
+use Elastic\Elasticsearch\Client;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Service\PS\Product;
 
 class ElkService
 {
-    protected ClientBuilder $client;
+    protected Client $client;
     protected Product $productService;
 
-    public function __construct(ClientBuilder $clientBuilder, Product $productService)
+    public const INDEX_PRODUCTS = 'dolcezampa_products';
+
+    public function __construct(Client $clientBuilder, Product $productService)
     {
         $this->client = $clientBuilder;
         $this->productService = $productService;
     }
 
-    public function inxedProduct(int $productId)
+    public function inxedProduct(int $productId): void
     {
         // Implementation for indexing a single product in ElasticSearch
         $product = ProductEntity::createFromId($productId, $this->productService);
-        return $this->buildProductDocument($product);
+        $document = $this->buildProductDocument($product);
+        $this->client->index([
+            'index' => self::INDEX_PRODUCTS,
+            'id' => $productId,
+            'body' => $document
+        ]);
     }
 
-    public function bulkIndexProducts(array $productIds)
+    public function bulkIndexProducts(array $productIds): void
     {
-        // Implementation for indexing multiple products in ElasticSearch
+        $documents = [];
+        foreach ($productIds as $productId) {
+            $product = ProductEntity::createFromId($productId, $this->productService);
+            $documents[] = $this->buildProductDocument($product);
+        }
+        $this->client->bulk([
+            'index' => self::INDEX_PRODUCTS,
+            'body' => array_map(fn($doc) => ['index' => ['_id' => $doc['id'] ?? null]] + ['data' => $doc], $documents)
+        ]);
+
+    }
+
+    public function bulkIndexCategory(int $categoryId): void
+    {
+        // to develop
     }
 
     protected function buildProductDocument(ProductEntity $product): array
     {
         // Implementation for building the product document to be indexed in ElasticSearch
-        $p = $product->toArray();
+        $p = $product->withFeatures()->toArray();
         // --- Categorie ---
         $categories = [];
         foreach ($p['associations']['categories'] ?? [] as $cat) {
@@ -106,4 +127,30 @@ class ElkService
             'rating_count' => $ratingCount,
         ];
     }
+
+    public function searchProductsByName(string $query): array
+    {
+        $params = [
+            'index' => ElkService::INDEX_PRODUCTS,
+            'body' => [
+                'query' => [
+                    'match' => [
+                        'name' => [
+                            'query' => $query,
+                            'analyzer' => 'italian_custom'  // usa il tuo analyzer custom
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        $response = $this->client->search($params);
+
+        // Estrai solo i documenti (i "source")
+        return array_map(
+            fn($hit) => $hit['_source'],
+            $response['hits']['hits']
+        );
+    }
 }
+

@@ -8,4 +8,7 @@
 return [
     \PS\Webservice\Commands\GenerateSitemap::class,
     \PS\Webservice\Commands\SendReviewRequestMailCommand::class,
+    \PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class,
+    \PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class,
+    \PS\Webservice\Commands\ElasticSearch\IndexProduct::class,
 ];

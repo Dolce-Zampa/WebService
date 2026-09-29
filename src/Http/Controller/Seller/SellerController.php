@@ -222,6 +222,7 @@ class SellerController
                     'phone_number' => $data['phone_number'] ?? null,
                     'premium' => (bool) $data['premium'] ?? false,
                     'iban' => $data['iban'] ?? null,
+                    'shop_name' => $data['shop_name'] ?? null,
                     'alias' => 'default',
                 ],
                 $this->prestashopService

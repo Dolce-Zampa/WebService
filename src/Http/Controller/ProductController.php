@@ -11,6 +11,7 @@ use PS\Webservice\Domain\Models\PS\Products\ProductReviews;
 use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Facades\S3Service;
 use PS\Webservice\Http\Controller\Controller;
+use PS\Webservice\Service\ElkService;
 use PS\Webservice\Service\PS\Product as ProductService;
 use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Traits\PaginationTrait;
@@ -23,11 +24,13 @@ class ProductController extends Controller
 
     private ProductService $productService;
     private PromotionService $promotionService;
+    private ElkService $elkService;
 
-    public function __construct(ProductService $productService, PromotionService $promotionService)
+    public function __construct(ProductService $productService, PromotionService $promotionService, ElkService $elkService)
     {
         $this->productService = $productService;
         $this->promotionService = $promotionService;
+        $this->elkService = $elkService;
     }
 
     public function productList(Request $request, Response $response)
@@ -210,7 +213,14 @@ class ProductController extends Controller
             ], 400);
         }
 
-        $searchResults = $this->productService->searchProducts($query);
+        // First try with Elasticsearch
+        try {
+            $searchResults = $this->elkService->searchProducts($query);
+        } catch (\Exception $e) {
+            Log::warning("Elasticsearch search failed for query '{$query}': " . $e->getMessage());
+            $searchResults = $this->productService->searchProducts($query);
+        }
+
         return response($searchResults->toArray());
     }
 

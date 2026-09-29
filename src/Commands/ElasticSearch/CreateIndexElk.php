@@ -2,13 +2,12 @@
 
 namespace PS\Webservice\Commands\ElasticSearch;
 
-use Elastic\Elasticsearch\ClientBuilder;
-use GuzzleHttp\Psr7\Request;
-use Illuminate\Support\Facades\Log;
+use PS\Webservice\Service\ElkService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Elastic\Elasticsearch\Client;
 
 #[AsCommand(
     name: 'elk:create-index',
@@ -19,9 +18,9 @@ class CreateIndexElk extends Command
     protected static $defaultName = 'elk:create-index';
     protected static $defaultDescription = 'Genera un nuovo indice in ElasticSearch';
 
-    private ClientBuilder $client;
+    private Client $client;
 
-    public function __construct(ClientBuilder $clientBuilder)
+    public function __construct(Client $clientBuilder)
     {
         $this->client = $clientBuilder;
         parent::__construct();
@@ -35,10 +34,20 @@ class CreateIndexElk extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->client->indices()->create([
-            'index' => 'dolcezampa_products',
+            'index' => ElkService::INDEX_PRODUCTS,
             'body' => [
                 'settings' => [
                     'analysis' => [
+                        'filter' => [
+                            'italian_stop' => [
+                                'type' => 'stop',
+                                'stopwords' => '_italian_'
+                            ],
+                            'italian_stemmer' => [
+                                'type' => 'stemmer',
+                                'language' => 'italian'
+                            ]
+                        ],
                         'analyzer' => [
                             'italian_custom' => [
                                 'type' => 'custom',

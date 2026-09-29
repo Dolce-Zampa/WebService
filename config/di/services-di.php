@@ -18,7 +18,7 @@ $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
 
 $container->set(\Elastic\Elasticsearch\ClientBuilder::class, function ($c) {
     $client = Elastic\Elasticsearch\ClientBuilder::create()
-        ->setHosts(['http://tuo-ip:9200']) // Indirizzo del server ES
+        ->setHosts([env('ELASTICH_HOST')]) // Indirizzo del server ES
         ->build();
     return $client;
 }); 
@@ -149,4 +149,11 @@ $container->set(\PS\Webservice\Service\MailjetService::class, function ($c) {
     );
 	$httpService = new \PS\Webservice\Service\HttpService($webserviceConfig);
 	return new \PS\Webservice\Service\MailjetService($httpService);
+});
+
+$container->set(\PS\Webservice\Service\ElkService::class, function($c) {
+    return new \PS\Webservice\Service\ElkService(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
+        $c->get(\PS\Webservice\Service\PS\Product::class)
+    );
 });
