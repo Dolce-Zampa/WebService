@@ -38,12 +38,13 @@ class IndexBulkProduct extends IndexElk
 
         if ($indexAll) {
             // get products id
-            $productIds = Product::chunk($limit, function ($products) use (&$productIds) {
+            Product::chunk($limit, function ($products) use (&$productIds) {
                 foreach ($products as $product) {
                     $productIds[] = (int) $product->id_product;
                 }
                 $this->queue(['product_ids' => $productIds]);
             });
+            return Command::SUCCESS;
         }
 
         if(count($productIds) >= 1) {
