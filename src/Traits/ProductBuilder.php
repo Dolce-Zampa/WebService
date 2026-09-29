@@ -141,11 +141,11 @@ trait ProductBuilder
         }
 
         foreach ($associations['product_features'] as $i => $feature) {
-            if (!isset($feature['id']) || !isset($feature['id_feature'])) {
+            if (!isset($feature['id']) || !isset($feature['id_feature_value'])) {
                 throw new \InvalidArgumentException("Each product_feature association must have 'id' and 'value' fields");
             }
 
-            $featureEntity = $this->service->getSpecificationsProductFeature((int) $feature['id'], (int) $feature['id_feature']);
+            $featureEntity = $this->service->getSpecificationsProductFeature((int) $feature['id'], (int) $feature['id_feature_value']);
             $this->data['associations']['product_features'][$i] = $featureEntity->toArray();
         }
     }
