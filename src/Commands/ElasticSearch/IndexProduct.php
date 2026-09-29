@@ -14,20 +14,10 @@ use Symfony\Component\Console\Output\OutputInterface;
     name: 'elk:index',
     description: 'Index a product on elastic search'
 )]
-class IndexProduct extends Command
+class IndexProduct extends IndexElk
 {
     protected static $defaultName = 'elk:index';
     protected static $defaultDescription = 'Index a product on elastic search';
-
-    private Client $client;
-    private ElkService $elkService;
-
-    public function __construct(Client $clientBuilder, ElkService $elkService)
-    {
-        $this->client = $clientBuilder;
-        $this->elkService = $elkService;
-        parent::__construct();
-    }
 
     protected function configure(): void
     {
@@ -38,7 +28,7 @@ class IndexProduct extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $productId = (int) $input->getArgument('product_id');
-        $this->elkService->inxedProduct($productId);
+        $this->queue(['product_ids' => [$productId]]);
         return Command::SUCCESS;
     }
 }

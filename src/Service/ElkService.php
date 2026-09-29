@@ -9,7 +9,7 @@ class ElkService
 {
     protected Client $client;
     protected Product $productService;
-
+    public const QUEUE_NAME = 'elk_queue';
     public const INDEX_PRODUCTS = 'dolcezampa_products';
 
     public function __construct(Client $clientBuilder, Product $productService)
@@ -46,7 +46,11 @@ class ElkService
 
     public function bulkIndexCategory(int $categoryId): void
     {
-        // to develop
+        $listOfProducts = $this->productService->getProductByCategory((string)$categoryId);
+        $productIds = array_map(fn($p) => (int) $p['id'], $listOfProducts->toArray());
+        if(count($productIds) >= 1) {
+            $this->bulkIndexProducts($productIds);
+        }
     }
 
     protected function buildProductDocument(ProductEntity $product): array
@@ -128,6 +132,11 @@ class ElkService
         ];
     }
 
+    /**
+     * Summary of searchProductsByName
+     * @param string $query
+     * @return array<int:ProductEntity>
+     */
     public function searchProductsByName(string $query): array
     {
         $params = [
@@ -137,18 +146,20 @@ class ElkService
                     'match' => [
                         'name' => [
                             'query' => $query,
-                            'analyzer' => 'italian_custom'  // usa il tuo analyzer custom
-                        ]
-                    ]
-                ]
-            ]
+                            'analyzer' => 'italian_custom',
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         $response = $this->client->search($params);
 
-        // Estrai solo i documenti (i "source")
         return array_map(
-            fn($hit) => $hit['_source'],
+            fn(array $hit) => ProductEntity::create(
+                $hit['_source'],
+                $this->productService
+            ),
             $response['hits']['hits']
         );
     }

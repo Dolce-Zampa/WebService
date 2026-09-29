@@ -4,13 +4,15 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Entities;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Commands\ElasticSearch\IndexElk;
 use PS\Webservice\Domain\Entities\Validations\ProductValidator;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
+use PS\Webservice\Facades\Queue;
+use PS\Webservice\Service\ElkService;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\ProductBuilder;
 use PS\Webservice\Traits\ProductManipulation;
-use Stripe\Service\Climate\ProductService;
 
 class ProductEntity extends Entity implements ObjectInterface
 {
@@ -70,6 +72,9 @@ class ProductEntity extends Entity implements ObjectInterface
         $this->data['hash'] = $this->hash();
         $this->normalizeData();
         $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
+
+        //index on elk
+        Queue::push(ElkService::QUEUE_NAME, ['product_ids' => [$this->getId()]]);
     }
 
     public static function create(array $data, PrestashopServiceInterface $service): self

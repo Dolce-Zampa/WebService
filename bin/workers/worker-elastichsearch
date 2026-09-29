@@ -1,0 +1,65 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * Email worker.
+ *
+ * Pops jobs from the Redis "email-jobs" queue and sends emails via MailerInterface.
+ *
+ * Expected job payload for review_request:
+ * {
+ *   "type":        "review_request",
+ *   "email":       <string>,
+ *   "firstname":   <string>,
+ *   "id_order":    <int>,
+ *   "id_customer": <int|null>,
+ *   "products":    <array>
+ * }
+ *
+ * Usage:
+ *   php bin/worker-emails
+ */
+
+require_once __DIR__ . '/../../bootstrap/app.php';
+
+use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\ProductEntity;
+use PS\Webservice\Domain\Models\PS\Orders\OrderReviewMailLog;
+use PS\Webservice\Service\ElkService;
+use PS\Webservice\Service\RedisQueue;
+
+/** @var \DI\Container $container */
+$queue = $container->get(RedisQueue::class);
+$elkservice = $container->get(ElkService::class);
+
+const QUEUE_NAME = ElkService::QUEUE_NAME;
+
+Log::info('ElkWorker: started, listening on queue "' . QUEUE_NAME . '"');
+
+while (true) {
+    $job = $queue->pop([QUEUE_NAME], 10);
+
+    if ($job === null) {
+        // Timeout – just keep looping
+        continue;
+    }
+
+    $payload = $job['payload'];
+
+    try {
+
+        if(isset($payload['product_ids']) && is_array($payload['product_ids'])) {
+            $elkservice->bulkIndexProducts($payload['product_ids']);
+        }
+
+        if(isset($payload['category_id']) && is_int($payload['category_id'])) {
+            $elkservice->bulkIndexCategory($payload['category_id']);
+        }
+
+        Log::info("ElkWorker: successfully processed job with payload: " . json_encode($payload));
+
+    } catch (\Throwable $e) {
+        Log::error("EmailWorker: failed to process job of type \"{$type}\": " . $e->getMessage());
+    }
+}

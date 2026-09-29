@@ -21,7 +21,7 @@ declare(strict_types=1);
  *   php bin/worker-emails
  */
 
-require_once __DIR__ . '/../bootstrap/app.php';
+require_once __DIR__ . '/../../bootstrap/app.php';
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
