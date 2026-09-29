@@ -36,7 +36,8 @@ class IndexBulkProduct extends IndexElk
 
         if ($indexAll) {
             // get products id
-            Product::where("active", 1)->chunk($limit, function ($products) use (&$productIds) {
+            Product::where("active", 1)->chunk($limit, function ($products) {
+                $productIds = [];
                 foreach ($products as $product) {
                     $productIds[] = (int) $product->id_product;
                 }
