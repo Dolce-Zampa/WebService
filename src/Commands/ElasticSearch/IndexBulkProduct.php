@@ -3,6 +3,7 @@
 namespace PS\Webservice\Commands\ElasticSearch;
 
 use Elastic\Elasticsearch\Client;
+use Log;
 use Predis\Command\Argument\TimeSeries\AddArguments;
 use PS\Webservice\Domain\Models\PS\Products\Product;
 use PS\Webservice\Service\ElkService;
@@ -42,6 +43,7 @@ class IndexBulkProduct extends IndexElk
                 foreach ($products as $product) {
                     $productIds[] = (int) $product->id_product;
                 }
+                Log::info("IndexBulkProduct: queued products with IDs: " . json_encode($productIds));
                 $this->queue(['product_ids' => $productIds]);
             });
             return Command::SUCCESS;

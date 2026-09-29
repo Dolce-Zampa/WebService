@@ -24,8 +24,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../bootstrap/app.php';
 
 use Illuminate\Support\Facades\Log;
-use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Models\PS\Orders\OrderReviewMailLog;
 use PS\Webservice\Service\ElkService;
 use PS\Webservice\Service\RedisQueue;
 
@@ -50,10 +48,12 @@ while (true) {
     try {
 
         if(isset($payload['product_ids']) && is_array($payload['product_ids'])) {
+            Log::info("ElkWorker: indexing products with IDs: " . json_encode($payload['product_ids']));
             $elkservice->bulkIndexProducts($payload['product_ids']);
         }
 
         if(isset($payload['category_id']) && is_int($payload['category_id'])) {
+            Log::info("ElkWorker: indexing category with ID: " . $payload['category_id']);
             $elkservice->bulkIndexCategory($payload['category_id']);
         }
 
