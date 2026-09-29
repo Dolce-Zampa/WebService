@@ -5,6 +5,7 @@ use Elastic\Elasticsearch\Client;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Service\PS\Product;
+use Illuminate\Support\Collection;
 
 class ElkService
 {
@@ -51,9 +52,9 @@ class ElkService
 
     public function bulkIndexCategory(int $categoryId): void
     {
-        $listOfProducts = $this->productService->getProductByCategory((string)$categoryId);
+        $listOfProducts = $this->productService->getProductByCategory((string) $categoryId);
         $productIds = array_map(fn($p) => (int) $p['id'], $listOfProducts->toArray());
-        if(count($productIds) >= 1) {
+        if (count($productIds) >= 1) {
             $this->bulkIndexProducts($productIds);
         }
     }
@@ -142,31 +143,35 @@ class ElkService
      * @param string $query
      * @return array<int:ProductEntity>
      */
-    public function searchProductsByName(string $query): array
+    public function searchProductsByName(string $query): Collection
     {
         $params = [
             'index' => ElkService::INDEX_PRODUCTS,
             'body' => [
                 'query' => [
-                    'match' => [
-                        'name' => [
-                            'query' => $query,
-                            'analyzer' => 'italian_custom',
+                    'multi_match' => [
+                        'query' => $query,
+                        'fields' => [
+                            'name^3',              // il nome pesa 3x
+                            'description_short^2', // descrizione breve 2x
+                            'description',         // descrizione completa
+                            'meta_title',
+                            'meta_description'
                         ],
-                    ],
-                ],
-            ],
+                        'type' => 'best_fields',
+                        'fuzziness' => 'AUTO'      // tollera errori di battitura
+                    ]
+                ]
+            ]
         ];
 
         $response = $this->client->search($params);
 
-        return array_map(
-            fn(array $hit) => ProductEntity::create(
+        return collect($response['hits']['hits'] ?? [])
+            ->map(fn(array $hit) => ProductEntity::create(
                 $hit['_source'],
                 $this->productService
-            ),
-            $response['hits']['hits']
-        );
+            ));
     }
 }
 
