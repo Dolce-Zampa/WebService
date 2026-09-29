@@ -2,6 +2,7 @@
 namespace PS\Webservice\Service;
 
 use Elastic\Elasticsearch\Client;
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Service\PS\Product;
 
@@ -34,8 +35,12 @@ class ElkService
     {
         $documents = [];
         foreach ($productIds as $productId) {
-            $product = ProductEntity::createFromId($productId, $this->productService);
-            $documents[] = $this->buildProductDocument($product);
+            try {
+                $product = ProductEntity::createFromId($productId, $this->productService);
+                $documents[] = $this->buildProductDocument($product);
+            } catch (\Throwable $e) {
+                Log::error("ElkService: failed to build document for product ID {$productId}. Error: " . $e->getMessage());
+            }
         }
         $this->client->bulk([
             'index' => self::INDEX_PRODUCTS,

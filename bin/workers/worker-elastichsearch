@@ -57,9 +57,9 @@ while (true) {
             $elkservice->bulkIndexCategory($payload['category_id']);
         }
 
-        Log::info("ElkWorker: successfully processed job with payload: " . json_encode($payload));
+        Log::info("ElastichWorker: successfully processed job with payload: " . json_encode($payload));
 
     } catch (\Throwable $e) {
-        Log::error("EmailWorker: failed to process job of type \"{$type}\": " . $e->getMessage());
+        Log::error("ElastichWorker: failed to process jobw ith payload: " . json_encode($payload) . " Error: " . $e->getMessage());
     }
 }
