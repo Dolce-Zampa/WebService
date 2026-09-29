@@ -62,7 +62,7 @@ class ElkService
     protected function buildProductDocument(ProductEntity $product): array
     {
         // Implementation for building the product document to be indexed in ElasticSearch
-        $p = $product->withFeatures()->toArray();
+        $p = $product->toArray();
         // --- Categorie ---
         $categories = [];
         foreach ($p['associations']['categories'] ?? [] as $cat) {
