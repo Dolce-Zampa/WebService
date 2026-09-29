@@ -239,9 +239,6 @@ class ProductEntity extends Entity implements ObjectInterface
         $this->buildCustomizations();
         $this->buildReviews();
 
-        $cacheKey = static::class . ':' . $this->getId();
-        $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
-
         return $this;
     }
 
