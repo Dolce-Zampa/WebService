@@ -38,7 +38,8 @@ final class StripeWebhookControllerTest extends TestCase
 
         \Illuminate\Support\Facades\Facade::setFacadeApplication([
             'cache' => $cache,
-            'log' => $this->createMock(\Psr\Log\LoggerInterface::class)
+            'log' => $this->createMock(\Psr\Log\LoggerInterface::class),
+            'queue-service' => $this->createMock(\PS\Webservice\Service\RedisQueue::class)  
         ]);
 
         $this->cache = $cache;

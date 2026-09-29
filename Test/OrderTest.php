@@ -38,6 +38,10 @@ final class OrderTest extends TestCase
             'log',
             $this->createMock(\Psr\Log\LoggerInterface::class)
         );
+        $app->instance(
+            'queue-service',
+            $this->createMock(\PS\Webservice\Service\RedisQueue::class)
+        );
 
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
