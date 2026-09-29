@@ -38,7 +38,8 @@ class PrestashopController
         // $response = $this->service->welcomeCoupon($payload);
 
         try {
-            $this->mailjetService->createNewContact($payload['email']);
+            $contactId = $this->mailjetService->createNewContact($payload['email']);
+            $this->mailjetService->setContactListSubscription($contactId);
             $this->mailer->sendSubscriptionConfirmation($payload['email']);
         } catch (\Exception $e) {
             Log::critical('Failed to create new contact in Mailjet', [

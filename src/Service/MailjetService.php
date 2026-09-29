@@ -56,8 +56,6 @@ class MailjetService
             throw new MailjetServiceException('Failed to retrieve contact ID after creating new contact: ' . $response->getBody());
         }
 
-        $this->setContactListSubscription($contactId);
-
         return $contactId;
 
     }

@@ -169,6 +169,7 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
      * @param ManufactureEntity $manufacture
      * @return void
      */
+
     private function createOrUpdateSupplierAddress(Supplier $supplier, ManufactureEntity $manufacture): void
     {
         $city = trim((string) $manufacture->city);
@@ -178,17 +179,16 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
 
         // Get id state and id country for the supplier address
         $state = State::where('name', $manufacture->state)->first();
-
         $supplier->address()->updateOrCreate(
             ['id_supplier' => $supplier->id_supplier],
             [
                 'address1' => $manufacture->address,
                 'city' => $city,
-                'postcode' => $manufacture->postcode,
+                'postcode' => $manufacture->zip_code,
                 'id_country' => $state->id_country,
-                'id_city' => $state->id_state,
+                'id_state' => $state->id_state,
                 'dni' => $manufacture->fiscal_code,
-                'phone_mobile' => $manufacture->phone_number,
+                'phone' => $manufacture->phone_number,
                 'vat_number' => $manufacture->vat_number,
                 'iban' => $manufacture->iban,
                 'alias' => 'default',
@@ -196,6 +196,10 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
                 'firstname' => $manufacture->firstname,
                 'date_add' => Carbon::now(),
                 'date_upd' => Carbon::now(),
+                'company' => $manufacture->name,
+                'other' => '',
+                'address2' => '',
+
             ]
         );
     }
