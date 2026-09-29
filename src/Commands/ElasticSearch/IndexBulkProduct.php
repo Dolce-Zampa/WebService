@@ -2,11 +2,8 @@
 
 namespace PS\Webservice\Commands\ElasticSearch;
 
-use Elastic\Elasticsearch\Client;
-use Log;
-use Predis\Command\Argument\TimeSeries\AddArguments;
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Models\PS\Products\Product;
-use PS\Webservice\Service\ElkService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;

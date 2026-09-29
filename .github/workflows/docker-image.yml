@@ -24,6 +24,9 @@ jobs:
     - name: Create env file
       run: |
         cp .env.example .env
+    
+    - name: Run phpstan
+      run: vendor/bin/phpstan --memory-limit=1G
 
     - name: Run test
       run: vendor/bin/phpunit Test
