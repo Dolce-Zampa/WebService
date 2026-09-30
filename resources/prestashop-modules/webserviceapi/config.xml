@@ -2,7 +2,7 @@
 <module>
     <name>mlabfactoryapi</name>
     <displayName><![CDATA[MlabFactory API]]></displayName>
-    <version><![CDATA[1.0.0]]></version>
+    <version><![CDATA[1.1.0]]></version>
     <description><![CDATA[JSON APIs for customer, cart and order flows secured by PrestaShop webservice keys.]]></description>
     <author><![CDATA[MlabFactory - Marco De Felice]]></author>
     <tab><![CDATA[administration]]></tab>

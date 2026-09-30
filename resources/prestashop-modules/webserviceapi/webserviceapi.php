@@ -18,7 +18,7 @@ class webserviceapi extends PaymentModule
     {
         $this->name = 'webserviceapi';
         $this->tab = 'administration';
-        $this->version = '1.0.0';
+        $this->version = '1.1.0';
         $this->author = 'MlabFactory - Marco De Felice';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -33,6 +33,7 @@ class webserviceapi extends PaymentModule
     public function install()
     {
         return parent::install()
+            && $this->installConfigurator()
             && $this->registerHook('moduleRoutes')
             && $this->registerHook('paymentOptions')
             && $this->registerHook('paymentReturn')
@@ -43,6 +44,149 @@ class webserviceapi extends PaymentModule
             && Configuration::updateValue(self::CONFIG_CHATGPT_TEXT_PROMPT, '')
             && Configuration::updateValue(self::CONFIG_CHATGPT_IMAGE_PROMPT, '')
             && $this->registerHook('actionGetExtraMailTemplateVars');
+    }
+
+    public function installConfigurator()
+    {
+        return Db::getInstance()->execute('CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'webserviceapi_configurator` (
+            `id_product` INT UNSIGNED NOT NULL,
+            `id_shop` INT UNSIGNED NOT NULL,
+            `active` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            `json` LONGTEXT NOT NULL,
+            PRIMARY KEY (`id_product`, `id_shop`)
+        ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4')
+            && $this->registerHook(array(
+                'displayAdminProductsExtra', 'actionProductFormBuilderModifier',
+                'actionAfterCreateProductFormHandler', 'actionAfterUpdateProductFormHandler',
+                'actionObjectProductDeleteAfter', 'actionObjectProductAddBefore', 'actionObjectProductUpdateBefore',
+            ));
+    }
+
+    public function getProductConfigurator($productId)
+    {
+        $row = Db::getInstance()->getRow('SELECT `active`, `json` FROM `' . _DB_PREFIX_ . 'webserviceapi_configurator`
+            WHERE id_product = ' . (int) $productId . ' AND id_shop = ' . (int) $this->context->shop->id);
+        return array('configurator_active' => $row ? (bool) $row['active'] : false,
+            'configurator_json' => $row ? (string) $row['json'] : '');
+    }
+
+    public function validateConfiguratorJson($json)
+    {
+        if (!is_string($json)) {
+            throw new InvalidArgumentException('Configurator JSON must be a string.');
+        }
+        if (trim($json) !== '') {
+            json_decode($json);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new InvalidArgumentException('Invalid configurator JSON: ' . json_last_error_msg());
+            }
+        }
+    }
+
+    public function saveProductConfigurator($productId, $active, $json)
+    {
+        $this->validateConfiguratorJson($json);
+        if (!Db::getInstance()->execute('INSERT INTO `' . _DB_PREFIX_ . 'webserviceapi_configurator`
+            (`id_product`, `id_shop`, `active`, `json`) VALUES (' . (int) $productId . ', '
+            . (int) $this->context->shop->id . ', ' . (int) (bool) $active . ", '" . pSQL($json, true) . "')
+            ON DUPLICATE KEY UPDATE `active` = VALUES(`active`), `json` = VALUES(`json`)")) {
+            throw new PrestaShopException('Unable to save product configurator.');
+        }
+    }
+
+    public function hookDisplayAdminProductsExtra($params)
+    {
+        // The modern product form is handled by the Symfony form hook.
+        if (version_compare(_PS_VERSION_, '8.1.0', '>=')) {
+            return '';
+        }
+        $this->context->smarty->assign($this->getProductConfigurator((int) $params['id_product']));
+        return $this->display(__FILE__, 'views/templates/hook/configurator.tpl');
+    }
+
+    public function hookActionProductFormBuilderModifier($params)
+    {
+        $builder = $params['form_builder'];
+        $target = $builder->has('options') ? $builder->get('options') : $builder;
+        $values = $this->getProductConfigurator((int) ($params['id'] ?? 0));
+        $target->add('configurator_active', \Symfony\Component\Form\Extension\Core\Type\CheckboxType::class, array(
+            'label' => 'Configuratore attivo', 'required' => false,
+            'data' => $values['configurator_active'],
+        ));
+        $target->add('configurator_json', \Symfony\Component\Form\Extension\Core\Type\TextareaType::class, array(
+            'label' => 'Configuratore JSON', 'required' => false, 'empty_data' => '',
+            'data' => $values['configurator_json'], 'attr' => array('rows' => 12),
+            'constraints' => array(new \Symfony\Component\Validator\Constraints\Callback(function ($value, $context) {
+                try {
+                    $this->validateConfiguratorJson($value === null ? '' : $value);
+                } catch (InvalidArgumentException $exception) {
+                    $context->buildViolation($exception->getMessage())->addViolation();
+                }
+            })),
+        ));
+    }
+
+    public function hookActionAfterCreateProductFormHandler($params)
+    {
+        $this->saveConfiguratorForm($params);
+    }
+
+    public function hookActionAfterUpdateProductFormHandler($params)
+    {
+        $this->saveConfiguratorForm($params);
+    }
+
+    private function saveConfiguratorForm($params)
+    {
+        $data = $params['form_data']['options'] ?? $params['form_data'];
+        if (array_key_exists('configurator_json', $data)) {
+            $this->saveProductConfigurator((int) $params['id'], !empty($data['configurator_active']), (string) $data['configurator_json']);
+            $this->clearCacheWebhook(new Product((int) $params['id']));
+        }
+    }
+
+    public function clearProductConfiguratorCache(Product $product)
+    {
+        $this->clearCacheWebhook($product);
+    }
+
+    public function hookActionObjectProductAddBefore($params)
+    {
+        $this->validateLegacyConfigurator();
+    }
+
+    public function hookActionObjectProductUpdateBefore($params)
+    {
+        $this->validateLegacyConfigurator();
+    }
+
+    private function validateLegacyConfigurator()
+    {
+        if (isset($this->context->employee) && (int) $this->context->employee->id > 0
+            && Tools::getIsset('webserviceapi_configurator_json')) {
+            try {
+                $this->validateConfiguratorJson((string) Tools::getValue('webserviceapi_configurator_json'));
+            } catch (InvalidArgumentException $exception) {
+                throw new PrestaShopException($exception->getMessage());
+            }
+        }
+    }
+
+    private function saveLegacyConfigurator(Product $product)
+    {
+        if (isset($this->context->employee) && (int) $this->context->employee->id > 0
+            && Tools::getIsset('webserviceapi_configurator_json')) {
+            $this->saveProductConfigurator((int) $product->id,
+                Tools::getValue('webserviceapi_configurator_active', 0),
+                (string) Tools::getValue('webserviceapi_configurator_json', ''));
+        }
+    }
+
+    public function hookActionObjectProductDeleteAfter($params)
+    {
+        if (isset($params['object']) && $params['object'] instanceof Product) {
+            Db::getInstance()->delete('webserviceapi_configurator', 'id_product = ' . (int) $params['object']->id);
+        }
     }
 
     public function uninstall()
@@ -94,6 +238,7 @@ class webserviceapi extends PaymentModule
         if (!isset($params['object']) || !($params['object'] instanceof Product)) {
             return;
         }
+        $this->saveLegacyConfigurator($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
         $this->clearCacheWebhook($params['object']);
     }
@@ -106,6 +251,7 @@ class webserviceapi extends PaymentModule
         if (!isset($params['object']) || !($params['object'] instanceof Product)) {
             return;
         }
+        $this->saveLegacyConfigurator($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
         $this->clearCacheWebhook($params['object']);
     }

@@ -356,7 +356,7 @@ PROMPT;
         }
     }
 
-    public function editImage(string $prompt, string $sourceImageUrl): string
+    public function editImage(string $prompt, string $sourceImageUrl, ?string $fileName = null): string
     {
         $source = $this->fetchSourceImage($sourceImageUrl);
         $sourceContent = $source['content'];
@@ -390,7 +390,7 @@ PROMPT;
                 throw new \RuntimeException('Empty image data in OpenAI generation response');
             }
 
-            $imageUrl = $this->saveImage($b64);
+            $imageUrl = $this->saveImage($b64, $fileName);
             Log::info('OpenAI: image generated');
             return $imageUrl;
         } catch (\Exception $e) {
@@ -419,14 +419,18 @@ PROMPT;
         ];
     }
 
-    protected function saveImage($b64): string
+    protected function saveImage($b64, ?string $fileName = null): string
     {
         $outputDir = "/mnt/s3/img/generated-images/";
         if (!is_dir($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
-        $filename = 'edited_' . uniqid() . '.png';
-        $outputPath = $outputDir . $filename;
+
+        if(empty($fileName)) {
+            $fileName = 'edited_' . uniqid() . '.png';
+        }
+
+        $outputPath = $outputDir . $fileName;
         file_put_contents($outputPath, base64_decode($b64));
 
         // URL pubblico (adatta al tuo setup)

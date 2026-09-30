@@ -460,16 +460,25 @@ class ProductController extends Controller
         $parsedBody = $request->getParsedBody();
         $idProduct = $args['id_product'] ?? null;
         $product = ProductEntity::createFromId((int) $idProduct, $this->productService);
-
         $bodyParamsAllowed = [
             'colors',
         ];
         $bodyParams = array_intersect_key($parsedBody, array_flip($bodyParamsAllowed));
         $prompt = "Change a colors of these product with " . implode(', ', $bodyParams['colors'] ?? []);
-       
+        $fileName = md5($idProduct.json_encode($bodyParams)).'.png';
+
+        //check if file already exists
+        if (file_exists("/mnt/s3/img/generated-images/$fileName")) {
+            return response([
+                'success' => true,
+                'message' => 'Configurator built for product ID ' . $idProduct,
+                'image_generated' => $fileName,
+            ]);
+        }
+
         try {
              $sourceImage = build_product_image_url($product->getImageUrl(), $product->name);
-             $imageGenerated = $this->openAIService->editImage($prompt, $sourceImage);
+             $imageGenerated = $this->openAIService->editImage($prompt, $sourceImage, $fileName);
         } catch (\Exception $e) {
             Log::error('Failed to generate image: ' . $e->getMessage());
             return response([
@@ -477,6 +486,7 @@ class ProductController extends Controller
                 'message' => 'Failed to generate image: ' . $e->getMessage(),
             ], 500);
         }
+
 
         // Implement the logic to build the configurator image for the product
         // This is a placeholder response
