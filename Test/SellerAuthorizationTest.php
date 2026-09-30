@@ -100,7 +100,7 @@ final class SellerAuthorizationTest extends TestCase
         $repository->expects($this->once())
             ->method('getProductAddToCart')
             ->with(5)
-            ->willReturn([]);
+            ->willReturn(collect());
 
         $controller = $this->createController($repository);
         $request = $this->createMock(ServerRequestInterface::class);
@@ -109,4 +109,20 @@ final class SellerAuthorizationTest extends TestCase
 
         $this->assertSame(200, $result->getStatusCode());
     }
+    public function test_foreign_product_cannot_be_updated(): void
+    {
+        $product = $this->createMock(\PS\Webservice\Domain\Entities\ProductEntity::class);
+        $product->method('toArray')->willReturn(['id' => 42, 'id_manufacturer' => 9]);
+        $productService = $this->createMock(Product::class);
+        $productService->expects($this->once())->method('getProductById')->with(42)->willReturn($product);
+        $productService->expects($this->never())->method('updateProduct');
+        $auth = $this->createMock(AuthService::class);
+        $auth->method('check')->willReturn('valid-token');
+        $controller = new SellerController($auth, $this->createMock(PrestashopService::class), $this->createMock(Mailer::class),
+            $this->createMock(ManufacturerRepository::class), $productService, $this->createMock(MailjetService::class), $this->createMock(PromotionService::class));
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn(['name' => 'Changed', 'id_manufacturer' => 5]);
+        self::assertSame(403, $controller->updateProduct($request, null, ['id_product' => 42])->getStatusCode());
+    }
+
 }

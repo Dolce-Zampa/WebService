@@ -58,24 +58,29 @@ final class CartCouponControllerTest extends TestCase
 
         $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 4]);
 
-        $this->assertSame(400, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
     }
 
     public function test_validate_coupon_returns_service_payload(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['validateCoupon'])
+            ->onlyMethods(['validateCoupon', 'getCartFromId'])
             ->getMock();
 
         $cartService->expects($this->once())
             ->method('validateCoupon')
-            ->with('SAVE10', 5, 'cust', null)
+            ->with('SAVE10', '5', '5', null)
             ->willReturn(['valid' => true]);
 
-        $controller = new CartController($cartService, $this->createRepositoryMock());
+        $cartService->expects($this->once())->method('getCartFromId')->with('5', 5, null)
+            ->willReturn(\PS\Webservice\Domain\Entities\CartEntity::create(['id' => 5, 'products' => []], $cartService));
+        $repository = $this->createRepositoryMock();
+        $repository->method('findUserIdFromSub')->with('customer-sub')->willReturn(5);
+        $controller = new CartController($cartService, $repository);
 
         $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
         $request->method('getParsedBody')->willReturn(['customer_id' => 'cust']);
         $request->method('getQueryParams')->willReturn(['customer_id' => 'cust']);
         $response = $this->createMock(ResponseInterface::class);

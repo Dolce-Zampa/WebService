@@ -321,64 +321,19 @@ class CartController extends Controller {
                 'guestId' => null,
             ];
         } catch (\Throwable $e) {
-            $userId = $request->getAttribute('user_id');
-            if (is_string($userId) && $userId !== '') {
-                return $this->buildAuthorizationErrorResponse($e);
-            }
-
-            $guestId = $payload['id_guest'] ?? $payload['guestId'] ?? null;
-            $isGuest = (bool) ($payload['isGuest'] ?? $payload['is_guest'] ?? false);
-            if (($guestId === null || $guestId === '') && $isGuest === true && isset($payload['customerId'])) {
-                $guestId = $payload['customerId'];
-            }
-
-            $hasAuthenticatedPrincipal = (is_string($request->getAttribute('user_id')) && $request->getAttribute('user_id') !== '')
-                || strpos($request->getHeaderLine('Authorization'), 'Bearer ') === 0;
-
-            if ($guestId !== null && $guestId !== '' && !$hasAuthenticatedPrincipal) {
-                return [
-                    'customerId' => null,
-                    'guestId' => $guestId,
-                ];
-            }
-
-            if ((int) $e->getCode() === 403) {
-                $status = (int) $e->getCode();
-                if ($status < 400 || $status > 599) {
-                    $status = 401;
-                }
-
-                return response(['error' => $e->getMessage()], $status);
-            }
-
-            foreach (['id_customer', 'customerId'] as $customerKey) {
-                if (isset($payload[$customerKey]) && $payload[$customerKey] !== '') {
-                    return response(['error' => 'Unauthorized'], 401);
-                }
-            }
-
-            $status = (int) $e->getCode();
-            if ($status < 400 || $status > 599) {
-                $status = 401;
-            }
-
-            return response(['error' => $e->getMessage()], $status);
+            return $this->buildAuthorizationErrorResponse($e);
         }
     }
 
     protected function normalizeOwnerPayload(array $payload, array $ownerContext): array
     {
-        if (($ownerContext['customerId'] ?? null) !== null) {
-            $payload['customerId'] = $ownerContext['customerId'];
-            $payload['id_customer'] = $ownerContext['customerId'];
-            unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
-            return $payload;
+        $payload['customerId'] = $ownerContext['customerId'];
+        $payload['id_customer'] = $ownerContext['customerId'];
+        unset($payload['id_guest'], $payload['guestId'], $payload['isGuest'], $payload['is_guest']);
+        if (isset($payload['customer']) && is_array($payload['customer'])) {
+            $payload['customer']['id_customer'] = $ownerContext['customerId'];
+            unset($payload['customer']['id_guest']);
         }
-
-        $payload['customerId'] = $ownerContext['guestId'] ?? null;
-        $payload['guestId'] = $ownerContext['guestId'] ?? null;
-        $payload['id_guest'] = $ownerContext['guestId'] ?? null;
-        $payload['isGuest'] = true;
         return $payload;
     }
 }

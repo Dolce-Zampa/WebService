@@ -188,17 +188,14 @@ final class OrderSecurityTest extends TestCase
         $this->assertFalse($body['data']['success']);
     }
 
-    public function test_confirm_order_supports_guest_ownership_context(): void
+    public function test_confirm_order_rejects_untrusted_guest_ownership_context(): void
     {
         $orderService = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['getOrderByCartId'])
             ->getMock();
 
-        $orderService->expects($this->once())
-            ->method('getOrderByCartId')
-            ->with(42, null, 'guest-42')
-            ->willReturn(null);
+        $orderService->expects($this->never())->method('getOrderByCartId');
 
         $controller = $this->createOrderController($orderService);
 
@@ -212,7 +209,7 @@ final class OrderSecurityTest extends TestCase
 
         $result = $controller->confirmOrder($request, $response, []);
 
-        $this->assertSame(202, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
     }
 
     public function test_confirm_order_returns_500_when_order_state_is_missing(): void
@@ -300,17 +297,14 @@ final class OrderSecurityTest extends TestCase
         $this->assertSame(404, $result->getStatusCode());
     }
 
-    public function test_create_order_still_supports_guest_ownership_context(): void
+    public function test_create_order_rejects_untrusted_guest_ownership_context(): void
     {
         $orderService = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['getCartFromId'])
             ->getMock();
 
-        $orderService->expects($this->once())
-            ->method('getCartFromId')
-            ->with(10, null, 'guest-7')
-            ->willReturn(null);
+        $orderService->expects($this->never())->method('getCartFromId');
 
         $controller = $this->createOrderController($orderService);
 
@@ -326,7 +320,7 @@ final class OrderSecurityTest extends TestCase
 
         $result = $controller->createOrder($request, $response, []);
 
-        $this->assertSame(404, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
     }
 
 
@@ -459,7 +453,7 @@ final class OrderSecurityTest extends TestCase
 
     // -------------------------------------------------------- initiatePayment ownership
 
-    public function test_initiate_payment_returns_403_when_no_owner_id_provided(): void
+    public function test_initiate_payment_returns_401_when_unauthenticated(): void
     {
         $orderService = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
@@ -478,7 +472,7 @@ final class OrderSecurityTest extends TestCase
 
         $result = $controller->initiatePayment($request, $response, []);
 
-        $this->assertSame(403, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
     }
 
     public function test_initiate_payment_returns_400_when_no_cart_id(): void
@@ -493,6 +487,7 @@ final class OrderSecurityTest extends TestCase
         $controller = $this->createOrderController($orderService);
 
         $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
         $request->method('getParsedBody')->willReturn([
             'id_customer' => 5,
             // no id_cart
@@ -519,6 +514,7 @@ final class OrderSecurityTest extends TestCase
         $controller = $this->createOrderController($orderService);
 
         $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
         $request->method('getParsedBody')->willReturn([
             'id_cart' => 10,
             'id_customer' => 5,

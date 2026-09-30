@@ -33,7 +33,7 @@ class OrderController extends CartController
     public function orderHistory(Request $request, Response $response, array $argv): Response
     {
         $customerId = (int) ($argv['customerId'] ?? 0);
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
         }
@@ -55,7 +55,7 @@ class OrderController extends CartController
     public function getOrder(Request $request, Response $response, array $argv): Response
     {
         $orderId = $argv['orderId'];
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
         }
@@ -198,13 +198,12 @@ class OrderController extends CartController
             throw new \InvalidArgumentException('Invalid payload format', 400);
         }
 
-        // Ownership check: require customer or guest identification
-        $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
-        $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
-
-        if ($customerId === null && $guestId === null) {
-            return response(['error' => 'Customer ID or guest ID is required'], 403);
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
+        $customerId = $ownerContext['customerId'];
+        $guestId = null;
 
         if (!isset($payload['id_cart'])) {
             return response(['error' => 'Cart ID is required'], 400);

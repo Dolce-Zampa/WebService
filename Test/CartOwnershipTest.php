@@ -149,7 +149,7 @@ final class CartOwnershipTest extends TestCase
         $this->assertSame(200, $result->getStatusCode());
     }
 
-    public function test_get_cart_still_supports_guest_ownership_context(): void
+    public function test_get_cart_rejects_untrusted_guest_ownership_context(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
             ->disableOriginalConstructor()
@@ -165,10 +165,7 @@ final class CartOwnershipTest extends TestCase
             $stubCartService
         );
 
-        $cartService->expects($this->once())
-            ->method('getCartFromId')
-            ->with(42, null, 'guest-42')
-            ->willReturn($cartEntity);
+        $cartService->expects($this->never())->method('getCartFromId');
 
         $controller = new CartController($cartService, $this->createRepositoryMock());
 
@@ -180,7 +177,7 @@ final class CartOwnershipTest extends TestCase
 
         $result = $controller->getCart($request, $response, ['cartId' => 42]);
 
-        $this->assertSame(200, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
     }
 
     public function test_validate_coupon_uses_authenticated_customer_and_cart_ownership(): void
@@ -218,7 +215,7 @@ final class CartOwnershipTest extends TestCase
         $body = json_decode((string) $result->getBody(), true);
         $this->assertSame(['valid' => true], $body['data']);
     }
-    public function test_validate_coupon_supports_guest_cart_ownership(): void
+    public function test_validate_coupon_rejects_untrusted_guest_cart_ownership(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
             ->disableOriginalConstructor()
@@ -231,15 +228,9 @@ final class CartOwnershipTest extends TestCase
 
         $cartEntity = CartEntity::create(['id' => 4, 'products' => []], $stubCartService);
 
-        $cartService->expects($this->once())
-            ->method('getCartFromId')
-            ->with('4', null, 'guest-4')
-            ->willReturn($cartEntity);
+        $cartService->expects($this->never())->method('getCartFromId');
 
-        $cartService->expects($this->once())
-            ->method('validateCoupon')
-            ->with('SAVE10', '4', null, 'guest-4')
-            ->willReturn(['valid' => true]);
+        $cartService->expects($this->never())->method('validateCoupon');
 
         $controller = new CartController($cartService, $this->createRepositoryMock());
 
@@ -250,8 +241,7 @@ final class CartOwnershipTest extends TestCase
 
         $result = $controller->validateCoupon($request, $response, ['code' => 'SAVE10', 'cartId' => 4]);
 
-        $this->assertSame(200, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
-        $this->assertSame(['valid' => true], $body['data']);
     }
 }
