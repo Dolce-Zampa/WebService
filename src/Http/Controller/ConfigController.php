@@ -79,7 +79,10 @@ class ConfigController extends CartController
             }
 
             if(isset($value['category']) && !empty($value['category'])) {
-                $this->tags([CategoriesMap::getCategory((int) $value['category'])])->flushTag();
+                foreach($value['category'] as $category) {
+                    $categoryTag = CategoriesMap::getCategory((int) $category);
+                    $this->tags([$categoryTag])->flushTag();
+                }
             }
 
         }
