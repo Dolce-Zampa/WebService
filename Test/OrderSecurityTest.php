@@ -257,7 +257,7 @@ final class OrderSecurityTest extends TestCase
 
     // -------------------------------------------------------- server-side prices
 
-    public function test_create_order_uses_server_side_product_prices(): void
+    public function test_create_order_uses_server_cart_variant_prices_and_ignores_frontend_prices(): void
     {
         $this->taggedCache
             ->method('has')
@@ -267,15 +267,10 @@ final class OrderSecurityTest extends TestCase
             ->method('get')
             ->willReturn(true);
 
-        $productStub = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), TRUE);
-
         $serviceMock = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['getCartFromId', 'getCarrierDetail', 'getProductPriceById', 'getProductById'])
             ->getMock();
-        $productServiceMock = $this->createMock(Product::class);
-        $productServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
-        $serviceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
 
         $cartServiceStub = $this->getMockBuilder(Cart::class)
             ->disableOriginalConstructor()
@@ -284,7 +279,8 @@ final class OrderSecurityTest extends TestCase
         $cartEntity = CartEntity::create([
             'id' => 10,
             'products' => [
-                ['id_product' => 7, 'quantity' => 2, 'name' => 'Croquette', 'price_wt' => '999.99'],
+                ['id_product' => 7, 'id_product_attribute' => 665, 'quantity' => 2, 'name' => 'Croquette', 'attributes' => 'Formato: 12 kg', 'reference' => 'CROQ-12', 'price_wt' => '119.99'],
+                ['id_product' => 7, 'id_product_attribute' => 666, 'quantity' => 1, 'name' => 'Croquette', 'attributes' => 'Formato: 3 kg', 'reference' => 'CROQ-3', 'price_wt' => '29.90'],
             ],
         ], $cartServiceStub);
 
@@ -304,18 +300,31 @@ final class OrderSecurityTest extends TestCase
             ->with(2)
             ->willReturn($carrierEntity);
 
-        // The key assertion: server-side price is fetched per product, not from cart
-        $serviceMock->expects($this->once())
-            ->method('getProductPriceById')
-            ->with(7)
-            ->willReturn(12.20);  // server-side price, NOT the '999.99' from the cart
+        // The catalog's base price must not replace the selected variant's server cart price.
+        $serviceMock->expects($this->never())->method('getProductPriceById');
+        $serviceMock->expects($this->never())->method('getProductById');
 
-        // Stub out Stripe by throwing a known exception so we don't need a real API key
-        $_ENV['STRIPE_API_KEY'] = 'sk_test_stub';
-        $_ENV['STRIPE_SUCCESS_URL'] = 'https://example.com/ok';
-        $_ENV['STRIPE_CANCEL_URL'] = 'https://example.com/cancel';
-
-        $controller = $this->createOrderController($serviceMock);
+        $stripe = $this->createMock(PaymentGatewayInterface::class);
+        $stripe->expects($this->once())
+            ->method('createPaymentSession')
+            ->willReturnCallback(function (\PS\Webservice\Domain\Object\OrderSession $session): string {
+                $lines = array_values(array_filter($session->getLineItems(),
+                    static fn (array $line): bool => isset($line['price_data']['product_data']['metadata']['id_product'])));
+                $this->assertCount(2, $lines);
+                foreach ([[665, 11999, 2, 'Formato: 12 kg', 'CROQ-12'], [666, 2990, 1, 'Formato: 3 kg', 'CROQ-3']] as $index => $expected) {
+                    [$variantId, $amount, $quantity, $attributes, $reference] = $expected;
+                    $line = $lines[$index];
+                    $product = $line['price_data']['product_data'];
+                    $this->assertSame('7', $product['metadata']['id_product']);
+                    $this->assertSame((string) $variantId, $product['metadata']['id_product_attribute']);
+                    $this->assertSame($amount, $line['price_data']['unit_amount']);
+                    $this->assertSame($quantity, $line['quantity']);
+                    $this->assertSame('Croquette - ' . $attributes, $product['name']);
+                    $this->assertSame($reference, $product['description']);
+                }
+                return 'https://example.com/checkout';
+            });
+        $controller = $this->createOrderController($serviceMock, $stripe);
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn([
@@ -327,7 +336,9 @@ final class OrderSecurityTest extends TestCase
             'reference' => 'REF123',
             'current_state' => 2,
             'date_add' => '2026-01-01',
-            'total_paid_tax_incl' => 24.40,
+            // Deliberately forged frontend amounts and variants must be ignored.
+            'products' => [['id_product' => 7, 'id_product_attribute' => 999, 'quantity' => 1, 'price_wt' => '0.01']],
+            'total_paid_tax_incl' => 0.01,
             'total_paid_tax_excl' => 20.00,
             'delivery_address' => ['address1' => 'Via Main'],
             'invoice_address' => ['address1' => 'Via Main'],
@@ -343,13 +354,11 @@ final class OrderSecurityTest extends TestCase
         ]);
         $response = $this->createMock(ResponseInterface::class);
 
-        // The controller will attempt to create a Stripe session which will fail with
-        // an invalid API key — that's fine; we only care that getProductPriceById was
-        // called (asserted above) and that the response is not a 404/403.
         $result = $controller->createOrder($request, $response, []);
 
-        $this->assertNotSame(403, $result->getStatusCode());
-        $this->assertNotSame(404, $result->getStatusCode());
+        $this->assertSame(201, $result->getStatusCode());
+        $body = json_decode((string) $result->getBody(), true);
+        $this->assertSame('https://example.com/checkout', $body['data']['payment_url']);
     }
 
     // -------------------------------------------------------- initiatePayment ownership
