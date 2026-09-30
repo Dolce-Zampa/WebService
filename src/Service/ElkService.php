@@ -158,8 +158,7 @@ class ElkService
                             'meta_title',
                             'meta_description'
                         ],
-                        'type' => 'best_fields',
-                        'fuzziness' => 'AUTO'      // tollera errori di battitura
+                        'type' => 'phrase_prefix',
                     ]
                 ]
             ]
