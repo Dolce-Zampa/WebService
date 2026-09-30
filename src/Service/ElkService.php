@@ -105,6 +105,7 @@ class ElkService
             : 0.0;
 
         return [
+            'id_product' => (int) $p['id'],
             'name' => $p['name'],
             'description' => strip_tags($p['description'] ?? ''),
             'description_short' => strip_tags($p['description_short'] ?? ''),
@@ -152,11 +153,11 @@ class ElkService
                     'multi_match' => [
                         'query' => $query,
                         'fields' => [
-                            'name^3',              // il nome pesa 3x
-                            'description_short^2', // descrizione breve 2x
-                            'description',         // descrizione completa
-                            'meta_title',
-                            'meta_description'
+                            'data.name^3',              // il nome pesa 3x
+                            'data.description_short^2', // descrizione breve 2x
+                            'data.description',         // descrizione completa
+                            'data.meta_title',
+                            'data.meta_description'
                         ],
                         'type' => 'phrase_prefix',
                     ]
@@ -167,8 +168,8 @@ class ElkService
         $response = $this->client->search($params);
 
         return collect($response['hits']['hits'] ?? [])
-            ->map(fn(array $hit) => ProductEntity::create(
-                $hit['_source'],
+            ->map(fn(array $hit) => ProductEntity::createFromId(
+                $hit['_source']['data']['id_product'],
                 $this->productService
             ));
     }

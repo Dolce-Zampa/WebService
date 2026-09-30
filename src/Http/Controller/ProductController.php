@@ -220,7 +220,7 @@ class ProductController extends Controller
         // First try with Elasticsearch
         try {
             $searchResults = $this->elkService->searchProductsByName($query);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::warning("Elasticsearch search failed for query '{$query}': " . $e->getMessage());
             $searchResults = $this->productService->searchProducts($query);
         }
