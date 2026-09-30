@@ -18,7 +18,7 @@ trait Order
     protected int $carrierId;
     private OrderService $orderService;
 
-    public function makeOrder(OrderEntity $payload, OrderService $orderService): OrderSession
+    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = []): OrderSession
     {
 
         $this->orderService = $orderService;
@@ -42,8 +42,12 @@ trait Order
         ], $this->orderService);
         $this->orderSession = $orderSession;
 
-        $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
+        // Populate the session before evaluating discounts and the free-shipping threshold.
+        foreach ($serverCartProducts as $product) {
+            $this->addProduct($product);
+        }
         $this->manageCartRules($payload);
+        $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
 
         return $orderSession;
     }
@@ -87,9 +91,9 @@ trait Order
         }
 
         //check for free shipping cart rule
-        //temp fix fixme these, if total price is up to 99€ is free shipping
+        // Shipping is free from EUR 99, based on the populated server cart.
         $freeShippingThreshold = 99.00; // temporary fix for free shipping
-        if ($this->orderSession->total() <= $freeShippingThreshold) {
+        if (round($this->orderSession->total(), 2) < $freeShippingThreshold) {
             $this->orderSession->addCarrierLineItem(
                 name: $carrierDetails->name,
                 quantity: 1,
@@ -98,6 +102,7 @@ trait Order
             );
         }
 
+        // questa funzione non funziona 
         // if ($this->checkForFreeShippingCartRule($cartRules) === false) {
         //     $this->orderSession->addCarrierLineItem(
         //         name: $carrierDetails->name,

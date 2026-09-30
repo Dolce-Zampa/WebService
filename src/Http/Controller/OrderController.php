@@ -136,12 +136,7 @@ class OrderController extends CartController
         try {
             $paymentService = $this->stripeService;
             $newOrder = OrderEntity::create($payload, $this->orderService);
-            $orderSession = $this->makeOrder($newOrder, $this->orderService);
-
-            // Use variant prices from the ownership-checked PrestaShop cart, never frontend prices.
-            foreach ($cart->toArray()['products'] ?? [] as $product) {
-                $this->addProduct($product);
-            }
+            $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? []);
 
             //save in cache the order session only for 24h
             $this->setToCache($orderSession->metadata['cart_id'], ["orderSession" => $orderSession, "cart" => $cart], 24 * 60); //FIXME: customer data should be encrypted

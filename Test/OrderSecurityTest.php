@@ -24,6 +24,7 @@ final class OrderSecurityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Facade::clearResolvedInstances();
 
         $this->cache = $this->createMock(\Illuminate\Cache\Repository::class);
         $this->taggedCache = $this->createMock(\Illuminate\Cache\TaggedCache::class);
@@ -257,7 +258,21 @@ final class OrderSecurityTest extends TestCase
 
     // -------------------------------------------------------- server-side prices
 
-    public function test_create_order_uses_server_cart_variant_prices_and_ignores_frontend_prices(): void
+    public static function serverCartShippingCases(): array
+    {
+        return [
+            'variants above threshold' => ['119.99', '29.90', 2, false],
+            'below threshold' => ['30.00', '38.99', 2, true],
+            'exactly 99' => ['30.00', '39.00', 2, false],
+            'above threshold by one cent' => ['30.00', '39.01', 2, false],
+            'quantity reaches threshold' => ['33.00', '0.00', 3, false],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('serverCartShippingCases')]
+    public function test_create_order_uses_server_cart_variant_prices_and_ignores_frontend_prices(
+        string $firstPrice, string $secondPrice, int $firstQuantity, bool $expectedShipping
+    ): void
     {
         $this->taggedCache
             ->method('has')
@@ -279,8 +294,8 @@ final class OrderSecurityTest extends TestCase
         $cartEntity = CartEntity::create([
             'id' => 10,
             'products' => [
-                ['id_product' => 7, 'id_product_attribute' => 665, 'quantity' => 2, 'name' => 'Croquette', 'attributes' => 'Formato: 12 kg', 'reference' => 'CROQ-12', 'price_wt' => '119.99'],
-                ['id_product' => 7, 'id_product_attribute' => 666, 'quantity' => 1, 'name' => 'Croquette', 'attributes' => 'Formato: 3 kg', 'reference' => 'CROQ-3', 'price_wt' => '29.90'],
+                ['id_product' => 7, 'id_product_attribute' => 665, 'quantity' => $firstQuantity, 'name' => 'Croquette', 'attributes' => 'Formato: 12 kg', 'reference' => 'CROQ-12', 'price_wt' => $firstPrice],
+                ['id_product' => 7, 'id_product_attribute' => 666, 'quantity' => 1, 'name' => 'Croquette', 'attributes' => 'Formato: 3 kg', 'reference' => 'CROQ-3', 'price_wt' => $secondPrice],
             ],
         ], $cartServiceStub);
 
@@ -292,6 +307,7 @@ final class OrderSecurityTest extends TestCase
         $carrierEntity = CarrierEntity::create([
             'id' => 2,
             'name' => [['id' => 1, 'value' => 'Express']],
+            'price_with_tax' => '6.10',
             'delay' => [['id' => 1, 'value' => '1-2 days']],
         ], $cartServiceStub);
 
@@ -307,11 +323,11 @@ final class OrderSecurityTest extends TestCase
         $stripe = $this->createMock(PaymentGatewayInterface::class);
         $stripe->expects($this->once())
             ->method('createPaymentSession')
-            ->willReturnCallback(function (\PS\Webservice\Domain\Object\OrderSession $session): string {
+            ->willReturnCallback(function (\PS\Webservice\Domain\Object\OrderSession $session) use ($firstPrice, $secondPrice, $firstQuantity, $expectedShipping): string {
                 $lines = array_values(array_filter($session->getLineItems(),
                     static fn (array $line): bool => isset($line['price_data']['product_data']['metadata']['id_product'])));
                 $this->assertCount(2, $lines);
-                foreach ([[665, 11999, 2, 'Formato: 12 kg', 'CROQ-12'], [666, 2990, 1, 'Formato: 3 kg', 'CROQ-3']] as $index => $expected) {
+                foreach ([[665, (int) round((float) $firstPrice * 100), $firstQuantity, 'Formato: 12 kg', 'CROQ-12'], [666, (int) round((float) $secondPrice * 100), 1, 'Formato: 3 kg', 'CROQ-3']] as $index => $expected) {
                     [$variantId, $amount, $quantity, $attributes, $reference] = $expected;
                     $line = $lines[$index];
                     $product = $line['price_data']['product_data'];
@@ -321,6 +337,13 @@ final class OrderSecurityTest extends TestCase
                     $this->assertSame($quantity, $line['quantity']);
                     $this->assertSame('Croquette - ' . $attributes, $product['name']);
                     $this->assertSame($reference, $product['description']);
+                }
+                $shippingLines = array_values(array_filter($session->getLineItems(),
+                    static fn (array $line): bool => !isset($line['price_data']['product_data']['metadata']['id_product'])));
+                $this->assertCount($expectedShipping ? 1 : 0, $shippingLines);
+                if ($expectedShipping) {
+                    $this->assertSame(610, $shippingLines[0]['price_data']['unit_amount']);
+                    $this->assertSame(1, $shippingLines[0]['quantity']);
                 }
                 return 'https://example.com/checkout';
             });
