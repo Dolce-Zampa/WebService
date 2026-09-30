@@ -421,7 +421,7 @@ PROMPT;
 
     protected function saveImage($b64, ?string $fileName = null): string
     {
-        $outputDir = "/mnt/s3/img/generated-images/";
+        $outputDir = storage_path('/generated-images/');
         if (!is_dir($outputDir)) {
             mkdir($outputDir, 0755, true);
         }

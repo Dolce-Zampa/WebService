@@ -468,7 +468,8 @@ class ProductController extends Controller
         $fileName = md5($idProduct.json_encode($bodyParams)).'.png';
 
         //check if file already exists
-        if (file_exists("/mnt/s3/img/generated-images/$fileName")) {
+        $path = storage_path('/generated-images/' . $fileName);
+        if (file_exists($path)) {
             return response([
                 'success' => true,
                 'message' => 'Configurator built for product ID ' . $idProduct,
