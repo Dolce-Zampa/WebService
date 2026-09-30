@@ -29,6 +29,7 @@ class ProductEntity extends Entity implements ObjectInterface
     protected int $cacheTTL = 0;
 
     protected bool $isNormalized = false;
+    protected bool $haveFeatures = false;
 
     public function __construct(array $data, PrestashopServiceInterface|null $service)
     {
@@ -163,6 +164,20 @@ class ProductEntity extends Entity implements ObjectInterface
 
         $this->isNormalized = true;
 
+        //configurator
+        $this->buildConfigurator();
+
+    }
+
+    private function buildConfigurator(): void
+    {
+        $productId = $this->getId();
+        if($productId == 232) {
+            // Build configurator logic for product ID 232
+            $this->data['associations']['configurator'] = [
+                "colors" => ["#000","#fff"]
+            ];
+        }
     }
 
     // una combinazione se ha il valore di price > 0 significa che ha un prezzo incrementale quindi non è in promozione.
@@ -230,6 +245,10 @@ class ProductEntity extends Entity implements ObjectInterface
 
     public function withFeatures(): self
     {
+        if($this->haveFeatures) {
+            return $this;
+        }
+        $this->haveFeatures = true;
         $this->withCombinations();
         $this->buildProductFeatures();
         $this->buildAccessories();
@@ -284,5 +303,10 @@ class ProductEntity extends Entity implements ObjectInterface
     public static function createFromId(int $id, PrestashopServiceInterface $service): self
     {
         return self::create(['id' => $id], $service);
+    }
+
+    public function getImageUrl(): int|string
+    {
+        return $this->data['id_default_image'];
     }
 }

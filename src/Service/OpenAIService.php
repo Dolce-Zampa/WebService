@@ -18,7 +18,7 @@ class OpenAIService
     {
         $this->model = $model;
         $this->imageModel = $imageModel;
-        $this->baseUriImage = env('PS_BASE_URL');
+        $this->baseUriImage = "https://www.dolcezampa.com";
         $this->client = new Client([
             'base_uri' => 'https://api.openai.com/v1/',
             'headers' => [
@@ -356,6 +356,49 @@ PROMPT;
         }
     }
 
+    public function editImage(string $prompt, string $sourceImageUrl): string
+    {
+        $source = $this->fetchSourceImage($sourceImageUrl);
+        $sourceContent = $source['content'];
+        $sourceContentType = $source['content_type'];
+        $extension = $source['extension'];
+
+        if ($sourceContent === '') {
+            throw new \RuntimeException('Empty source image content');
+        }
+
+        try {
+            $response = $this->client->post('images/edits', [
+                'multipart' => [
+                    ['name' => 'model', 'contents' => $this->imageModel],
+                    ['name' => 'prompt', 'contents' => $prompt],
+                    ['name' => 'size', 'contents' => '1024x1024'],
+                    ['name' => 'quality', 'contents' => 'medium'],
+                    [
+                        'name' => 'image',
+                        'contents' => Utils::streamFor($sourceContent),
+                        'filename' => "source.{$extension}",
+                        'headers' => ['Content-Type' => $sourceContentType],
+                    ],
+                ],
+            ]);
+
+            $body = json_decode($response->getBody()->getContents(), true);
+            $b64 = (string) ($body['data'][0]['b64_json'] ?? '');
+
+            if (empty($b64)) {
+                throw new \RuntimeException('Empty image data in OpenAI generation response');
+            }
+
+            $imageUrl = $this->saveImage($b64);
+            Log::info('OpenAI: image generated');
+            return $imageUrl;
+        } catch (\Exception $e) {
+            Log::error('OpenAI image generation failed: ' . $e->getMessage());
+            throw new \RuntimeException('Failed to generate image: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
     private function fetchSourceImage(string $sourceImageUrl): array
     {
         $httpClient = new Client(['timeout' => 30]);
@@ -378,7 +421,7 @@ PROMPT;
 
     protected function saveImage($b64): string
     {
-        $outputDir = storage_path('generated-images/');
+        $outputDir = "/mnt/s3/img/generated-images/";
         if (!is_dir($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
@@ -387,7 +430,7 @@ PROMPT;
         file_put_contents($outputPath, base64_decode($b64));
 
         // URL pubblico (adatta al tuo setup)
-        $imageUrl = $this->baseUriImage . $outputPath;
+        $imageUrl = $this->baseUriImage . str_replace('/mnt/s3', '', $outputPath);
         return $imageUrl;
     }
 }

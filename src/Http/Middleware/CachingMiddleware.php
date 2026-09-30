@@ -33,7 +33,8 @@ class CachingMiddleware implements MiddlewareInterface
 
         $uri = $request->getUri()->getPath();
 
-        $queryParams = http_build_query($request->getQueryParams());
+        $params = $request->getQueryParams();
+        $queryParams = http_build_query($params);
         $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
         $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
 
@@ -43,6 +44,11 @@ class CachingMiddleware implements MiddlewareInterface
         $skipCache = false;
         if (isset($request->getQueryParams()['no_cache']) && $request->getQueryParams()['no_cache'] == '1') {
             $skipCache = true;
+        }
+
+        if($params['clear_cache'] == true) {
+            $cacheKey = str_replace('clear_cache=true', '', $cacheKey);
+            $this->removeFromCache($cacheKey);
         }
 
         // Try to get from cache

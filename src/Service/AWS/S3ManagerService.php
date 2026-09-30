@@ -64,6 +64,6 @@ class S3ManagerService
         $result = $this->s3Client->putObject($putObjectPayload);
         
         // Il risultato di putObject include sempre ObjectURL in versioni recenti
-        return $result['ObjectURL'] ?? $this->s3Client->getObjectUrl($this->bucket, $key);
+        return "/$key";
     }
 }

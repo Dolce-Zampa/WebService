@@ -4,7 +4,8 @@ $container->set(\PS\Webservice\Http\Controller\ProductController::class, functio
     $productService = $c->get(\PS\Webservice\Service\PS\Product::class);
     $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
     $elkService = $c->get(\PS\Webservice\Service\ElkService::class);
-    return new \PS\Webservice\Http\Controller\ProductController($productService, $promotionService, $elkService);
+    $aiService = $c->get(\PS\Webservice\Service\OpenAIService::class);
+    return new \PS\Webservice\Http\Controller\ProductController($productService, $promotionService, $elkService, $aiService);
 });
 
 $container->set(\PS\Webservice\Http\Controller\CategoryController::class, function ($c) {
