@@ -47,6 +47,37 @@ L'elenco seguente descrive **gli endpoint del modulo PrestaShop** (non le route 
 - `GET /api/orders?id_customer=12`
 - `GET /api/orders?id_guest=34`
 - `POST /api/orders`
+- `GET /api/promotions`
+
+### Prodotti in promozione
+
+```text
+GET /api/promotions?page=1&limit=20&order_by=id_product&order_way=DESC
+```
+
+Richiede la stessa chiave Webservice degli altri endpoint. Fallback nativo:
+`index.php?fc=module&module=webserviceapi&controller=promotions`.
+
+Usa `Product::getPricesDrop`, la selezione nativa delle offerte PrestaShop:
+prodotti attivi, visibili in catalogo e con prezzo visibile, con promozioni
+valide nel contesto corrente di negozio, valuta, paese e cliente/gruppo.
+Il solo flag `on_sale` non basta; i coupon carrello non sono inclusi.
+Le offerte sulle combinazioni seguono il comportamento nativo PrestaShop.
+
+Parametri opzionali: `page` (default 1, massimo 1000000), `limit` (default 20,
+massimo 100), `order_by` (`id_product`, `name`, `date_add`, `date_upd`, `price`)
+e `order_way` (`ASC` o `DESC`). Valori non validi restituiscono HTTP 400;
+metodi diversi da GET restituiscono HTTP 405.
+
+La risposta ha la forma `{"success":true,"data":{"products":[],
+"pagination":{"page":1,"limit":20,"total":0,"pages":0},
+"id_lang":1,"id_currency":1,"id_shop":1}}`.
+`products` contiene i dati nativi dei prodotti, inclusi `id_product`, `name`,
+`link_rewrite`, `id_image`, `price`, `price_without_reduction`, `reduction`
+e `specific_prices`. Una pagina fuori intervallo restituisce una lista vuota.
+
+Dopo aver copiato i file sul negozio, svuotare la cache PrestaShop se la
+route parlante non viene riconosciuta. Non serve resettare il modulo.
 
 ## Esempi payload
 

@@ -34,6 +34,7 @@ RewriteRule ^api/account(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module
 RewriteRule ^api/addresses(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=addresses&ws_key=$1 [QSA,L]
 RewriteRule ^api/logout(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=logout&ws_key=$1 [QSA,L]
 RewriteRule ^api/mailer(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=mailer&ws_key=$1 [QSA,L]
+RewriteRule ^api/promotions(?:/(.*))?$ %{ENV:REWRITEBASE}index.php?fc=module&module=webserviceapi&controller=promotions&ws_key=$1 [QSA,L]
 
 
 # Modules

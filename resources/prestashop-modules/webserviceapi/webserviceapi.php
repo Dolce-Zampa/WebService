@@ -529,6 +529,12 @@ class webserviceapi extends PaymentModule
                 'controller' => 'coupon',
                 'params' => $params,
             ),
+            'module-webserviceapi-promotions' => array(
+                'rule' => 'api/promotions',
+                'keywords' => array(),
+                'controller' => 'promotions',
+                'params' => $params,
+            ),
             'module-webserviceapi-product' => array(
                 'rule' => 'api/catalog',
                 'keywords' => array(),

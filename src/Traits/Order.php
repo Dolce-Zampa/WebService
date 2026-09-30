@@ -50,14 +50,7 @@ trait Order
 
     public function addProduct(array $product)
     {   
-        $productId = (int) $product['id_product'];
-        $serverPrice = $this->orderService->getProductPriceById($productId);
-        $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
-        $this->orderSession->addLineItem(
-            product: ProductEntity::create($product, $this->orderService),
-            quantity: (int) $product['quantity'],
-            price: $serverPrice
-        );
+        $this->orderSession->addCartLineItem($product);
     }
 
     public function getProducts(): array
