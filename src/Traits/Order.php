@@ -87,7 +87,9 @@ trait Order
         }
 
         //check for free shipping cart rule
-        if ($this->checkForFreeShippingCartRule($cartRules) === false) {
+        //temp fix fixme these, if total price is up to 99€ is free shipping
+        $freeShippingThreshold = 99.00; // temporary fix for free shipping
+        if ($this->orderSession->total() <= $freeShippingThreshold) {
             $this->orderSession->addCarrierLineItem(
                 name: $carrierDetails->name,
                 quantity: 1,
@@ -95,6 +97,15 @@ trait Order
                 type: 'carrier'
             );
         }
+
+        // if ($this->checkForFreeShippingCartRule($cartRules) === false) {
+        //     $this->orderSession->addCarrierLineItem(
+        //         name: $carrierDetails->name,
+        //         quantity: 1,
+        //         price: (float) $carrierDetails->price_with_tax,
+        //         type: 'carrier'
+        //     );
+        // }
     }
 
     private function checkForFreeShippingCartRule(CartRuleEntity $cartRules): bool
