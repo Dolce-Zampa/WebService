@@ -4,13 +4,16 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Entities;
 
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Commands\ElasticSearch\IndexElk;
 use PS\Webservice\Domain\Entities\Validations\ProductValidator;
+use PS\Webservice\Domain\Models\PS\Products\ProductConfigurator;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
+use PS\Webservice\Facades\Queue;
+use PS\Webservice\Service\ElkService;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\ProductBuilder;
 use PS\Webservice\Traits\ProductManipulation;
-use Stripe\Service\Climate\ProductService;
 
 class ProductEntity extends Entity implements ObjectInterface
 {
@@ -27,6 +30,7 @@ class ProductEntity extends Entity implements ObjectInterface
     protected int $cacheTTL = 0;
 
     protected bool $isNormalized = false;
+    protected bool $haveFeatures = false;
 
     public function __construct(array $data, PrestashopServiceInterface|null $service)
     {
@@ -70,6 +74,9 @@ class ProductEntity extends Entity implements ObjectInterface
         $this->data['hash'] = $this->hash();
         $this->normalizeData();
         $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
+
+        //index on elk
+        Queue::push(ElkService::QUEUE_NAME, ['product_ids' => [$this->getId()]]);
     }
 
     public static function create(array $data, PrestashopServiceInterface $service): self
@@ -158,6 +165,19 @@ class ProductEntity extends Entity implements ObjectInterface
 
         $this->isNormalized = true;
 
+        //configurator
+        $this->buildConfigurator();
+
+    }
+
+    private function buildConfigurator(): void
+    {
+        $productId = $this->getId();
+        $configurator = ProductConfigurator::where('id_product', $productId)->where('active', 1)->first('json');
+
+        if ($configurator) {
+            $this->data['associations']['configurator'] = json_decode($configurator->json, true);
+        }
     }
 
     // una combinazione se ha il valore di price > 0 significa che ha un prezzo incrementale quindi non è in promozione.
@@ -225,6 +245,10 @@ class ProductEntity extends Entity implements ObjectInterface
 
     public function withFeatures(): self
     {
+        if($this->haveFeatures) {
+            return $this;
+        }
+        $this->haveFeatures = true;
         $this->withCombinations();
         $this->buildProductFeatures();
         $this->buildAccessories();
@@ -279,5 +303,10 @@ class ProductEntity extends Entity implements ObjectInterface
     public static function createFromId(int $id, PrestashopServiceInterface $service): self
     {
         return self::create(['id' => $id], $service);
+    }
+
+    public function getImageUrl(): int|string
+    {
+        return $this->data['id_default_image'];
     }
 }

@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists
 COPY ./bin/supervisors/scheduler.conf /etc/supervisor/scheduler.conf
 COPY ./bin/supervisors/worker-image.conf /etc/supervisor/worker-image.conf
 COPY ./bin/supervisors/worker-review.conf /etc/supervisor/worker-review.conf
+COPY ./bin/supervisors/worker-elastichsearch.conf /etc/supervisor/worker-elastichsearch.conf
+
 
 # Permessi corretti
 RUN chown -R www-data:www-data /var/www/workdir

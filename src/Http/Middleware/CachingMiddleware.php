@@ -33,20 +33,10 @@ class CachingMiddleware implements MiddlewareInterface
 
         $uri = $request->getUri()->getPath();
 
-        $queryParams = http_build_query($request->getQueryParams());
-        $principalCacheKey = '';
-        $userId = $request->getAttribute('user_id');
-        if (is_string($userId) && $userId !== '') {
-            $principalCacheKey = ':user=' . $userId;
-        } else {
-            $authHeader = $request->getHeaderLine('Authorization');
-            if ($authHeader !== '') {
-                $principalCacheKey = ':auth=' . sha1($authHeader);
-            }
-        }
-
-        $cacheKey = 'api_cache:' . $uri . '?' . $queryParams . $principalCacheKey;
-        $tagExtract = $this->extractTagsFromParams($request->getQueryParams());
+        $params = $request->getQueryParams();
+        $queryParams = http_build_query($params);
+        $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
+        $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
 
         $this->tags(array_merge($this->tag,['api'], $tagExtract,));
 
@@ -54,6 +44,11 @@ class CachingMiddleware implements MiddlewareInterface
         $skipCache = false;
         if (isset($request->getQueryParams()['no_cache']) && $request->getQueryParams()['no_cache'] == '1') {
             $skipCache = true;
+        }
+
+        if($params['clear_cache'] == true) {
+            $cacheKey = str_replace('clear_cache=true', '', $cacheKey);
+            $this->removeFromCache($cacheKey);
         }
 
         // Try to get from cache

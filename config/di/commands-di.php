@@ -10,3 +10,34 @@ $container->set(\PS\Webservice\Commands\SendReviewRequestMailCommand::class, fun
         $c->get(\PS\Webservice\Service\RedisQueue::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class, function ($c) {
+    return new \PS\Webservice\Commands\ElasticSearch\CreateIndexElk(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
+        $c->get(\PS\Webservice\Service\ElkService::class),
+    );
+});
+
+$container->set(\PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class, function ($c) {
+    return new \PS\Webservice\Commands\ElasticSearch\IndexBulkProduct(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
+        $c->get(\PS\Webservice\Service\ElkService::class),
+        $c->get(\PS\Webservice\Service\RedisQueue::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\ElasticSearch\IndexProduct::class, function ($c) {
+    return new \PS\Webservice\Commands\ElasticSearch\IndexProduct(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
+        $c->get(\PS\Webservice\Service\ElkService::class),
+        $c->get(\PS\Webservice\Service\RedisQueue::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\ElasticSearch\IndexElk::class, function ($c) {
+    return new \PS\Webservice\Commands\ElasticSearch\IndexElk(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
+        $c->get(\PS\Webservice\Service\ElkService::class),
+        $c->get(\PS\Webservice\Service\RedisQueue::class)
+    );
+});

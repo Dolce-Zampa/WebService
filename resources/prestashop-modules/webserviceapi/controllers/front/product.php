@@ -33,7 +33,7 @@ class webserviceapiproductModuleFrontController extends MlabFactoryApiBaseModule
             return throw new MlabFactoryApiException('Product not found', 404);
         }
 
-        return ['id_product' => $id_product];
+        return array_merge(['id_product' => $id_product], $this->module->getProductConfigurator($id_product));
     }
 
 }

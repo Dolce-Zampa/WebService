@@ -11,6 +11,8 @@ use PS\Webservice\Domain\Models\PS\Products\ProductReviews;
 use PS\Webservice\Domain\Object\Filter;
 use PS\Webservice\Facades\S3Service;
 use PS\Webservice\Http\Controller\Controller;
+use PS\Webservice\Service\ElkService;
+use PS\Webservice\Service\OpenAIService;
 use PS\Webservice\Service\PS\Product as ProductService;
 use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Traits\PaginationTrait;
@@ -23,11 +25,16 @@ class ProductController extends Controller
 
     private ProductService $productService;
     private PromotionService $promotionService;
+    private ElkService $elkService;
 
-    public function __construct(ProductService $productService, PromotionService $promotionService)
+    private OpenAIService $openAIService;
+
+    public function __construct(ProductService $productService, PromotionService $promotionService, ElkService $elkService, OpenAIService $openAIService)
     {
         $this->productService = $productService;
         $this->promotionService = $promotionService;
+        $this->elkService = $elkService;
+        $this->openAIService = $openAIService;
     }
 
     public function productList(Request $request, Response $response)
@@ -210,7 +217,14 @@ class ProductController extends Controller
             ], 400);
         }
 
-        $searchResults = $this->productService->searchProducts($query);
+        // First try with Elasticsearch
+        try {
+            $searchResults = $this->elkService->searchProductsByName($query);
+        } catch (\Throwable $e) {
+            Log::warning("Elasticsearch search failed for query '{$query}': " . $e->getMessage());
+            $searchResults = $this->productService->searchProducts($query);
+        }
+
         return response($searchResults->toArray());
     }
 
@@ -435,6 +449,51 @@ class ProductController extends Controller
         return response([
             'success' => true,
             'path' => $s3Path,
+        ]);
+    }
+
+    /**
+     * Create an image product starting from the configurator input
+     */
+    public function buildConfigurator(Request $request, Response $response, array $args)
+    {
+        $parsedBody = $request->getParsedBody();
+        $idProduct = $args['id_product'] ?? null;
+        $product = ProductEntity::createFromId((int) $idProduct, $this->productService);
+        $bodyParamsAllowed = [
+            'colors',
+        ];
+        $bodyParams = array_intersect_key($parsedBody, array_flip($bodyParamsAllowed));
+        $prompt = "Change a colors of these product with " . implode(', ', $bodyParams['colors'] ?? []);
+        $fileName = md5($idProduct.json_encode($bodyParams)).'.png';
+
+        //check if file already exists
+        if (file_exists("/mnt/s3/img/generated-images/$fileName")) {
+            return response([
+                'success' => true,
+                'message' => 'Configurator built for product ID ' . $idProduct,
+                'image_generated' => $fileName,
+            ]);
+        }
+
+        try {
+             $sourceImage = build_product_image_url($product->getImageUrl(), $product->name);
+             $imageGenerated = $this->openAIService->editImage($prompt, $sourceImage, $fileName);
+        } catch (\Exception $e) {
+            Log::error('Failed to generate image: ' . $e->getMessage());
+            return response([
+                'success' => false,
+                'message' => 'Failed to generate image: ' . $e->getMessage(),
+            ], 500);
+        }
+
+
+        // Implement the logic to build the configurator image for the product
+        // This is a placeholder response
+        return response([
+            'success' => true,
+            'message' => 'Configurator built for product ID ' . $idProduct,
+            'image_generated' => $imageGenerated,
         ]);
     }
 }

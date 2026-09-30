@@ -47,7 +47,8 @@
         "symfony/console": "^7.4",
         "symfony/scheduler": "^7.4",
         "symfony/messenger": "^7.4",
-        "dragonmantank/cron-expression": "^3.4"
+        "dragonmantank/cron-expression": "^3.4",
+        "elasticsearch/elasticsearch": "^8.0"
     },
     "require-dev": {
         "nikic/php-parser": "^5.0",

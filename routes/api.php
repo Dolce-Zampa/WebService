@@ -38,6 +38,8 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/product/{slug}', PS\Webservice\Http\Controller\ProductController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('product-detail'));
     $app->post('/api/product/{id_product}/reviews', PS\Webservice\Http\Controller\ProductController::class . ':addProductReview');
     $app->post('/api/product/customizzation/upload-file', PS\Webservice\Http\Controller\ProductController::class . ':uploadCustomizationFile');
+    $app->post('/api/product/configurator/{id_product}', PS\Webservice\Http\Controller\ProductController::class . ':buildConfigurator');
+    
     /** brands list */
     $app->get('/api/manufacturers', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
     $app->get('/api/manufacturers/{id_manufacturer}', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturer-details'));

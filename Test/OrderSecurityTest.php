@@ -38,6 +38,7 @@ final class OrderSecurityTest extends TestCase
         \Illuminate\Support\Facades\Facade::setFacadeApplication([
             'cache' => $this->cache,
             'log' => $this->createMock(\Psr\Log\LoggerInterface::class),
+            'queue-service' => $this->createMock(\PS\Webservice\Service\RedisQueue::class)
         ]);
     }
 

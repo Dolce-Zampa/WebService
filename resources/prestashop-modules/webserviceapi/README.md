@@ -355,3 +355,41 @@ Se imposti `webserviceapi`, le API ordine e il checkout PrestaShop usano il modu
 
 success_url: /checkout/success?session_id={CHECKOUT_SESSION_ID}&cart_id=227
 cancel_url: /checkout/cancel?cart_id=227
+
+## Configuratore prodotto (1.1.1)
+
+Aggiornare il modulo alla versione 1.1.1 dal gestore moduli di PrestaShop:
+l'upgrade crea la tabella e registra i nuovi hook, senza reset del modulo.
+Se i file sono stati copiati manualmente e i campi non compaiono, aprire
+**Moduli > Gestione moduli > Webserviceapi API > Configura**: questa pagina
+ripristina tabella e hook. Riaprire poi la scheda prodotto; se necessario,
+svuotare la cache da **Parametri avanzati > Prestazioni**.
+
+La scheda prodotto mostra **Configuratore attivo** e **Configuratore JSON**
+(nella scheda Configuratore su PrestaShop 8.1 e 9). Il JSON è un testo non tradotto,
+può essere vuoto e viene validato prima del salvataggio. Disattivare il
+configuratore conserva il JSON. I valori sono separati per prodotto e negozio
+corrente; modificare ogni negozio nel relativo contesto. La tabella viene
+conservata alla disinstallazione per evitare perdita delle configurazioni.
+
+`GET /api/catalog?by_slug=nome-prodotto` restituisce anche
+`configurator_active` (booleano, default false) e `configurator_json`
+(stringa, default vuota). Si tratta delle API del modulo, non del Webservice
+nativo `/api/products` di PrestaShop.
+
+`POST /api/products/update` accetta i due campi opzionali:
+
+```json
+{
+  "id": 42,
+  "active": 1,
+  "configurator_active": true,
+  "configurator_json": "{\"options\":[]}"
+}
+```
+
+I campi configuratore omessi mantengono il valore esistente. JSON non valido
+o valori di attivazione diversi da true/false/0/1 restituiscono HTTP 400.
+Il campo prodotto `active` continua a seguire il comportamento preesistente:
+se omesso, il prodotto viene disattivato. Per mantenerlo pubblicato inviare
+`active: 1`. La risposta include entrambi i valori del configuratore.

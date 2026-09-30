@@ -10,7 +10,7 @@ require_once dirname(__FILE__) . '/../../classes/MlabFactoryApiBaseModuleFrontCo
  *
  * Required fields: id (int)
  * Optional fields: name, description, description_short, meta_title,
- *                  meta_description, active
+ *                  meta_description, active, configurator_active, configurator_json
  */
 class webserviceapiproductupdateModuleFrontController extends MlabFactoryApiBaseModuleFrontController
 {
@@ -28,6 +28,22 @@ class webserviceapiproductupdateModuleFrontController extends MlabFactoryApiBase
         $product = new Product($productId, true);
         if (!Validate::isLoadedObject($product)) {
             throw new MlabFactoryApiException('Product not found.', 404, array('id' => $productId));
+        }
+
+        $configurator = $this->module->getProductConfigurator($productId);
+        if (array_key_exists('configurator_active', $payload)) {
+            if (!in_array($payload['configurator_active'], array(true, false, 0, 1), true)) {
+                throw new MlabFactoryApiException('configurator_active must be a boolean.', 400);
+            }
+            $configurator['configurator_active'] = (bool) $payload['configurator_active'];
+        }
+        if (array_key_exists('configurator_json', $payload)) {
+            try {
+                $this->module->validateConfiguratorJson($payload['configurator_json']);
+            } catch (InvalidArgumentException $exception) {
+                throw new MlabFactoryApiException($exception->getMessage(), 400);
+            }
+            $configurator['configurator_json'] = $payload['configurator_json'];
         }
 
         $langId = (int) Configuration::get('PS_LANG_DEFAULT');
@@ -59,9 +75,17 @@ class webserviceapiproductupdateModuleFrontController extends MlabFactoryApiBase
             throw new MlabFactoryApiException('Failed to update product.', 500, array('id' => $productId));
         }
 
+        if (array_key_exists('configurator_active', $payload) || array_key_exists('configurator_json', $payload)) {
+            $this->module->saveProductConfigurator($productId, $configurator['configurator_active'], $configurator['configurator_json']);
+            // Product::update() sends the existing cache webhook before these values are saved.
+            $this->module->clearProductConfiguratorCache($product);
+        }
+
         return array(
             'id'      => $productId,
             'updated' => true,
+            'configurator_active' => $configurator['configurator_active'],
+            'configurator_json' => $configurator['configurator_json'],
             'active'  => (int) $product->active,
         );
     }

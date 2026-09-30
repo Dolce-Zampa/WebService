@@ -42,7 +42,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
                     'newsletter_date_add' => $customer->newsletter_date_add ?? null,
                     'max_payment_days' => 0,
-                    'secure_key' => sha1($customer->email),
+                    'secure_key' => md5(uniqid((string) mt_rand(), true)) , // only 32 char
                     'id_default_group' => $id_default_group
                 ]);
         } else if($existingCustomer) { //se esiste ritorna errore
@@ -66,7 +66,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
                     'newsletter_date_add' => $customer->newsletter_date_add ?? null,
                     'max_payment_days' => 0,
-                    'secure_key' => sha1($customer->email),
+                    'secure_key' => md5(microtime() . rand()),
                     'id_default_group' => $id_default_group
                 ]);
         }
