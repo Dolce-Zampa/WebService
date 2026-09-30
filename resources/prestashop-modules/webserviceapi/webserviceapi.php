@@ -14,11 +14,12 @@ class webserviceapi extends PaymentModule
     const CONFIG_CHATGPT_TEXT_PROMPT = 'MLABFACTORYAPI_CHATGPT_TEXT_PROMPT';
     const CONFIG_CHATGPT_IMAGE_PROMPT = 'MLABFACTORYAPI_CHATGPT_IMAGE_PROMPT';
     private static array $productWebhookDispatched = [];
+    private $configuratorFormBuilt = false;
     public function __construct()
     {
         $this->name = 'webserviceapi';
         $this->tab = 'administration';
-        $this->version = '1.1.0';
+        $this->version = '1.1.1';
         $this->author = 'MlabFactory - Marco De Felice';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -96,8 +97,8 @@ class webserviceapi extends PaymentModule
 
     public function hookDisplayAdminProductsExtra($params)
     {
-        // The modern product form is handled by the Symfony form hook.
-        if (version_compare(_PS_VERSION_, '8.1.0', '>=')) {
+        // Suppress the compatibility panel only when our modern tab was actually built.
+        if ($this->configuratorFormBuilt) {
             return '';
         }
         $this->context->smarty->assign($this->getProductConfigurator((int) $params['id_product']));
@@ -107,23 +108,14 @@ class webserviceapi extends PaymentModule
     public function hookActionProductFormBuilderModifier($params)
     {
         $builder = $params['form_builder'];
-        $target = $builder->has('options') ? $builder->get('options') : $builder;
+        require_once __DIR__ . '/classes/MlabFactoryConfiguratorType.php';
         $values = $this->getProductConfigurator((int) ($params['id'] ?? 0));
-        $target->add('configurator_active', \Symfony\Component\Form\Extension\Core\Type\CheckboxType::class, array(
-            'label' => 'Configuratore attivo', 'required' => false,
-            'data' => $values['configurator_active'],
+        $builder->add('webserviceapi_configurator', MlabFactoryConfiguratorType::class, array(
+            'label' => 'Configuratore',
+            'data' => $values,
+            'form_theme' => '@PrestaShop/Admin/TwigTemplateForm/prestashop_ui_kit_base.html.twig',
         ));
-        $target->add('configurator_json', \Symfony\Component\Form\Extension\Core\Type\TextareaType::class, array(
-            'label' => 'Configuratore JSON', 'required' => false, 'empty_data' => '',
-            'data' => $values['configurator_json'], 'attr' => array('rows' => 12),
-            'constraints' => array(new \Symfony\Component\Validator\Constraints\Callback(function ($value, $context) {
-                try {
-                    $this->validateConfiguratorJson($value === null ? '' : $value);
-                } catch (InvalidArgumentException $exception) {
-                    $context->buildViolation($exception->getMessage())->addViolation();
-                }
-            })),
-        ));
+        $this->configuratorFormBuilt = true;
     }
 
     public function hookActionAfterCreateProductFormHandler($params)
@@ -138,7 +130,7 @@ class webserviceapi extends PaymentModule
 
     private function saveConfiguratorForm($params)
     {
-        $data = $params['form_data']['options'] ?? $params['form_data'];
+        $data = $params['form_data']['webserviceapi_configurator'] ?? ($params['form_data']['options'] ?? $params['form_data']);
         if (array_key_exists('configurator_json', $data)) {
             $this->saveProductConfigurator((int) $params['id'], !empty($data['configurator_active']), (string) $data['configurator_json']);
             $this->clearCacheWebhook(new Product((int) $params['id']));
@@ -203,6 +195,12 @@ class webserviceapi extends PaymentModule
     public function getContent()
     {
         $output = '';
+
+        // Copying updated module files does not register hooks on existing installations.
+        // Opening the module configuration provides an idempotent repair path.
+        if (!$this->installConfigurator()) {
+            return $this->displayError($this->l('Unable to initialize the product configurator table or hooks.'));
+        }
 
         if (Tools::isSubmit('submitMlabFactoryApi')) {
             $paymentModule = trim((string) Tools::getValue(self::CONFIG_PAYMENT_MODULE));

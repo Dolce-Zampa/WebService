@@ -356,13 +356,17 @@ Se imposti `webserviceapi`, le API ordine e il checkout PrestaShop usano il modu
 success_url: /checkout/success?session_id={CHECKOUT_SESSION_ID}&cart_id=227
 cancel_url: /checkout/cancel?cart_id=227
 
-## Configuratore prodotto (1.1.0)
+## Configuratore prodotto (1.1.1)
 
-Aggiornare il modulo alla versione 1.1.0 dal gestore moduli di PrestaShop:
+Aggiornare il modulo alla versione 1.1.1 dal gestore moduli di PrestaShop:
 l'upgrade crea la tabella e registra i nuovi hook, senza reset del modulo.
+Se i file sono stati copiati manualmente e i campi non compaiono, aprire
+**Moduli > Gestione moduli > Webserviceapi API > Configura**: questa pagina
+ripristina tabella e hook. Riaprire poi la scheda prodotto; se necessario,
+svuotare la cache da **Parametri avanzati > Prestazioni**.
 
 La scheda prodotto mostra **Configuratore attivo** e **Configuratore JSON**
-(nella sezione Opzioni per il form moderno). Il JSON è un testo non tradotto,
+(nella scheda Configuratore su PrestaShop 8.1 e 9). Il JSON è un testo non tradotto,
 può essere vuoto e viene validato prima del salvataggio. Disattivare il
 configuratore conserva il JSON. I valori sono separati per prodotto e negozio
 corrente; modificare ogni negozio nel relativo contesto. La tabella viene

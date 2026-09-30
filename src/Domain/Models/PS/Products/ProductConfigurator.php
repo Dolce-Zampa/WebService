@@ -5,9 +5,9 @@ namespace PS\Webservice\Domain\Models\PS\Products;
 
 use PS\Webservice\Domain\Models\PS\PsTable;
 
-class Product extends PsTable
+class ProductConfigurator extends PsTable
 {
-    protected $table = 'product';
+    protected $table = 'webserviceapi_configurator';
     protected $primaryKey = 'id_product';
 
     protected $fillable = [
@@ -15,10 +15,5 @@ class Product extends PsTable
         'name',
         'price',
     ];
-
-    public function configurator()
-    {
-        return $this->hasOne(ProductConfigurator::class, 'id_product', 'id_product');
-    }
 
 }

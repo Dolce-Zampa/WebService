@@ -6,6 +6,7 @@ namespace PS\Webservice\Domain\Entities;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Commands\ElasticSearch\IndexElk;
 use PS\Webservice\Domain\Entities\Validations\ProductValidator;
+use PS\Webservice\Domain\Models\PS\Products\ProductConfigurator;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Facades\Queue;
@@ -172,11 +173,10 @@ class ProductEntity extends Entity implements ObjectInterface
     private function buildConfigurator(): void
     {
         $productId = $this->getId();
-        if($productId == 232) {
-            // Build configurator logic for product ID 232
-            $this->data['associations']['configurator'] = [
-                "colors" => ["#000","#fff"]
-            ];
+        $configurator = ProductConfigurator::where('id_product', $productId)->where('active', 1)->first('json');
+
+        if ($configurator) {
+            $this->data['associations']['configurator'] = json_decode($configurator->json, true);
         }
     }
 
