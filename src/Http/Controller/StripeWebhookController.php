@@ -8,7 +8,6 @@ use InvalidArgumentException;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Models\PS\Customer;
 use PS\Webservice\Domain\Models\PS\Products\Product;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\MailerInterface;
@@ -137,12 +136,10 @@ class StripeWebhookController extends OrderController
     {
         $metadata = $session->metadata;
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
-        $customerId = (int) isset($metadata->id_customer) ? (int) $metadata->id_customer : null;
-        $guestId = (int) isset($metadata->id_guest) ? (int) $metadata->id_guest : null;
+        $customerId = isset($metadata->id_customer) && (int) $metadata->id_customer > 0 ? (int) $metadata->id_customer : null;
+        $guestId = isset($metadata->id_guest) && (int) $metadata->id_guest > 0 ? (int) $metadata->id_guest : null;
         $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : 14; //FIXME: default carrier id should be configurable, not hardcoded
         $couponCode = isset($metadata->coupon_code) ? (string) $metadata->coupon_code : null;
-        $customerEmail = isset($metadata->customer_email) ? (string) $metadata->customer_email : throw new \InvalidArgumentException('customer email is required in Stripe session metadata');
-        $customerDetails = Customer::where('email', $customerEmail)->firstOrFail();
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for session ' . $session->id);
@@ -169,10 +166,10 @@ class StripeWebhookController extends OrderController
             throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
         }
 
+        $customerDetails = $this->getCheckoutCustomer($cartId, $customerId, $guestId);
         $email = $customerDetails->email;
         $firstname = $customerDetails->firstname;
         $lastname = $customerDetails->lastname;
-        $amountPaid = ($session->amount_total) / 100;
         
         $this->orderService->confirmSessionOrder(
             $cartId,
@@ -196,6 +193,47 @@ class StripeWebhookController extends OrderController
         }
 
         Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
+    }
+
+    /** Retrieve the checkout identity and delivery address, including unregistered guests. */
+    protected function getCheckoutCustomer(int $cartId, ?int $customerId, ?int $guestId): object
+    {
+        $cached = $this->tags(['order-session'])->getFromCache((string) $cartId);
+        if (is_array($cached) && array_key_exists('orderSession', $cached)) {
+            $cached = $cached['orderSession'];
+        }
+
+        if ($cached instanceof OrderSession) {
+            $owner = $cached->metadata;
+            $customer = $cached->getCustomer()->toArray();
+        } elseif (is_array($cached)) {
+            $owner = $cached['metadata'] ?? $cached;
+            $customer = $cached['customer'] ?? null;
+            if ($customer instanceof CustomerEntity) {
+                $customer = $customer->toArray();
+            }
+        } else {
+            throw new \RuntimeException('Missing checkout customer data for cart ' . $cartId);
+        }
+
+        // A cart may be checked out again: never confirm using a different owner's cached data.
+        $cachedCustomerId = (int) ($owner['id_customer'] ?? 0);
+        $cachedGuestId = (int) ($owner['id_guest'] ?? 0);
+        if (($customerId === null && $guestId === null)
+            || $cachedCustomerId !== ($customerId ?? 0)
+            || $cachedGuestId !== ($guestId ?? 0)) {
+            throw new \RuntimeException('Checkout customer identity mismatch for cart ' . $cartId);
+        }
+        if (!is_array($customer) || empty($customer['email'])
+            || empty($customer['firstname']) || empty($customer['lastname'])
+            || !is_array($customer['delivery_address'] ?? null)
+            || empty($customer['delivery_address']['address1'])
+            || empty($customer['delivery_address']['city'])
+            || empty($customer['delivery_address']['postcode'])) {
+            throw new \RuntimeException('Incomplete checkout customer data for cart ' . $cartId);
+        }
+
+        return (object) $customer;
     }
 
     /**

@@ -304,10 +304,36 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             );
 
             if ($updated <= 0) {
+                $shopId = (int) Context::getContext()->shop->id;
+                $failedProduct = new Product($productId, false, (int) Configuration::get('PS_LANG_DEFAULT'), $shopId);
+                $failedCombination = $combinationId > 0 ? new Combination($combinationId) : null;
+                $minimumQuantity = $combinationId > 0
+                    ? (int) ProductAttribute::getAttributeMinimalQty($combinationId)
+                    : (int) $failedProduct->minimal_quantity;
+                $reason = 'cart_update_failed';
+                if (!Validate::isLoadedObject($failedProduct)) {
+                    $reason = 'product_not_found';
+                } elseif ($failedCombination && (!Validate::isLoadedObject($failedCombination) || (int) $failedCombination->id_product !== $productId)) {
+                    $reason = 'combination_does_not_belong_to_product';
+                } elseif (!$failedProduct->available_for_order) {
+                    $reason = 'product_not_available_for_order';
+                } elseif (Configuration::isCatalogMode()) {
+                    $reason = 'catalog_mode_enabled';
+                } elseif ($updated === -1) {
+                    $reason = 'minimum_quantity_not_met';
+                }
                 throw new MlabFactoryApiException(
                     'Unable to add product to cart.',
                     422,
-                    array('product' => $productLine)
+                    array(
+                        'product' => $productLine,
+                        'reason' => $reason,
+                        'update_result' => $updated,
+                        'minimum_quantity' => $minimumQuantity,
+                        'available_for_order' => (bool) $failedProduct->available_for_order,
+                        'combination_product_id' => $failedCombination ? (int) $failedCombination->id_product : null,
+                        'id_shop' => $shopId,
+                    )
                 );
             }
         }

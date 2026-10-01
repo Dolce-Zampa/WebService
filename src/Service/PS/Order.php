@@ -232,7 +232,7 @@ class Order extends Cart implements PrestashopServiceInterface
                 'email' => $email,
                 'firstname' => $firstname,
                 'lastname' => $lastname,
-                'phome' => $customerDetails->phone ?? null,
+                'phone' => $customerDetails->phone ?? null,
                 'delivery_address' => (array) $customerDetails->delivery_address, //FIXME: no address data from Stripe, set to null
                 'newsletter' => false, //FIXME: no newsletter subscription data from Stripe, default to false
             ], $this)
