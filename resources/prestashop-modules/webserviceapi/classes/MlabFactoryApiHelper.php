@@ -290,6 +290,7 @@ class MlabFactoryApiHelper
                 'id_supplier' => (int) ($metadata['id_supplier'] ?? $product['id_supplier'] ?? 0),
                 'link_rewrite' => (string) ($metadata['link_rewrite'] ?? $product['link_rewrite'] ?? ''),
                 'reference' => (string) $product['reference'],
+                'attributes' => (string) ($product['attributes'] ?? ''),
                 'quantity' => (int) $product['cart_quantity'],
                 'price_wt' => (float) $product['price_wt'],
                 'total_wt' => (float) $product['total_wt'],

@@ -190,7 +190,7 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             $deliveryAddressId = $cart->id_address_delivery ? (int) $cart->id_address_delivery : 0;
 
             // Validazione operatore
-            $operation = MlabFactoryApiHelper::getValue($productLine, 'op', null);
+            $operation = $productLine['op'] ?? 'up';
             if ($operation !== null && !in_array($operation, array('up', 'down'), true)) {
                 throw new MlabFactoryApiException(
                     'Invalid op value. Allowed: "up", "down".',
@@ -269,31 +269,25 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
                     $customizationFieldIds[$fieldId] = (int) $result;
                 }
 
-                // Recupera l'id_customization "di riga" dal carrello dopo l'aggiunta dei field.
-                // addTextFieldToProduct/addPictureToProduct creano/riusano un customization
-                // legato alla coppia (id_product, id_product_attribute, id_address_delivery).
-                $cartCustomizations = $cart->getProductCustomization(
-                    $productId,
-                    $combinationId,
-                    $deliveryAddressId
-                );
-
-                if (!empty($cartCustomizations)) {
-                    // Usa l'id_customization della riga appena creata
-                    $customizationId = (int) $cartCustomizations[0]['id_customization'];
-                } elseif (!empty($customizationFieldIds)) {
-                    // Fallback: usa l'ultimo id restituito
-                    $customizationId = (int) end($customizationFieldIds);
+                // Native addTextFieldToProduct/addPictureToProduct return the pending row ID.
+                // getProductCustomization takes a field type, not a combination ID.
+                $customizationId = (int) end($customizationFieldIds);
+                if (!Db::getInstance()->update(
+                    'customization',
+                    array('id_product_attribute' => $combinationId, 'id_address_delivery' => $deliveryAddressId),
+                    'id_customization = ' . $customizationId . ' AND id_cart = ' . (int) $cart->id . ' AND id_product = ' . $productId
+                )) {
+                    throw new MlabFactoryApiException('Unable to associate customization with cart row.', 500);
                 }
             }
             // --- FINE GESTIONE CUSTOMIZZAZIONI ---
 
             // Notes use native text customization so distinct selections remain distinct rows.
-            $notes = MlabFactoryApiHelper::getValue($productLine, 'notes', null);
+            $notes = $productLine['notes'] ?? null;
             if ($notes !== null && $notes !== '') {
                 $customizationId = MlabFactoryCartNotes::save($cart, $productId, $combinationId, $notes);
             }
-            if ($customizationId > 0 && (($notes !== null && $notes !== '') || !empty($productLine['id_customization']))) {
+            if ($customizationId > 0) {
                 MlabFactoryCartNotes::assertOwned($cart, $productId, $combinationId, $customizationId);
             }
 

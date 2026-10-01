@@ -6,6 +6,7 @@ namespace PS\Webservice\Service;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Facades\S3Service;
 
 class OpenAIService
 {
@@ -419,22 +420,45 @@ PROMPT;
         ];
     }
 
-    protected function saveImage($b64, ?string $fileName = null): string
+    protected function saveImage(string $b64, ?string $fileName = null): string
     {
-        $outputDir = storage_path('/generated-images/');
-        if (!is_dir($outputDir)) {
-            mkdir($outputDir, 0755, true);
+        $outputDir = rtrim(storage_path('generated-images'), DIRECTORY_SEPARATOR);
+
+        if (!is_dir($outputDir) && !mkdir($outputDir, 0755, true) && !is_dir($outputDir)) {
+            throw new \RuntimeException("Impossibile creare la directory: {$outputDir}");
         }
 
-        if(empty($fileName)) {
+        // Sanifica il nome file per evitare path traversal
+        if (empty($fileName)) {
             $fileName = 'edited_' . uniqid() . '.png';
+        } else {
+            $fileName = basename($fileName);
         }
 
-        $outputPath = $outputDir . $fileName;
-        file_put_contents($outputPath, base64_decode($b64));
+        // Rimuove eventuale prefisso data URI (data:image/png;base64,...)
+        if (preg_match('/^data:image\/\w+;base64,/', $b64)) {
+            $b64 = substr($b64, strpos($b64, ',') + 1);
+        }
 
-        // URL pubblico (adatta al tuo setup)
-        $imageUrl = $this->baseUriImage . str_replace('/mnt/s3', '', $outputPath);
-        return $imageUrl;
+        $decoded = base64_decode($b64, true);
+        if ($decoded === false) {
+            throw new \RuntimeException('Base64 non valido');
+        }
+
+        $outputPath = $outputDir . DIRECTORY_SEPARATOR . $fileName;
+
+        if (file_put_contents($outputPath, $decoded) === false) {
+            throw new \RuntimeException("Scrittura fallita: {$outputPath}");
+        }
+
+        $s3Path = "generated-images/{$fileName}";
+
+        if (!S3Service::uploadFile($s3Path, $outputPath)) {
+            throw new \RuntimeException("Upload S3 fallito: {$s3Path}");
+        }
+
+        // URL pubblico: NON usare str_replace su un path fisso.
+        // Usa il base URI configurato + il path relativo su S3.
+        return rtrim($this->baseUriImage, '/') . '/' . $s3Path;
     }
 }
