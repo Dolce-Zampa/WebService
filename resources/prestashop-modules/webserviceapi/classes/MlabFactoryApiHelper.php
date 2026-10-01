@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/MlabFactoryCartNotes.php';
 require_once __DIR__ . '/MlabFactoryApiException.php';
 
 class MlabFactoryApiHelper
@@ -255,6 +256,7 @@ class MlabFactoryApiHelper
                 'id_image' => $idImage,
                 'id_product_attribute' => (int) $product['id_product_attribute'],
                 'id_customization' => (int) $product['id_customization'],
+                'notes' => MlabFactoryCartNotes::get($cart, (int) $product['id_product'], (int) $product['id_customization']),
                 'name' => (string) $product['name'],
                 'reference' => (string) $product['reference'],
                 'quantity' => (int) $product['cart_quantity'],

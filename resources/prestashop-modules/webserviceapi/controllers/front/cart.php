@@ -1,6 +1,8 @@
 <?php
 require_once dirname(__FILE__) . '/../../classes/MlabFactoryApiBaseModuleFrontController.php';
 
+require_once dirname(__FILE__) . '/../../classes/MlabFactoryCartNotes.php';
+
 class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFrontController
 {
     protected function handleRequest()
@@ -286,6 +288,15 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             }
             // --- FINE GESTIONE CUSTOMIZZAZIONI ---
 
+            // Notes use native text customization so distinct selections remain distinct rows.
+            $notes = MlabFactoryApiHelper::getValue($productLine, 'notes', null);
+            if ($notes !== null && $notes !== '') {
+                $customizationId = MlabFactoryCartNotes::save($cart, $productId, $combinationId, $notes);
+            }
+            if ($customizationId > 0 && (($notes !== null && $notes !== '') || !empty($productLine['id_customization']))) {
+                MlabFactoryCartNotes::assertOwned($cart, $productId, $combinationId, $customizationId);
+            }
+
             $updated = $cart->updateQty(
                 $quantity,
                 $productId,
@@ -335,13 +346,14 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
 
         $idCart = (int) MlabFactoryApiHelper::getValue($payload, 'id_cart', 0);
         $idCustomer = (int) MlabFactoryApiHelper::getValue($payload, 'id_customer', 0);
+        $idGuest = (int) MlabFactoryApiHelper::getValue($payload, 'id_guest', 0);
 
         if ($idCart <= 0) {
             throw new MlabFactoryApiException('You must provide id_cart.', 422);
         }
 
-        if ($idCustomer <= 0) {
-            throw new MlabFactoryApiException('You must provide id_customer.', 422);
+        if ($idCustomer <= 0 && $idGuest <= 0) {
+            throw new MlabFactoryApiException('You must provide id_customer or id_guest.', 422);
         }
 
         $cart = new Cart($idCart);
@@ -349,11 +361,19 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             throw new MlabFactoryApiException('Cart not found.', 404, array('id_cart' => $idCart));
         }
 
-        if ((int) $cart->id_customer !== $idCustomer) {
+        if ($idCustomer > 0 && (int) $cart->id_customer !== $idCustomer) {
             throw new MlabFactoryApiException(
                 'Cart does not belong to the customer.',
                 422,
                 array('id_cart' => $idCart, 'id_customer' => $idCustomer)
+            );
+        }
+
+        if ($idCustomer <= 0 && ((int) $cart->id_customer > 0 || (int) $cart->id_guest !== $idGuest)) {
+            throw new MlabFactoryApiException(
+                'Cart does not belong to the guest.',
+                422,
+                array('id_cart' => $idCart, 'id_guest' => $idGuest)
             );
         }
 

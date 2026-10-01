@@ -445,7 +445,6 @@ class ProductController extends Controller
 
         // 6. Upload su S3
         S3Service::uploadFile($s3Path, $filePath);
-
         return response([
             'success' => true,
             'path' => $s3Path,
