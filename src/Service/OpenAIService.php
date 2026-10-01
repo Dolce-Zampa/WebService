@@ -459,6 +459,6 @@ PROMPT;
 
         // URL pubblico: NON usare str_replace su un path fisso.
         // Usa il base URI configurato + il path relativo su S3.
-        return rtrim($this->baseUriImage, '/') . '/' . $s3Path;
+        return rtrim($this->baseUriImage, '/') . '/img/' . $s3Path;
     }
 }

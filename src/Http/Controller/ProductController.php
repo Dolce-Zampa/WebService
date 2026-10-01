@@ -234,7 +234,7 @@ class ProductController extends Controller
         $position = isset($queryParams['position']) && is_string($queryParams['position']) ? trim($queryParams['position']) : null;
         $limit = isset($queryParams['limit']) ? (int) $queryParams['limit'] : 6;
         $promotionsSponsorized = $this->promotionService->getActiveSponsoredProducts($position, $limit);
-        $promotionsProducts = $this->productService->getFeaturedPromotions();
+        $promotionsProducts = $this->productService->getFeaturedProducts();
 
         return response([
             'success' => true,

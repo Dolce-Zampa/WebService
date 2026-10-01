@@ -86,9 +86,28 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function getFeaturedProducts(): Collection
     {
+        $this->httpService->setUrl("/promotions?debug=true");
+        $response = $this->httpService->invoke('GET');
 
-        $products = $this->productsList(['display' => 'full', 'sort' => 'id_DESC', 'limit' => 4]);
-        return $products;
+        if ($response->failed()) {
+            throw new PrestashopConnectorException($this->httpService);
+        }
+
+        $collection = new Collection();
+        $products = $response->toArray()['data']['products'] ?? [];
+        foreach ($products as $productData) {
+
+            try {
+                $product = ProductEntity::createFromId($productData['id_product'], $this);
+                $collection->push($product);
+            } catch (EntityExceptions $e) {
+                Log::error("Failed to create ProductEntity for product ID {$productData['id']}: " . $e->getMessage());
+                continue; // Skip this product but continue processing others
+            }
+            
+        }
+
+        return $collection;
     }
 
     /**
@@ -220,17 +239,6 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }
 
         return $collection;
-    }
-
-    public function getFeaturedPromotions(): Collection
-    {
-        $products = $this->productsList(filter: new Filter(['on_sale' => true]));
-
-        if(is_null($products) || $products->isEmpty()) {
-            return new Collection(); // No promotions found
-        }
-
-        return $products;
     }
 
     /**
