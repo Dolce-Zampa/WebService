@@ -47,16 +47,19 @@ final class ProductCacheTest extends TestCase
 
     protected function tearDown(): void
     {
+        Carbon\Carbon::setTestNow();
         Facade::clearResolvedInstances();
         Facade::setFacadeApplication(null);
     }
 
-    private function http(array $payload, int $calls = 1): HttpServiceInterface
+    private function http(?array $payload, int $calls = 1): HttpServiceInterface
     {
         $http = $this->createMock(HttpServiceInterface::class);
         $http->method('getConfig')->willReturn(new WebserviceConfig('https://shop.test/api'));
         $http->expects($this->exactly($calls))->method('invoke')->willReturnSelf();
-        $http->method('toArray')->willReturn($payload);
+        if ($payload !== null) {
+            $http->method('toArray')->willReturn($payload);
+        }
         return $http;
     }
 
@@ -180,4 +183,112 @@ final class ProductCacheTest extends TestCase
         $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
     }
 
+    public function test_product_and_slug_survive_a_day_without_api_reload(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $service = new Product($this->http(['products' => [$data]]));
+        $first = $service->getProductById((int) $data['id']);
+        Carbon\Carbon::setTestNow(Carbon\Carbon::now()->addDay());
+        $this->assertSame($first->toArray(), $service->getProductById((int) $data['id'])->toArray());
+        $this->assertSame((int) $data['id'], $service->findProductIdBySlug($data['link_rewrite']));
+    }
+
+    public function test_single_product_webhook_keeps_other_complete_snapshots(): void
+    {
+        $service = $this->getMockBuilder(Product::class)->setConstructorArgs([$this->http([], 0)])->onlyMethods(['getProductById'])->getMock();
+        $service->expects($this->exactly(3))->method('getProductById')->willReturnCallback(fn (int $id) => ProductEntity::fromSnapshot(['id' => $id, 'price' => 122.0], $service, true));
+        $service->getCompleteProductById(1);
+        $service->getCompleteProductById(2);
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->expects($this->exactly(2))->method('push');
+        Facade::getFacadeApplication()->instance('queue-service', $queue);
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $request = (new ServerRequestFactory())->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody(['cache' => [['tags' => ['product:1']]]]);
+        $controller->clearCache($request, new Response(), []);
+        $this->assertFalse($service->hasCompleteProductCached(1));
+        $this->assertTrue($service->hasCompleteProductCached(2));
+        $service->getCompleteProductById(2);
+        $service->getCompleteProductById(1);
+        $this->assertTrue($service->hasCompleteProductCached(1));
+    }
+
+    public function test_changed_bundle_invalidates_only_dependent_snapshot(): void
+    {
+        $service = $this->getMockBuilder(Product::class)->setConstructorArgs([$this->http([], 0)])->onlyMethods(['getProductById'])->getMock();
+        $service->expects($this->exactly(2))->method('getProductById')->willReturnCallback(fn () => ProductEntity::fromSnapshot(['id' => 1, 'price' => 122.0, 'bundles' => [['id' => 9]]], $service, true));
+        $service->getCompleteProductById(1);
+        $this->assertTrue($service->hasCompleteProductCached(1));
+        Product::invalidateCacheTags(['product:9', 'product-catalog']);
+        $this->assertFalse($service->hasCompleteProductCached(1));
+        $service->getCompleteProductById(1);
+        $this->assertTrue($service->hasCompleteProductCached(1));
+    }
+
+    public function test_warm_command_enqueues_only_missing_active_products_newest_first(): void
+    {
+        $db = Illuminate\Database\Capsule\Manager::connection();
+        $db->statement('CREATE TABLE product (id_product INTEGER, active INTEGER)');
+        $db->table('product')->insert([
+            ['id_product' => 1, 'active' => 1], ['id_product' => 2, 'active' => 0],
+            ['id_product' => 3, 'active' => 1], ['id_product' => 4, 'active' => 1],
+        ]);
+        $service = $this->getMockBuilder(Product::class)->disableOriginalConstructor()->onlyMethods(['hasCompleteProductCached', 'reserveWarmup'])->getMock();
+        $checked = [];
+        $service->method('hasCompleteProductCached')->willReturnCallback(function (int $id) use (&$checked) { $checked[] = $id; return $id === 3; });
+        $service->method('reserveWarmup')->willReturn(true);
+        $queue = $this->createMock(RedisQueue::class);
+        $queued = [];
+        $queue->method('push')->willReturnCallback(function (string $name, array $payload) use (&$queued) {
+            $this->assertSame(Product::WARM_QUEUE, $name);
+            $queued[] = $payload['product_id'];
+        });
+        $command = new PS\Webservice\Commands\WarmProductCacheCommand($service, $queue);
+        $tester = new Symfony\Component\Console\Tester\CommandTester($command);
+        $this->assertSame(0, $tester->execute([]));
+        $this->assertSame([4, 3, 1], $checked);
+        $this->assertSame([4, 1], $queued);
+    }
+
+    public function test_warm_command_limit_applies_to_missing_products(): void
+    {
+        $db = Illuminate\Database\Capsule\Manager::connection();
+        $db->statement('CREATE TABLE product (id_product INTEGER, active INTEGER)');
+        $db->table('product')->insert([
+            ['id_product' => 1, 'active' => 1], ['id_product' => 2, 'active' => 1], ['id_product' => 3, 'active' => 1],
+        ]);
+        $service = $this->getMockBuilder(Product::class)->disableOriginalConstructor()->onlyMethods(['hasCompleteProductCached', 'reserveWarmup'])->getMock();
+        $service->method('hasCompleteProductCached')->willReturnCallback(fn (int $id) => $id === 3);
+        $service->method('reserveWarmup')->willReturn(true);
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->expects($this->once())->method('push')->with(Product::WARM_QUEUE, ['product_id' => 2]);
+        $tester = new Symfony\Component\Console\Tester\CommandTester(new PS\Webservice\Commands\WarmProductCacheCommand($service, $queue));
+        $this->assertSame(0, $tester->execute(['--limit' => '1']));
+    }
+
+    public function test_pending_warm_jobs_are_deduplicated(): void
+    {
+        $service = new Product($this->http([], 0));
+        $this->assertTrue($service->reserveWarmup(7));
+        $this->assertFalse($service->reserveWarmup(7));
+        $service->releaseWarmup(7);
+        $this->assertTrue($service->reserveWarmup(7));
+    }
+    public function test_webhook_invalidates_base_snapshot_and_old_slug(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $http = $this->http(null, 3);
+        $http->method('toArray')->willReturnOnConsecutiveCalls(['products' => [$data]], ['data' => []], ['products' => [$data]]);
+        $service = new Product($http);
+        $id = (int) $data['id'];
+        $service->getProductById($id);
+        $this->assertSame($id, $service->findProductIdBySlug($data['link_rewrite']));
+        $queue = $this->createMock(RedisQueue::class);
+        Facade::getFacadeApplication()->instance('queue-service', $queue);
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $request = (new ServerRequestFactory())->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody(['cache' => [['tags' => ['product:' . $id]]]]);
+        $controller->clearCache($request, new Response(), []);
+        // An old slug now resolves through the upstream catalog, rather than its cached mapping.
+        $this->assertNull($service->findProductIdBySlug($data['link_rewrite']));
+        $this->assertSame($id, $service->getProductById($id)->getId());
+    }
 }

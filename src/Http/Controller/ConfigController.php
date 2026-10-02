@@ -80,9 +80,16 @@ class ConfigController extends CartController
                 }
             }
         }
-        // Redis cache tags use stable namespaces: a separate revision prevents stale repopulation.
-        \Illuminate\Support\Facades\Cache::forever(\PS\Webservice\Service\PS\Product::CACHE_REVISION, bin2hex(random_bytes(16)));
+        // Bump only affected tag revisions so other forever product snapshots remain usable.
         $productIds = [];
+        $tagsToInvalidate = [];
+        foreach ($payload['cache'] as $entry) {
+            $tagsToInvalidate = array_merge($tagsToInvalidate, $entry['tags'] ?? []);
+        }
+        if (array_filter($tagsToInvalidate, fn (string $tag) => str_starts_with($tag, 'product:'))) {
+            $tagsToInvalidate[] = 'product-catalog';
+        }
+        \PS\Webservice\Service\PS\Product::invalidateCacheTags($tagsToInvalidate);
         foreach ($payload['cache'] as $key => $value) {
             foreach ($value['tags'] ?? [] as $tag) {
                 if (is_string($tag) && preg_match('/^product:(\d+)$/', $tag, $matches)) {

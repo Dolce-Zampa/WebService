@@ -178,6 +178,7 @@ class webserviceapi extends PaymentModule
     {
         if (isset($params['object']) && $params['object'] instanceof Product) {
             Db::getInstance()->delete('webserviceapi_configurator', 'id_product = ' . (int) $params['object']->id);
+            $this->clearCacheWebhook($params['object']);
         }
     }
 

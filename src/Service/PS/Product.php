@@ -5,6 +5,7 @@ namespace PS\Webservice\Service\PS;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use PS\Webservice\Domain\Entities\EntityExceptions;
 use PS\Webservice\Domain\Entities\FilterEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
@@ -16,24 +17,52 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     use \PS\Webservice\Traits\UseCache;
 
     public const CACHE_QUEUE = 'product-cache-jobs';
+    public const WARM_QUEUE = 'product-cache-warm-jobs';
     public const CACHE_REVISION = 'product-cache:revision';
 
-    /** Cache upstream payloads before HTTP and coalesce concurrent misses. TTL is in minutes. */
-    private function cachedProductData(string $key, array $tags, callable $loader, int $ttl = 5): mixed
+    /** The global revision is changed only by a full clear; each tag has its own revision. */
+    public static function revisionFor(array $tags): string
+    {
+        $versions = [Cache::get(self::CACHE_REVISION, '0')];
+        foreach ($tags as $tag) {
+            $versions[] = Cache::get(self::CACHE_REVISION . ':' . $tag, '0');
+        }
+        return hash('sha256', json_encode($versions));
+    }
+
+    public static function invalidateCacheTags(array $tags): void
+    {
+        foreach (array_unique($tags) as $tag) {
+            Cache::forever(self::CACHE_REVISION . ':' . $tag, bin2hex(random_bytes(16)));
+        }
+    }
+
+    private function contextKey(): string
+    {
+        return hash('sha256', $this->httpService->getConfig()->toJson() . $this->httpService->getConfig()->getQueryParams());
+    }
+
+    private function productCacheKey(string $key, array $tags): string
+    {
+        return 'product-cache:v3:' . $this->contextKey() . ':' . self::revisionFor($tags) . ':' . $key;
+    }
+
+    /** TTL is in minutes; zero means forever. */
+    private function cachedProductData(string $key, array $tags, callable $loader, int $ttl = 0, ?callable $valid = null): mixed
     {
         if (env('APP_DISABLE_CACHE', false)) {
             return $loader();
         }
-        $context = hash('sha256', $this->httpService->getConfig()->toJson() . $this->httpService->getConfig()->getQueryParams());
-        $revision = \Illuminate\Support\Facades\Cache::get(self::CACHE_REVISION, '0');
-        $key = 'product-cache:v2:' . $context . ':' . $revision . ':' . $key;
-        $store = \Illuminate\Support\Facades\Cache::tags($tags);
+        $key = $this->productCacheKey($key, $tags);
+        $store = Cache::tags($tags);
         $cached = $store->get($key);
-        if ($cached !== null) {
+        if ($cached !== null && ($valid === null || $valid($cached))) {
             return $cached;
         }
+        // Also guard loads of products that embed a bundle modified during this request.
+        $revision = self::revisionFor(array_merge($tags, ['product-catalog']));
         $namespace = $store->getTags()->getNamespace();
-        $lock = \Illuminate\Support\Facades\Cache::lock('product-cache-lock:' . sha1($namespace . $key), 120);
+        $lock = Cache::lock('product-cache-lock:' . sha1($namespace . $key), 120);
         $deadline = microtime(true) + 30;
         while (!$lock->acquire()) {
             if (microtime(true) >= $deadline) {
@@ -43,13 +72,16 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }
         try {
             $cached = $store->get($key);
-            if ($cached !== null) {
+            if ($cached !== null && ($valid === null || $valid($cached))) {
                 return $cached;
             }
             $data = $loader();
-            // A webhook received during loading must not be overwritten by this older request.
-            if ($data !== null && $store->getTags()->getNamespace() === $namespace && \Illuminate\Support\Facades\Cache::get(self::CACHE_REVISION, '0') === $revision) {
-                $store->put($key, $data, $ttl * 60);
+            if ($data !== null && $store->getTags()->getNamespace() === $namespace && self::revisionFor(array_merge($tags, ['product-catalog'])) === $revision) {
+                if ($ttl === 0) {
+                    $store->forever($key, $data);
+                } else {
+                    $store->put($key, $data, $ttl * 60);
+                }
             }
             return $data;
         } finally {
@@ -57,7 +89,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }
     }
 
-    private function productApiData(string $url, array $tags = ['product-catalog'], int $ttl = 5): array
+    private function productApiData(string $url, array $tags = ['product-catalog'], int $ttl = 0): array
     {
         return $this->cachedProductData('api:' . $url, $tags, function () use ($url) {
             $this->httpService->setUrl($url);
@@ -69,13 +101,54 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }, $ttl);
     }
 
+    private function snapshotIsCurrent(array $snapshot): bool
+    {
+        foreach ($snapshot['dependencies'] as $tag => $revision) {
+            if (self::revisionFor([$tag]) !== $revision) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public function hasCompleteProductCached(int $id): bool
+    {
+        if (env('APP_DISABLE_CACHE', false)) {
+            return false;
+        }
+        $tags = ['product:' . $id];
+        $snapshot = Cache::tags($tags)->get($this->productCacheKey('detail:' . $id, $tags));
+        return is_array($snapshot) && $this->snapshotIsCurrent($snapshot);
+    }
+
+    public function reserveWarmup(int $id): bool
+    {
+        return Cache::add('product-warm-pending:' . $this->contextKey() . ':' . $id, true, 86400);
+    }
+
+    public function releaseWarmup(int $id): void
+    {
+        Cache::forget('product-warm-pending:' . $this->contextKey() . ':' . $id);
+    }
+
     public function getCompleteProductById(int $id): ?ProductEntity
     {
-        $data = $this->cachedProductData('detail:' . $id, ['product-catalog', 'product:' . $id], function () use ($id) {
+        $snapshot = $this->cachedProductData('detail:' . $id, ['product:' . $id], function () use ($id) {
             $product = $this->getProductById($id);
-            return $product?->withFeatures()->toArray();
-        });
-        return $data === null ? null : ProductEntity::fromSnapshot($data, $this, true);
+            if ($product === null) {
+                return null;
+            }
+            $data = $product->withFeatures()->toArray();
+            $dependencies = [];
+            foreach (array_merge($data['bundles'] ?? [], $data['associations']['accessories'] ?? []) as $related) {
+                if (isset($related['id'])) {
+                    $tag = 'product:' . (int) $related['id'];
+                    $dependencies[$tag] = self::revisionFor([$tag]);
+                }
+            }
+            return ['product' => $data, 'dependencies' => $dependencies];
+        }, 0, fn (array $cached) => $this->snapshotIsCurrent($cached));
+        return $snapshot === null ? null : ProductEntity::fromSnapshot($snapshot['product'], $this, true);
     }
 
     public function countProducts(array $filter = []): int
@@ -204,7 +277,8 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function getProductById(int $id): ?ProductEntity
     {
-        $data = $this->cachedProductData('base:' . $id, ['product-catalog', 'product:' . $id], function () use ($id) {
+        $productRevision = self::revisionFor(['product:' . $id]);
+        $data = $this->cachedProductData('base:' . $id, ['product:' . $id], function () use ($id) {
             $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
             $response = $this->httpService->invoke('GET');
             if ($response->failed()) {
@@ -219,6 +293,11 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             }
             return $product->toArray();
         });
+        if (self::revisionFor(['product:' . $id]) === $productRevision && $data !== null && !empty($data['link_rewrite']) && is_string($data['link_rewrite']) && !env('APP_DISABLE_CACHE', false)) {
+            Cache::forever('product-slug:v3:' . $this->contextKey() . ':' . sha1($data['link_rewrite']), [
+                'id' => $id, 'revision' => $productRevision,
+            ]);
+        }
         return $data === null ? null : ProductEntity::fromSnapshot($data, $this);
     }
 
@@ -237,12 +316,25 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function findProductIdBySlug(string $slug): ?int
     {
+        $key = 'product-slug:v3:' . $this->contextKey() . ':' . sha1($slug);
+        if (!env('APP_DISABLE_CACHE', false)) {
+            $mapping = Cache::get($key);
+            if (is_array($mapping) && self::revisionFor(['product:' . $mapping['id']]) === $mapping['revision']) {
+                return (int) $mapping['id'];
+            }
+        }
+        $catalogRevision = self::revisionFor(['product-catalog']);
         $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug))['data'] ?? [];
         if (empty($products)) {
             return null; // No product found with the given slug
         }
 
-        return (int) $products['id_product'];
+        $id = (int) $products['id_product'];
+        $productRevision = self::revisionFor(['product:' . $id]);
+        if (!env('APP_DISABLE_CACHE', false) && self::revisionFor(['product-catalog']) === $catalogRevision) {
+            Cache::forever($key, ['id' => $id, 'revision' => $productRevision]);
+        }
+        return $id;
     }
 
     public function searchProducts(string $query): Collection

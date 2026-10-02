@@ -17,6 +17,7 @@ final class AppScheduleProvider implements ScheduleProviderInterface
     public function getSchedule(): Schedule
     {
         return (new Schedule())
+            ->add(RecurringMessage::cron('0 3 * * *', new WarmProductCacheMessage(), 'Europe/Rome'))
             ->add(
                 // Esegue ogni giorno alla mezzanotte (Europe/Rome)
                 RecurringMessage::cron('0 0 * * *', new SendReviewRequestMailMessage())

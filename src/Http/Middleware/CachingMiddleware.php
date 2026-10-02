@@ -21,13 +21,13 @@ class CachingMiddleware implements MiddlewareInterface
     public function __construct(string $tag = '', ?int $ttl = null) 
     {
         $this->tag = [$tag];
-        $this->ttl = $ttl ?? (in_array($tag, ['product-detail', 'products', 'products,promotions', 'product-reviews', 'search'], true) ? 5 : null);
+        $this->ttl = $ttl ?? (in_array($tag, ['products,promotions', 'product-reviews', 'search'], true) ? 5 : null);
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         // Skip caching for non-GET requests
-        if ($request->getMethod() !== 'GET' || env('APP_DISABLE_CACHE', false)) {
+        if ($request->getMethod() !== 'GET' || env('APP_DISABLE_CACHE', false) || $this->tag[0] === 'product-detail') {
             return $handler->handle($request);
         }
 
@@ -46,7 +46,7 @@ class CachingMiddleware implements MiddlewareInterface
 
         $cacheStore = \Illuminate\Support\Facades\Cache::tags($this->tags);
         $namespace = $cacheStore->getTags()->getNamespace();
-        $revision = \Illuminate\Support\Facades\Cache::get(\PS\Webservice\Service\PS\Product::CACHE_REVISION, '0');
+        $revision = \PS\Webservice\Service\PS\Product::revisionFor($this->tags);
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
@@ -82,7 +82,7 @@ class CachingMiddleware implements MiddlewareInterface
         // Cache only successful responses
         if (!$skipCache && $response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
             $body = $response->getBody()->__toString();
-            if ($cacheStore->getTags()->getNamespace() === $namespace && \Illuminate\Support\Facades\Cache::get(\PS\Webservice\Service\PS\Product::CACHE_REVISION, '0') === $revision) {
+            if ($cacheStore->getTags()->getNamespace() === $namespace && \PS\Webservice\Service\PS\Product::revisionFor($this->tags) === $revision) {
                 $this->setToCache($cacheKey, $body, $this->ttl);
             }
             

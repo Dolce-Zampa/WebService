@@ -11,7 +11,7 @@ $queue = $container->get(RedisQueue::class);
 $productService = $container->get(Product::class);
 while (true) {
     try {
-        $job = $queue->pop([Product::CACHE_QUEUE], 10);
+        $job = $queue->pop([Product::CACHE_QUEUE, Product::WARM_QUEUE], 10);
         if ($job === null) {
             continue;
         }
@@ -22,13 +22,19 @@ while (true) {
         }
         try {
             $productService->getCompleteProductById($id);
+            if ($job['queue'] === Product::WARM_QUEUE) {
+                $productService->releaseWarmup($id);
+                usleep(200000);
+            }
             Log::info('Product cache refreshed', ['product_id' => $id]);
         } catch (\Throwable $e) {
             $attempt = (int) ($payload['attempt'] ?? 0) + 1;
             Log::error('Product cache refresh failed', ['product_id' => $id, 'attempt' => $attempt, 'error' => $e->getMessage()]);
             if ($attempt < 3) {
                 sleep(5 * $attempt);
-                $queue->push(Product::CACHE_QUEUE, ['product_id' => $id, 'attempt' => $attempt]);
+                $queue->push($job['queue'], ['product_id' => $id, 'attempt' => $attempt]);
+            } elseif ($job['queue'] === Product::WARM_QUEUE) {
+                $productService->releaseWarmup($id);
             }
         }
     } catch (\Throwable $e) {

@@ -41,3 +41,9 @@ $container->set(\PS\Webservice\Commands\ElasticSearch\IndexElk::class, function 
         $c->get(\PS\Webservice\Service\RedisQueue::class)
     );
 });
+$container->set(\PS\Webservice\Commands\WarmProductCacheCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\WarmProductCacheCommand(
+        $c->get(\PS\Webservice\Service\PS\Product::class),
+        $c->get(\PS\Webservice\Service\RedisQueue::class)
+    );
+});
