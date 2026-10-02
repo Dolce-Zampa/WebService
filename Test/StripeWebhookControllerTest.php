@@ -95,6 +95,21 @@ final class StripeWebhookControllerTest extends TestCase
                 $this->stubbedEvent = $event;
             }
 
+            protected function getFromCache(string $key): mixed
+            {
+                return ['orderSession' => [
+                    'id_customer' => 7,
+                    'id_guest' => null,
+                    'customer' => [
+                        'email' => 'john.doe@example.com',
+                        'firstname' => 'Mario',
+                        'lastname' => 'Rossi',
+                        'phone' => '3319843630',
+                        'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100'],
+                    ],
+                ]];
+            }
+
             protected function constructStripeEvent(string $payload, string $sigHeader, string $secret): \Stripe\Event
             {
                 return $this->stubbedEvent;
@@ -414,4 +429,97 @@ final class StripeWebhookControllerTest extends TestCase
         $body = json_decode((string) $result->getBody(), true);
         $this->assertArrayHasKey('error', $body['data']);
     }
+
+    public function test_guest_checkout_confirms_without_a_registered_customer(): void
+    {
+        $customer = [
+            'email' => 'guest@example.com', 'firstname' => 'Stefano', 'lastname' => 'Galmarini',
+            'phone' => '3312345678', 'newsletter' => false,
+            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051'],
+        ];
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->once())->method('confirmSessionOrder')->with(
+            621, null, 359, 15, null, 'guest@example.com', 'Stefano', 'Galmarini',
+            $this->callback(fn ($details) => $details->delivery_address === $customer['delivery_address']
+                && $details->phone === '3312345678'), 104.0
+        );
+        $controller = $this->controllerWithCheckoutCache($orderService, ['orderSession' => [
+            'id_customer' => null, 'id_guest' => 359, 'customer' => $customer,
+        ]]);
+        $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test_guest', 'amount_total' => 10400, 'currency' => 'eur',
+            'metadata' => ['cart_id' => '621', 'id_guest' => '359', 'id_carrier' => '15', 'customer_email' => 'guest@example.com'],
+            'customer_details' => ['address' => ['line1' => 'Different billing address']],
+        ]));
+    }
+
+    public function test_guest_checkout_accepts_the_cached_order_session_object(): void
+    {
+        $orderService = $this->createMock(Order::class);
+        $customer = \PS\Webservice\Domain\Entities\CustomerEntity::create([
+            'email' => 'guest@example.com', 'firstname' => 'Stefano', 'lastname' => 'Galmarini',
+            'phone' => '3312345678', 'newsletter' => false,
+            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051'],
+        ], $orderService);
+        $cached = \PS\Webservice\Domain\Object\OrderSession::create([
+            'cart_id' => 621, 'id_customer' => null, 'id_guest' => 359,
+            'id_carrier' => 15, 'customer' => $customer,
+        ], $orderService);
+        $orderService->expects($this->exactly(2))->method('confirmSessionOrder')->with(
+            621, null, 359, 15, null, 'guest@example.com', 'Stefano', 'Galmarini',
+            $this->callback(fn ($details) => $details->delivery_address['address1'] === 'Via Consegna 1'), 104.0
+        );
+        foreach ([$cached, ['orderSession' => $cached, 'cart' => []]] as $cacheEntry) {
+            $this->controllerWithCheckoutCache($orderService, $cacheEntry)
+                ->handleCheckoutSessionCompleted($this->guestSession());
+        }
+    }
+
+    public function test_missing_guest_checkout_cache_keeps_event_retryable(): void
+    {
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->never())->method('confirmSessionOrder');
+        $controller = $this->controllerWithCheckoutCache($orderService, null);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Missing checkout customer data for cart 621');
+        $controller->handleCheckoutSessionCompleted($this->guestSession());
+    }
+
+    public function test_checkout_cache_for_another_guest_is_rejected(): void
+    {
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->never())->method('confirmSessionOrder');
+        $controller = $this->controllerWithCheckoutCache($orderService, [
+            'id_guest' => 360, 'customer' => [],
+        ]);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Checkout customer identity mismatch');
+        $controller->handleCheckoutSessionCompleted($this->guestSession());
+    }
+
+    private function guestSession(): \Stripe\Checkout\Session
+    {
+        return \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test_guest', 'amount_total' => 10400, 'currency' => 'eur',
+            'metadata' => ['cart_id' => '621', 'id_guest' => '359', 'id_carrier' => '15'],
+        ]);
+    }
+
+    private function controllerWithCheckoutCache(Order $orderService, mixed $cached): StripeWebhookController
+    {
+        return new class($orderService, $this->createMock(MailjetService::class),
+            $this->createMock(PaymentGatewayInterface::class), $this->createMock(MailerInterface::class), $cached
+        ) extends StripeWebhookController {
+            public function __construct(Order $order, MailjetService $mailjet, PaymentGatewayInterface $stripe, MailerInterface $mailer, private mixed $cached)
+            {
+                parent::__construct($order, $mailjet, $stripe, $mailer);
+            }
+
+            protected function getFromCache(string $key): mixed
+            {
+                return $this->cached;
+            }
+        };
+    }
+
 }

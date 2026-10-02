@@ -13,12 +13,10 @@ trait UseCache
 
     protected function getFromCache(string $key): mixed
     {
-        $key = sha1($key);
-        if (Cache::tags($this->tags)->has($key)) {
-            return Cache::tags($this->tags)->tags($this->tags)->get($key);
+        if (env('APP_DISABLE_CACHE', false)) {
+            return null;
         }
-
-        return null;
+        return Cache::tags($this->tags)->get(sha1($key));
     }
     // "c275d4f4-2011-7091-eb17-87e208e05738" "57f6dd7f7506f497933045377e718d257a0b9006"
     /**

@@ -179,7 +179,7 @@ class ProductController extends Controller
             ], 400);
         }
 
-        $productDetail = $this->productService->getProductById($id);
+        $productDetail = $this->productService->getCompleteProductById($id);
         if (!$productDetail) {
             return response([
                 'success' => false,
@@ -234,7 +234,7 @@ class ProductController extends Controller
         $position = isset($queryParams['position']) && is_string($queryParams['position']) ? trim($queryParams['position']) : null;
         $limit = isset($queryParams['limit']) ? (int) $queryParams['limit'] : 6;
         $promotionsSponsorized = $this->promotionService->getActiveSponsoredProducts($position, $limit);
-        $promotionsProducts = $this->productService->getFeaturedPromotions();
+        $promotionsProducts = $this->productService->getFeaturedProducts();
 
         return response([
             'success' => true,
@@ -445,7 +445,6 @@ class ProductController extends Controller
 
         // 6. Upload su S3
         S3Service::uploadFile($s3Path, $filePath);
-
         return response([
             'success' => true,
             'path' => $s3Path,
@@ -468,7 +467,8 @@ class ProductController extends Controller
         $fileName = md5($idProduct.json_encode($bodyParams)).'.png';
 
         //check if file already exists
-        if (file_exists("/mnt/s3/img/generated-images/$fileName")) {
+        $path = storage_path('/generated-images/' . $fileName);
+        if (file_exists($path)) {
             return response([
                 'success' => true,
                 'message' => 'Configurator built for product ID ' . $idProduct,

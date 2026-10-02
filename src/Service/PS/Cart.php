@@ -66,6 +66,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             'id_product_attribute' => (int) $cartOptions['productAttributeId'],
             'quantity' => (int) $cartOptions['qty'] ?? 1,
             'customizations' => $cartOptions['customizations'] ?? [],
+            'notes' => $cartOptions['notes'] ?? null,
             'op' => 'up'
         ];
         $cartOptions['products'] = [$products];
@@ -137,6 +138,8 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             'id_product' => (int) $product['productId'],
             'id_product_attribute' => (int) $product['productAttributeId'],
             'quantity' => (int) $product['qty'] ?? 1,
+            'id_customization' => (int) ($product['customizationId'] ?? 0),
+            'notes' => $product['notes'] ?? null,
             'op' => $op
         ];
 
@@ -337,7 +340,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if ($guestId !== null) {
-            $payload['id_customer'] = $guestId;
+            $payload['id_guest'] = $guestId;
         }
 
         $queryString = http_build_query($queryParams);

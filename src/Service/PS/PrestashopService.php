@@ -212,6 +212,10 @@ class PrestashopService implements PrestashopServiceInterface {
         }
 
         foreach ($response->toArray()['customization_fields'] ?? [] as $customizationData) {
+            // Module-owned notes are supplied by the configurator, not a free-text input.
+            if (($customizationData['is_module'] ?? 0) == 1 && strpos(json_encode($customizationData['name'] ?? ''), 'Configurazione prodotto') !== false) {
+                continue;
+            }
             $customizationFields[] = CustomizationEntity::create($customizationData, $this);
         }
 

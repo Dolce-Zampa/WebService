@@ -42,6 +42,14 @@ final class OrderTest extends TestCase
             'queue-service',
             $this->createMock(\PS\Webservice\Service\RedisQueue::class)
         );
+        // create table webserviceapi_configurator
+        \Illuminate\Database\Capsule\Manager::schema()->dropIfExists('webserviceapi_configurator');
+        \Illuminate\Database\Capsule\Manager::schema()->create('webserviceapi_configurator', function ($table) {
+            $table->integer('id_product')->primary();
+            $table->string('json');
+            $table->integer('active');
+            $table->integer('id_shop');
+        });
 
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);

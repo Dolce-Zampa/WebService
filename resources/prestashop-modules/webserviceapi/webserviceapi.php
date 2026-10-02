@@ -178,6 +178,7 @@ class webserviceapi extends PaymentModule
     {
         if (isset($params['object']) && $params['object'] instanceof Product) {
             Db::getInstance()->delete('webserviceapi_configurator', 'id_product = ' . (int) $params['object']->id);
+            $this->clearCacheWebhook($params['object']);
         }
     }
 
@@ -527,6 +528,12 @@ class webserviceapi extends PaymentModule
                 'rule' => 'api/cart_rules',
                 'keywords' => array(),
                 'controller' => 'coupon',
+                'params' => $params,
+            ),
+            'module-webserviceapi-promotions' => array(
+                'rule' => 'api/promotions',
+                'keywords' => array(),
+                'controller' => 'promotions',
                 'params' => $params,
             ),
             'module-webserviceapi-product' => array(

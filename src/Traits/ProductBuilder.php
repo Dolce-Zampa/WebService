@@ -44,7 +44,7 @@ trait ProductBuilder
 
                 // use caching for image retrieval to optimize performance, as images are often requested multiple times
                 $cacheKey = "product_{$this->getId()}_image_{$image['id']}_tail_{$tail->value}";
-                $cachedImage = $this->tags(['product-builder'])->getFromCache($cacheKey);
+                $cachedImage = $this->tags(['product-builder', 'product:' . $this->getId()])->getFromCache($cacheKey);
                 if ($cachedImage) {
                     $this->data['associations']['images'][$index][$tail->value] = $cachedImage;
                     continue; // Skip retrieval if cached image is available
@@ -57,7 +57,7 @@ trait ProductBuilder
                     continue; // Skip this tail if the image retrieval fails, but keep processing other tails
                 }
 
-                $this->tags(['product-builder'])->setToCache($cacheKey, $image->toArray(), (1440 * 364)); // Cache the image data for 24 hours
+                $this->tags(['product-builder', 'product:' . $this->getId()])->setToCache($cacheKey, $image->toArray(), (1440 * 364)); // Cache the image data for 24 hours
                 $this->data['associations']['images'][$index][$tail->value] = $image->toArray();
             }
         }

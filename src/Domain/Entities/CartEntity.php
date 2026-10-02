@@ -84,7 +84,7 @@ class CartEntity implements ObjectInterface
 		foreach($this->data['customizations'] ?? [] as $customization) {
 			$customizations[] = [
 				'id_customization_field' => $customization['id'],
-				'value' => "/var/www/workdir/upload/customization/{$customization['value']}"
+				'value' => $customization['value']
 			];
 		}
 		$this->data['products'][0]['customizations'] = $customizations;

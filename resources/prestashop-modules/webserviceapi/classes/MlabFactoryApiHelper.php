@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/MlabFactoryCartNotes.php';
 require_once __DIR__ . '/MlabFactoryApiException.php';
 
 class MlabFactoryApiHelper
@@ -245,8 +246,35 @@ class MlabFactoryApiHelper
 
     public static function serializeCart(Cart $cart)
     {
+        $cartProducts = $cart->getProducts();
+        $metadataByProductId = array();
+        $productIds = array_unique(array_map(function ($product) {
+            return (int) $product['id_product'];
+        }, $cartProducts));
+
+        // Fetch metadata once for the whole cart, including repeated variants.
+        if (!empty($productIds)) {
+            $metadata = Db::getInstance()->executeS(
+                'SELECT p.id_product, p.id_manufacturer, p.id_supplier,
+                    m.name AS manufacturer_name, pl.link_rewrite
+                FROM `' . _DB_PREFIX_ . 'product` p
+                LEFT JOIN `' . _DB_PREFIX_ . 'manufacturer` m ON m.id_manufacturer = p.id_manufacturer
+                LEFT JOIN `' . _DB_PREFIX_ . 'product_lang` pl ON pl.id_product = p.id_product
+                    AND pl.id_lang = ' . (int) $cart->id_lang . '
+                    AND pl.id_shop = ' . (int) $cart->id_shop . '
+                WHERE p.id_product IN (' . implode(',', $productIds) . ')'
+            );
+            if ($metadata === false) {
+                throw new MlabFactoryApiException('Unable to retrieve cart product metadata.', 500);
+            }
+            foreach ($metadata as $row) {
+                $metadataByProductId[(int) $row['id_product']] = $row;
+            }
+        }
+
         $products = array();
-        foreach ($cart->getProducts() as $product) {
+        foreach ($cartProducts as $product) {
+            $metadata = $metadataByProductId[(int) $product['id_product']] ?? array();
 
             //get image id
             $idImage = self::getCoverImage($product);
@@ -255,8 +283,14 @@ class MlabFactoryApiHelper
                 'id_image' => $idImage,
                 'id_product_attribute' => (int) $product['id_product_attribute'],
                 'id_customization' => (int) $product['id_customization'],
+                'notes' => MlabFactoryCartNotes::get($cart, (int) $product['id_product'], (int) $product['id_customization']),
                 'name' => (string) $product['name'],
+                'id_manufacturer' => (int) ($metadata['id_manufacturer'] ?? $product['id_manufacturer'] ?? 0),
+                'manufacturer_name' => (string) ($metadata['manufacturer_name'] ?? ''),
+                'id_supplier' => (int) ($metadata['id_supplier'] ?? $product['id_supplier'] ?? 0),
+                'link_rewrite' => (string) ($metadata['link_rewrite'] ?? $product['link_rewrite'] ?? ''),
                 'reference' => (string) $product['reference'],
+                'attributes' => (string) ($product['attributes'] ?? ''),
                 'quantity' => (int) $product['cart_quantity'],
                 'price_wt' => (float) $product['price_wt'],
                 'total_wt' => (float) $product['total_wt'],

@@ -103,6 +103,47 @@ class OrderSession implements ObjectInterface
         return $url . $separator . urlencode($param) . '=' . urlencode((string) $value);
     }
 
+    /** Creates a payment line from an ownership-checked, server-fetched PrestaShop cart. */
+    public function addCartLineItem(array $product): void
+    {
+        if (!isset($product['price_wt']) || !is_numeric($product['price_wt']) ||
+            !is_finite((float) $product['price_wt']) || (float) $product['price_wt'] < 0 ||
+            (int) ($product['quantity'] ?? 0) <= 0) {
+            throw new \InvalidArgumentException('Invalid server cart product price or quantity');
+        }
+
+        $name = (string) $product['name'];
+        $attributes = trim((string) ($product['attributes'] ?? ''));
+        if ($attributes !== '' && !str_contains($name, $attributes)) {
+            $name .= ' - ' . $attributes;
+        }
+        $productData = [
+            'name' => $name,
+            'metadata' => [
+                'id_product' => (string) $product['id_product'],
+                'id_product_attribute' => (string) ($product['id_product_attribute'] ?? 0),
+            ],
+        ];
+        if (!empty($product['reference'])) {
+            $productData['description'] = (string) $product['reference'];
+        }
+        // Cart image IDs may be returned as "productId-imageId" by PrestaShop.
+        $imageParts = explode('-', (string) ($product['id_image'] ?? ''));
+        $imageId = (int) end($imageParts);
+        if ($imageId > 0) {
+            $productData['images'] = [build_product_image_url($imageId, $name, 'small_default')];
+        }
+
+        $this->data['line_items'][] = [
+            'price_data' => [
+                'currency' => 'eur',
+                'product_data' => $productData,
+                'unit_amount' => (int) round((float) $product['price_wt'] * 100),
+            ],
+            'quantity' => (int) $product['quantity'],
+        ];
+    }
+
     public function addLineItem(ProductEntity $product, int $quantity, float $price, string $type = 'product'): void
     {
         $this->data['line_items'][] = [

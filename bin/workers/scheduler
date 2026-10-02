@@ -12,7 +12,7 @@ declare(strict_types=1);
  *   php bin/scheduler
  */
 
-require_once __DIR__ . '/../bootstrap/app.php';
+require_once __DIR__ . '/../../bootstrap/app.php';
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Commands\Scheduler\AppScheduleProvider;
@@ -29,8 +29,11 @@ use Symfony\Component\Scheduler\Messenger\SchedulerTransport;
 $handler                = $container->get(SendReviewRequestMailMessageHandler::class);
 $generateSitemapHandler = $container->get(GenerateSitemapHandler::class);
 
+$warmProductCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\WarmProductCacheMessageHandler::class);
+
 $bus = new MessageBus([
     new HandleMessageMiddleware(new HandlersLocator([
+        \PS\Webservice\Commands\Scheduler\WarmProductCacheMessage::class => [$warmProductCacheHandler],
         \PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessage::class => [$handler],
         \PS\Webservice\Commands\Scheduler\GenerateSitemap::class => [$generateSitemapHandler],
     ])),

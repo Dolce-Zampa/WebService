@@ -18,7 +18,7 @@ trait Order
     protected int $carrierId;
     private OrderService $orderService;
 
-    public function makeOrder(OrderEntity $payload, OrderService $orderService): OrderSession
+    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = []): OrderSession
     {
 
         $this->orderService = $orderService;
@@ -42,22 +42,19 @@ trait Order
         ], $this->orderService);
         $this->orderSession = $orderSession;
 
-        $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
+        // Populate the session before evaluating discounts and the free-shipping threshold.
+        foreach ($serverCartProducts as $product) {
+            $this->addProduct($product);
+        }
         $this->manageCartRules($payload);
+        $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
 
         return $orderSession;
     }
 
     public function addProduct(array $product)
     {   
-        $productId = (int) $product['id_product'];
-        $serverPrice = $this->orderService->getProductPriceById($productId);
-        $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
-        $this->orderSession->addLineItem(
-            product: ProductEntity::create($product, $this->orderService),
-            quantity: (int) $product['quantity'],
-            price: $serverPrice
-        );
+        $this->orderSession->addCartLineItem($product);
     }
 
     public function getProducts(): array

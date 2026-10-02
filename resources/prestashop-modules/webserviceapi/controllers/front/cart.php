@@ -1,6 +1,8 @@
 <?php
 require_once dirname(__FILE__) . '/../../classes/MlabFactoryApiBaseModuleFrontController.php';
 
+require_once dirname(__FILE__) . '/../../classes/MlabFactoryCartNotes.php';
+
 class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFrontController
 {
     protected function handleRequest()
@@ -188,7 +190,7 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             $deliveryAddressId = $cart->id_address_delivery ? (int) $cart->id_address_delivery : 0;
 
             // Validazione operatore
-            $operation = MlabFactoryApiHelper::getValue($productLine, 'op', null);
+            $operation = $productLine['op'] ?? 'up';
             if ($operation !== null && !in_array($operation, array('up', 'down'), true)) {
                 throw new MlabFactoryApiException(
                     'Invalid op value. Allowed: "up", "down".',
@@ -267,24 +269,27 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
                     $customizationFieldIds[$fieldId] = (int) $result;
                 }
 
-                // Recupera l'id_customization "di riga" dal carrello dopo l'aggiunta dei field.
-                // addTextFieldToProduct/addPictureToProduct creano/riusano un customization
-                // legato alla coppia (id_product, id_product_attribute, id_address_delivery).
-                $cartCustomizations = $cart->getProductCustomization(
-                    $productId,
-                    $combinationId,
-                    $deliveryAddressId
-                );
-
-                if (!empty($cartCustomizations)) {
-                    // Usa l'id_customization della riga appena creata
-                    $customizationId = (int) $cartCustomizations[0]['id_customization'];
-                } elseif (!empty($customizationFieldIds)) {
-                    // Fallback: usa l'ultimo id restituito
-                    $customizationId = (int) end($customizationFieldIds);
+                // Native addTextFieldToProduct/addPictureToProduct return the pending row ID.
+                // getProductCustomization takes a field type, not a combination ID.
+                $customizationId = (int) end($customizationFieldIds);
+                if (!Db::getInstance()->update(
+                    'customization',
+                    array('id_product_attribute' => $combinationId, 'id_address_delivery' => $deliveryAddressId),
+                    'id_customization = ' . $customizationId . ' AND id_cart = ' . (int) $cart->id . ' AND id_product = ' . $productId
+                )) {
+                    throw new MlabFactoryApiException('Unable to associate customization with cart row.', 500);
                 }
             }
             // --- FINE GESTIONE CUSTOMIZZAZIONI ---
+
+            // Notes use native text customization so distinct selections remain distinct rows.
+            $notes = $productLine['notes'] ?? null;
+            if ($notes !== null && $notes !== '') {
+                $customizationId = MlabFactoryCartNotes::save($cart, $productId, $combinationId, $notes);
+            }
+            if ($customizationId > 0) {
+                MlabFactoryCartNotes::assertOwned($cart, $productId, $combinationId, $customizationId);
+            }
 
             $updated = $cart->updateQty(
                 $quantity,
@@ -299,10 +304,36 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             );
 
             if ($updated <= 0) {
+                $shopId = (int) Context::getContext()->shop->id;
+                $failedProduct = new Product($productId, false, (int) Configuration::get('PS_LANG_DEFAULT'), $shopId);
+                $failedCombination = $combinationId > 0 ? new Combination($combinationId) : null;
+                $minimumQuantity = $combinationId > 0
+                    ? (int) ProductAttribute::getAttributeMinimalQty($combinationId)
+                    : (int) $failedProduct->minimal_quantity;
+                $reason = 'cart_update_failed';
+                if (!Validate::isLoadedObject($failedProduct)) {
+                    $reason = 'product_not_found';
+                } elseif ($failedCombination && (!Validate::isLoadedObject($failedCombination) || (int) $failedCombination->id_product !== $productId)) {
+                    $reason = 'combination_does_not_belong_to_product';
+                } elseif (!$failedProduct->available_for_order) {
+                    $reason = 'product_not_available_for_order';
+                } elseif (Configuration::isCatalogMode()) {
+                    $reason = 'catalog_mode_enabled';
+                } elseif ($updated === -1) {
+                    $reason = 'minimum_quantity_not_met';
+                }
                 throw new MlabFactoryApiException(
                     'Unable to add product to cart.',
                     422,
-                    array('product' => $productLine)
+                    array(
+                        'product' => $productLine,
+                        'reason' => $reason,
+                        'update_result' => $updated,
+                        'minimum_quantity' => $minimumQuantity,
+                        'available_for_order' => (bool) $failedProduct->available_for_order,
+                        'combination_product_id' => $failedCombination ? (int) $failedCombination->id_product : null,
+                        'id_shop' => $shopId,
+                    )
                 );
             }
         }
@@ -335,13 +366,14 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
 
         $idCart = (int) MlabFactoryApiHelper::getValue($payload, 'id_cart', 0);
         $idCustomer = (int) MlabFactoryApiHelper::getValue($payload, 'id_customer', 0);
+        $idGuest = (int) MlabFactoryApiHelper::getValue($payload, 'id_guest', 0);
 
         if ($idCart <= 0) {
             throw new MlabFactoryApiException('You must provide id_cart.', 422);
         }
 
-        if ($idCustomer <= 0) {
-            throw new MlabFactoryApiException('You must provide id_customer.', 422);
+        if ($idCustomer <= 0 && $idGuest <= 0) {
+            throw new MlabFactoryApiException('You must provide id_customer or id_guest.', 422);
         }
 
         $cart = new Cart($idCart);
@@ -349,11 +381,19 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
             throw new MlabFactoryApiException('Cart not found.', 404, array('id_cart' => $idCart));
         }
 
-        if ((int) $cart->id_customer !== $idCustomer) {
+        if ($idCustomer > 0 && (int) $cart->id_customer !== $idCustomer) {
             throw new MlabFactoryApiException(
                 'Cart does not belong to the customer.',
                 422,
                 array('id_cart' => $idCart, 'id_customer' => $idCustomer)
+            );
+        }
+
+        if ($idCustomer <= 0 && ((int) $cart->id_customer > 0 || (int) $cart->id_guest !== $idGuest)) {
+            throw new MlabFactoryApiException(
+                'Cart does not belong to the guest.',
+                422,
+                array('id_cart' => $idCart, 'id_guest' => $idGuest)
             );
         }
 

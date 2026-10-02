@@ -62,10 +62,40 @@ class ConfigController extends CartController
 
         if(isset($queryParams['clear_all']) && $queryParams['clear_all'] == true) {
             $this->flush();
+            \Illuminate\Support\Facades\Cache::forever(\PS\Webservice\Service\PS\Product::CACHE_REVISION, bin2hex(random_bytes(16)));
             return response(['message' => 'All cache cleared successfully'], 200);
         }
 
+        if (!is_array($payload) || !isset($payload['cache']) || !is_array($payload['cache'])) {
+            return response(['error' => 'cache must be an array'], 400);
+        }
+
+        foreach ($payload['cache'] as $entry) {
+            if (!is_array($entry) || (isset($entry['tags']) && !is_array($entry['tags'])) || (isset($entry['key']) && !is_string($entry['key'])) || (isset($entry['category']) && !is_array($entry['category']))) {
+                return response(['error' => 'Invalid cache entry'], 400);
+            }
+            foreach ($entry['tags'] ?? [] as $tag) {
+                if (!is_string($tag)) {
+                    return response(['error' => 'Cache tags must be strings'], 400);
+                }
+            }
+        }
+        // Bump only affected tag revisions so other forever product snapshots remain usable.
+        $productIds = [];
+        $tagsToInvalidate = [];
+        foreach ($payload['cache'] as $entry) {
+            $tagsToInvalidate = array_merge($tagsToInvalidate, $entry['tags'] ?? []);
+        }
+        if (array_filter($tagsToInvalidate, fn (string $tag) => str_starts_with($tag, 'product:'))) {
+            $tagsToInvalidate[] = 'product-catalog';
+        }
+        \PS\Webservice\Service\PS\Product::invalidateCacheTags($tagsToInvalidate);
         foreach ($payload['cache'] as $key => $value) {
+            foreach ($value['tags'] ?? [] as $tag) {
+                if (is_string($tag) && preg_match('/^product:(\d+)$/', $tag, $matches)) {
+                    $productIds[] = (int) $matches[1];
+                }
+            }
             $params = [
                 "tags" => $value['tags'] ?? null,
                 "key" => $value['key'] ?? null
@@ -75,7 +105,7 @@ class ConfigController extends CartController
                 $this->tags($params['tags'])->flushTag();
             } 
             if(!empty($params['key']) && !empty($params['tags'])) {
-                $this->tags(['product-detail','api'])->removeFromCache($params['key']);
+                $this->tags($params['tags'])->removeFromCache($params['key']);
             }
 
             if(isset($value['category']) && !empty($value['category'])) {
@@ -87,6 +117,15 @@ class ConfigController extends CartController
 
         }
 
+        if ($productIds !== []) {
+            // Catalog pages may embed the changed product, including accessories and bundles.
+            $this->tags(['product-catalog', 'product-detail'])->flushTag();
+            \PS\Webservice\Facades\Queue::push(\PS\Webservice\Service\ElkService::QUEUE_NAME, ['product_ids' => array_values(array_unique($productIds))]);
+            foreach (array_unique($productIds) as $productId) {
+                \PS\Webservice\Facades\Queue::push(\PS\Webservice\Service\PS\Product::CACHE_QUEUE, ['product_id' => $productId]);
+            }
+        }
+
         Log::info('Cache cleared successfully ' . json_encode($payload['cache'] ?? []));
 
         return response(['message' => 'Cache cleared successfully'], 200);
@@ -95,7 +134,7 @@ class ConfigController extends CartController
     public function sitemap(Request $request, Response $response, array $argv): Response
     {
         $prestashopSitemap = file_get_contents("https://aidyis-prod-backoffice.dolcezampa.com/1_it_0_sitemap.xml");
-        $response->getBody()->write(str_replace('https://aidyis-prod-backoffice.dolcezampa.com', 'https://www.dolcezampa.com', $prestashopSitemap));
+        $response->getBody()->write(str_replace('http://aidyis-prod-backoffice.dolcezampa.com', 'https://www.dolcezampa.com', $prestashopSitemap));
         return $response->withHeader('Content-Type', 'application/xml');
     }
 

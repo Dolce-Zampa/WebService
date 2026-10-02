@@ -167,13 +167,7 @@ class OrderController extends CartController
         try {
             $paymentService = $this->stripeService;
             $newOrder = OrderEntity::create($payload, $this->orderService);
-            $orderSession = $this->makeOrder($newOrder, $this->orderService);
-
-            // Server-side price validation: fetch each product price directly from the catalog.
-            // Never use prices from the cart payload or any frontend-supplied value.
-            foreach ($cart->toArray()['products'] ?? [] as $product) {
-                $this->addProduct($product);
-            }
+            $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? []);
 
             //save in cache the order session only for 24h
             $this->setToCache($orderSession->metadata['cart_id'], ["orderSession" => $orderSession, "cart" => $cart], 24 * 60); //FIXME: customer data should be encrypted
@@ -229,18 +223,9 @@ class OrderController extends CartController
                 'cart_id' => $payload['id_cart'],
             ], $this->orderService);
 
-            // Server-side price validation: prices are fetched from the product catalog,
-            // never from the frontend payload.
+            // Use variant prices from the ownership-checked PrestaShop cart, never frontend prices.
             foreach ($cart->toArray()['products'] ?? [] as $product) {
-                $productId = (int) $product['id_product'];
-                $serverPrice = $this->orderService->getProductPriceById($productId);
-                $product['id'] = $productId; // Ensure the product array has the correct ID for ProductEntity creation
-
-                $orderSession->addLineItem(
-                    product: ProductEntity::create($product, $this->orderService),
-                    quantity: (int) $product['quantity'],
-                    price: $serverPrice
-                );
+                $orderSession->addCartLineItem($product);
             }
 
             $checkoutUrl = $paymentService->createPaymentSession($orderSession);

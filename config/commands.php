@@ -6,6 +6,7 @@
  */
 
 return [
+    \PS\Webservice\Commands\WarmProductCacheCommand::class,
     \PS\Webservice\Commands\GenerateSitemap::class,
     \PS\Webservice\Commands\SendReviewRequestMailCommand::class,
     \PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class,
