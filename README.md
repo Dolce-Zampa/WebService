@@ -7,6 +7,9 @@ This repository contains the code of microservice, to connect prestashop e-comme
 - Docker: [Install Docker](https://docs.docker.com/get-docker/)
 - Task: [Install Task](https://taskfile.dev/#/installation)
 
+## 📖 Documentazione
+* [Linee Guida e Azioni di Default](./docs/ai-agent.md)
+
 ## Getting Started
 
 1. Clone this repository:
