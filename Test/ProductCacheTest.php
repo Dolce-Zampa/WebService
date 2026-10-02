@@ -63,6 +63,22 @@ final class ProductCacheTest extends TestCase
         return $http;
     }
 
+    public function test_filters_without_a_valid_category_do_not_call_prestashop(): void
+    {
+        $http = $this->http([], 0);
+        $http->expects($this->never())->method('setUrl');
+        $service = new Product($http);
+        $this->assertNull($service->buildFiltersProducts(0));
+        $this->assertNull($service->buildFiltersProducts(-1));
+    }
+
+    public function test_filters_with_a_category_still_call_prestashop(): void
+    {
+        $http = $this->http(['data' => ['filters' => []]]);
+        $http->expects($this->once())->method('setUrl')->with('/filters?id_category=19');
+        $this->assertNull((new Product($http))->buildFiltersProducts(19));
+    }
+
     public function test_category_pages_are_cached_and_pagination_is_isolated(): void
     {
         $service = new Product($this->http(['products' => []], 2));
