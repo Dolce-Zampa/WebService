@@ -303,6 +303,11 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function buildFiltersProducts(int $categoryId): ?FilterEntity
     {
+        // Manufacturer-only listings have no category-specific filters.
+        if ($categoryId <= 0) {
+            return null;
+        }
+
         $payload = $this->productApiData("/filters?id_category={$categoryId}");
         if (empty($payload['data']['filters'])) {
             Log::warning("No filters found for category ID {$categoryId}");
