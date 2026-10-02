@@ -114,7 +114,7 @@ class ConfigController extends CartController
                     $this->tags([$categoryTag])->flushTag();
                 }
             }
-
+    
         }
 
         if ($productIds !== []) {
