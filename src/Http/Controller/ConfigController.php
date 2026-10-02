@@ -134,7 +134,7 @@ class ConfigController extends CartController
     public function sitemap(Request $request, Response $response, array $argv): Response
     {
         $prestashopSitemap = file_get_contents("https://aidyis-prod-backoffice.dolcezampa.com/1_it_0_sitemap.xml");
-        $response->getBody()->write(str_replace('https://aidyis-prod-backoffice.dolcezampa.com', 'https://www.dolcezampa.com', $prestashopSitemap));
+        $response->getBody()->write(str_replace('http://aidyis-prod-backoffice.dolcezampa.com', 'https://www.dolcezampa.com', $prestashopSitemap));
         return $response->withHeader('Content-Type', 'application/xml');
     }
 
