@@ -58,12 +58,24 @@ class ProductEntity extends Entity implements ObjectInterface
             }
             return $product;
         }
+        foreach (['name', 'url', 'price', 'original_price'] as $field) {
+            if (!array_key_exists($field, $data)) {
+                $product = $service->getProductById((int) ($data['id'] ?? 0));
+                if ($product === null) {
+                    throw new \RuntimeException('Product not found: ' . ($data['id'] ?? 'unknown'));
+                }
+                return $product;
+            }
+        }
         $class = new self($data, $service);
         if(ProductValidator::isValid($class)) {
             return $class;
         } else {
-            /** @var \PS\Webservice\Service\PS\Order $service */
-            throw new \RuntimeException('Incomplete product payload: ' . ($data['id'] ?? 'unknown'));
+            $product = $service->getProductById((int) $data['id']);
+            if ($product === null) {
+                throw new \RuntimeException('Product not found: ' . $data['id']);
+            }
+            return $product;
         }
     }
 

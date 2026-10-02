@@ -62,6 +62,7 @@ class ConfigController extends CartController
 
         if(isset($queryParams['clear_all']) && $queryParams['clear_all'] == true) {
             $this->flush();
+            \Illuminate\Support\Facades\Cache::forever(\PS\Webservice\Service\PS\Product::CACHE_REVISION, bin2hex(random_bytes(16)));
             return response(['message' => 'All cache cleared successfully'], 200);
         }
 
@@ -69,11 +70,20 @@ class ConfigController extends CartController
             return response(['error' => 'cache must be an array'], 400);
         }
 
-        $productIds = [];
-        foreach ($payload['cache'] as $key => $value) {
-            if (!is_array($value) || (isset($value['tags']) && !is_array($value['tags']))) {
+        foreach ($payload['cache'] as $entry) {
+            if (!is_array($entry) || (isset($entry['tags']) && !is_array($entry['tags'])) || (isset($entry['key']) && !is_string($entry['key'])) || (isset($entry['category']) && !is_array($entry['category']))) {
                 return response(['error' => 'Invalid cache entry'], 400);
             }
+            foreach ($entry['tags'] ?? [] as $tag) {
+                if (!is_string($tag)) {
+                    return response(['error' => 'Cache tags must be strings'], 400);
+                }
+            }
+        }
+        // Redis cache tags use stable namespaces: a separate revision prevents stale repopulation.
+        \Illuminate\Support\Facades\Cache::forever(\PS\Webservice\Service\PS\Product::CACHE_REVISION, bin2hex(random_bytes(16)));
+        $productIds = [];
+        foreach ($payload['cache'] as $key => $value) {
             foreach ($value['tags'] ?? [] as $tag) {
                 if (is_string($tag) && preg_match('/^product:(\d+)$/', $tag, $matches)) {
                     $productIds[] = (int) $matches[1];

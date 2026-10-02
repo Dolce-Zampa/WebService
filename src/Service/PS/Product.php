@@ -16,6 +16,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     use \PS\Webservice\Traits\UseCache;
 
     public const CACHE_QUEUE = 'product-cache-jobs';
+    public const CACHE_REVISION = 'product-cache:revision';
 
     /** Cache upstream payloads before HTTP and coalesce concurrent misses. TTL is in minutes. */
     private function cachedProductData(string $key, array $tags, callable $loader, int $ttl = 5): mixed
@@ -24,7 +25,8 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return $loader();
         }
         $context = hash('sha256', $this->httpService->getConfig()->toJson() . $this->httpService->getConfig()->getQueryParams());
-        $key = 'product-cache:v2:' . $context . ':' . $key;
+        $revision = \Illuminate\Support\Facades\Cache::get(self::CACHE_REVISION, '0');
+        $key = 'product-cache:v2:' . $context . ':' . $revision . ':' . $key;
         $store = \Illuminate\Support\Facades\Cache::tags($tags);
         $cached = $store->get($key);
         if ($cached !== null) {
@@ -32,18 +34,27 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }
         $namespace = $store->getTags()->getNamespace();
         $lock = \Illuminate\Support\Facades\Cache::lock('product-cache-lock:' . sha1($namespace . $key), 120);
-        return $lock->block(30, function () use ($store, $key, $loader, $ttl, $namespace) {
+        $deadline = microtime(true) + 30;
+        while (!$lock->acquire()) {
+            if (microtime(true) >= $deadline) {
+                throw new \Illuminate\Contracts\Cache\LockTimeoutException();
+            }
+            usleep(100000);
+        }
+        try {
             $cached = $store->get($key);
             if ($cached !== null) {
                 return $cached;
             }
             $data = $loader();
             // A webhook received during loading must not be overwritten by this older request.
-            if ($data !== null && $store->getTags()->getNamespace() === $namespace) {
+            if ($data !== null && $store->getTags()->getNamespace() === $namespace && \Illuminate\Support\Facades\Cache::get(self::CACHE_REVISION, '0') === $revision) {
                 $store->put($key, $data, $ttl * 60);
             }
             return $data;
-        });
+        } finally {
+            $lock->release();
+        }
     }
 
     private function productApiData(string $url, array $tags = ['product-catalog'], int $ttl = 5): array
@@ -82,31 +93,25 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function productsList(array $displayOptions = ['display' => 'full'], ?Filter $filter = null): Collection
     {
-        $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
-        $displayOptions['sort'] = "[$sorting]";
-        $queryString = http_build_query($displayOptions);
-        $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1")['products'] ?? [];
-        $collection = new Collection();
-        foreach ($products as $productData) {
-            $productFilter = $filter ?? new Filter([]);
-            
-            if($productFilter->match($productData) !== true) {
-                continue; // Skip products that do not match the filter criteria
+        $cacheKey = 'list:' . json_encode([$displayOptions, $filter?->data]);
+        $snapshots = $this->cachedProductData($cacheKey, ['product-catalog'], function () use ($displayOptions, $filter) {
+            $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
+            $displayOptions['sort'] = "[$sorting]";
+            $queryString = http_build_query($displayOptions);
+            $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1")['products'] ?? [];
+            $snapshots = [];
+            foreach ($products as $productData) {
+                $productFilter = $filter ?? new Filter([]);
+                if (!$productFilter->match($productData)) {
+                    continue;
+                }
+                $snapshots[] = ProductEntity::create($productFilter->productData, $this)->toArray();
             }
-
-            try {
-                $product = ProductEntity::create($productFilter->productData, $this);
-                // $product->withCombinations(); @deprecated 
-                $collection->push($product);
-            } catch (EntityExceptions $e) {
-                Log::error("Failed to create ProductEntity for product ID {$productData['id']}: " . $e->getMessage());
-                continue; // Skip this product but continue processing others
-            }
-            
-        }
-
-        return $collection;
+            return $snapshots;
+        });
+        return new Collection(array_map(fn (array $data) => ProductEntity::fromSnapshot($data, $this), $snapshots));
     }
+
     /**
      * Retrieves featured products.
      *
@@ -208,7 +213,11 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 }
                 throw new PrestashopConnectorException($this->httpService);
             }
-            return ProductEntity::create($response->toArray()['products'][0], $this)->toArray();
+            $product = new ProductEntity($response->toArray()['products'][0], $this);
+            if (!\PS\Webservice\Domain\Entities\Validations\ProductValidator::isValid($product)) {
+                throw new \RuntimeException('Incomplete upstream product payload: ' . $id);
+            }
+            return $product->toArray();
         });
         return $data === null ? null : ProductEntity::fromSnapshot($data, $this);
     }

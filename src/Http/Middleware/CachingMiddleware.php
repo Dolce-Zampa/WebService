@@ -46,6 +46,7 @@ class CachingMiddleware implements MiddlewareInterface
 
         $cacheStore = \Illuminate\Support\Facades\Cache::tags($this->tags);
         $namespace = $cacheStore->getTags()->getNamespace();
+        $revision = \Illuminate\Support\Facades\Cache::get(\PS\Webservice\Service\PS\Product::CACHE_REVISION, '0');
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
@@ -54,7 +55,6 @@ class CachingMiddleware implements MiddlewareInterface
         }
 
         if ($clearCache) {
-            $cacheKey = str_replace('clear_cache=true', '', $cacheKey);
             $this->removeFromCache($cacheKey);
         }
 
@@ -82,7 +82,7 @@ class CachingMiddleware implements MiddlewareInterface
         // Cache only successful responses
         if (!$skipCache && $response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
             $body = $response->getBody()->__toString();
-            if ($cacheStore->getTags()->getNamespace() === $namespace) {
+            if ($cacheStore->getTags()->getNamespace() === $namespace && \Illuminate\Support\Facades\Cache::get(\PS\Webservice\Service\PS\Product::CACHE_REVISION, '0') === $revision) {
                 $this->setToCache($cacheKey, $body, $this->ttl);
             }
             
@@ -97,7 +97,7 @@ class CachingMiddleware implements MiddlewareInterface
     {
         $tags = [];
         if(isset($params['manufacturer']) || isset($params['id_manufacturer'])) {
-            $tags[] = ManufacturesMap::getManufacturer((int)$params['manufacturer']);
+            $tags[] = ManufacturesMap::getManufacturer((int) ($params['manufacturer'] ?? $params['id_manufacturer']));
         }
 
         if(isset($params['category']) || isset($params['id_category'])) {

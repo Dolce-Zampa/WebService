@@ -10,6 +10,6 @@ Start the additional worker in the deployment using:
 php bin/workers/worker-product-cache
 ```
 
-Run it under the existing process manager with automatic restart. It retries a failed refresh up to three times. Invalidation remains effective if the worker is stopped; the next request loads fresh data. Do not invoke a rebuild synchronously from the PrestaShop webhook.
+The existing Elasticsearch Supervisor configuration also starts this worker. Rebuild the image and restart that Supervisor service, or run the worker under your deployment process manager with automatic restart. It retries a failed refresh up to three times. Invalidation remains effective if the worker is stopped; the next request loads fresh data. Do not invoke a rebuild synchronously from the PrestaShop webhook.
 
 After deployment clear existing cache once to retire indefinitely cached HTTP responses. The service uses a new versioned cache namespace. Check `X-Cache` and upstream timings for repeated product/category requests. The existing `no_cache=1` bypasses HTTP response caching; `APP_DISABLE_CACHE=true` bypasses all product service caching as well.

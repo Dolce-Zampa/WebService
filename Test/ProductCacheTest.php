@@ -25,7 +25,23 @@ final class ProductCacheTest extends TestCase
         $app = new Container();
         Facade::clearResolvedInstances();
         Facade::setFacadeApplication($app);
-        $app->instance('cache', new Repository(new ArrayStore()));
+        if ($socket = getenv('PRODUCT_CACHE_TEST_REDIS_SOCKET')) {
+            $redis = new Predis\Client(['scheme' => 'unix', 'path' => $socket]);
+            $redis->flushdb(); // This socket must belong to an isolated test Redis.
+            $factory = new class($redis) implements Illuminate\Contracts\Redis\Factory {
+                public function __construct(private Predis\Client $redis) {}
+                public function connection($name = null) { return $this->redis; }
+            };
+            $store = new Illuminate\Cache\RedisStore($factory);
+        } else {
+            $store = new ArrayStore();
+        }
+        $app->instance('cache', new Repository($store));
+        $database = new Illuminate\Database\Capsule\Manager();
+        $database->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+        $database->setAsGlobal();
+        $database->bootEloquent();
+        $database->getConnection()->statement('CREATE TABLE webserviceapi_configurator (id_product INTEGER, active INTEGER, json TEXT)');
         $app->instance('log', new Psr\Log\NullLogger());
     }
 
@@ -65,6 +81,7 @@ final class ProductCacheTest extends TestCase
     {
         $http = $this->http(['products' => []], 2);
         $http->method('toArray')->willReturnCallback(function () {
+            Cache::forever(Product::CACHE_REVISION, bin2hex(random_bytes(16)));
             Cache::tags(['product-catalog'])->flush();
             return ['products' => []];
         });
@@ -121,4 +138,46 @@ final class ProductCacheTest extends TestCase
         $controller->clearCache($request, new Response(), []);
         $this->assertNull(Cache::tags(['custom'])->get(sha1('test-key')));
     }
+    public function test_base_product_cache_does_not_repeat_http_or_vat(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $service = new Product($this->http(['products' => [$data]]));
+        $first = $service->getProductById((int) $data['id']);
+        $second = $service->getProductById((int) $data['id']);
+        $this->assertSame((float) $data['price'] * 1.22, $first->getPrice());
+        $this->assertSame($first->toArray(), $second->toArray());
+        $this->assertNotSame($first, $second);
+    }
+
+    public function test_unfiltered_category_keeps_all_products(): void
+    {
+        $first = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $second = $first;
+        $second['id'] = 99;
+        $second['name'] = 'Second product';
+        $service = new Product($this->http(['products' => [$first, $second]]));
+        $connection = Illuminate\Database\Capsule\Manager::connection();
+        $connection->enableQueryLog();
+        $firstLoad = $service->getProductByCategory('19');
+        $queryCount = count($connection->getQueryLog());
+        $cachedLoad = $service->getProductByCategory('19');
+        $this->assertSame([25, 99], $cachedLoad->map(fn ($product) => $product->getId())->all());
+        $this->assertSame($firstLoad->toArray(), $cachedLoad->toArray());
+        $this->assertSame($queryCount, count($connection->getQueryLog()));
+    }
+
+    public function test_http_response_is_not_repopulated_after_webhook_during_load(): void
+    {
+        $request = (new ServerRequestFactory())->createServerRequest('GET', '/api/products');
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->exactly(2))->method('handle')->willReturnCallback(function () {
+            Cache::forever(Product::CACHE_REVISION, bin2hex(random_bytes(16)));
+            Cache::tags(['product-catalog'])->flush();
+            return response(['products' => []]);
+        });
+        $middleware = new CachingMiddleware('products');
+        $middleware->process($request, $handler);
+        $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+    }
+
 }
