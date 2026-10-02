@@ -21,7 +21,7 @@ class CachingMiddleware implements MiddlewareInterface
     public function __construct(string $tag = '', ?int $ttl = null) 
     {
         $this->tag = [$tag];
-        $this->ttl = $ttl;
+        $this->ttl = $ttl ?? (in_array($tag, ['product-detail', 'products', 'products,promotions', 'product-reviews', 'search'], true) ? 5 : null);
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -34,11 +34,18 @@ class CachingMiddleware implements MiddlewareInterface
         $uri = $request->getUri()->getPath();
 
         $params = $request->getQueryParams();
+        $clearCache = ($params['clear_cache'] ?? false) === 'true';
+        unset($params['clear_cache'], $params['no_cache']);
+        ksort($params);
         $queryParams = http_build_query($params);
         $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
         $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
 
-        $this->tags(array_merge($this->tag,['api'], $tagEstract,));
+        $catalogTags = in_array($this->tag[0], ['product-detail', 'products', 'products,promotions', 'product-reviews', 'search'], true) ? ['product-catalog'] : [];
+        $this->tags(array_merge($this->tag, ['api'], $tagEstract, $catalogTags));
+
+        $cacheStore = \Illuminate\Support\Facades\Cache::tags($this->tags);
+        $namespace = $cacheStore->getTags()->getNamespace();
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
@@ -46,7 +53,7 @@ class CachingMiddleware implements MiddlewareInterface
             $skipCache = true;
         }
 
-        if($params['clear_cache'] == true) {
+        if ($clearCache) {
             $cacheKey = str_replace('clear_cache=true', '', $cacheKey);
             $this->removeFromCache($cacheKey);
         }
@@ -57,14 +64,11 @@ class CachingMiddleware implements MiddlewareInterface
             $cachedData = $this->getFromCache($cacheKey);
             
             if (is_string($cachedData)) {
-                $decoded = json_decode($cachedData, true);
-                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                    $response = response($decoded['data']);
-                    return $response->withHeader('X-Cache', 'HIT')
-                                   ->withHeader('X-Cache-Key', substr($cacheKey, 0, 16) . '...');
-                }
+                $response = new \Slim\Psr7\Response();
+                $response->getBody()->write($cachedData);
+                return $response->withHeader('Content-Type', 'application/json')->withHeader('X-Cache', 'HIT');
             }
-            
+
             if (is_array($cachedData)) {
                 $response = response($cachedData);
                 return $response->withHeader('X-Cache', 'HIT')
@@ -76,9 +80,11 @@ class CachingMiddleware implements MiddlewareInterface
         $response = $handler->handle($request);
 
         // Cache only successful responses
-        if ($response->getStatusCode() >= 200 && $response->getStatusCode() <= 300) {
+        if (!$skipCache && $response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
             $body = $response->getBody()->__toString();
-            $this->setToCache($cacheKey, $body, $this->ttl);
+            if ($cacheStore->getTags()->getNamespace() === $namespace) {
+                $this->setToCache($cacheKey, $body, $this->ttl);
+            }
             
             return $response->withHeader('X-Cache', 'MISS')
                            ->withHeader('X-Cache-Key', substr($cacheKey, 0, 16) . '...');

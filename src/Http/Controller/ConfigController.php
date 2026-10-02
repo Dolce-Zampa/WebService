@@ -65,7 +65,20 @@ class ConfigController extends CartController
             return response(['message' => 'All cache cleared successfully'], 200);
         }
 
+        if (!is_array($payload) || !isset($payload['cache']) || !is_array($payload['cache'])) {
+            return response(['error' => 'cache must be an array'], 400);
+        }
+
+        $productIds = [];
         foreach ($payload['cache'] as $key => $value) {
+            if (!is_array($value) || (isset($value['tags']) && !is_array($value['tags']))) {
+                return response(['error' => 'Invalid cache entry'], 400);
+            }
+            foreach ($value['tags'] ?? [] as $tag) {
+                if (is_string($tag) && preg_match('/^product:(\d+)$/', $tag, $matches)) {
+                    $productIds[] = (int) $matches[1];
+                }
+            }
             $params = [
                 "tags" => $value['tags'] ?? null,
                 "key" => $value['key'] ?? null
@@ -75,7 +88,7 @@ class ConfigController extends CartController
                 $this->tags($params['tags'])->flushTag();
             } 
             if(!empty($params['key']) && !empty($params['tags'])) {
-                $this->tags(['product-detail','api'])->removeFromCache($params['key']);
+                $this->tags($params['tags'])->removeFromCache($params['key']);
             }
 
             if(isset($value['category']) && !empty($value['category'])) {
@@ -85,6 +98,15 @@ class ConfigController extends CartController
                 }
             }
 
+        }
+
+        if ($productIds !== []) {
+            // Catalog pages may embed the changed product, including accessories and bundles.
+            $this->tags(['product-catalog', 'product-detail'])->flushTag();
+            \PS\Webservice\Facades\Queue::push(\PS\Webservice\Service\ElkService::QUEUE_NAME, ['product_ids' => array_values(array_unique($productIds))]);
+            foreach (array_unique($productIds) as $productId) {
+                \PS\Webservice\Facades\Queue::push(\PS\Webservice\Service\PS\Product::CACHE_QUEUE, ['product_id' => $productId]);
+            }
         }
 
         Log::info('Cache cleared successfully ' . json_encode($payload['cache'] ?? []));

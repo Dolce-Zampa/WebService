@@ -13,21 +13,64 @@ use PS\Webservice\Domain\Object\Filter;
 class Product extends PrestashopService implements PrestashopServiceInterface
 {
 
+    use \PS\Webservice\Traits\UseCache;
+
+    public const CACHE_QUEUE = 'product-cache-jobs';
+
+    /** Cache upstream payloads before HTTP and coalesce concurrent misses. TTL is in minutes. */
+    private function cachedProductData(string $key, array $tags, callable $loader, int $ttl = 5): mixed
+    {
+        if (env('APP_DISABLE_CACHE', false)) {
+            return $loader();
+        }
+        $context = hash('sha256', $this->httpService->getConfig()->toJson() . $this->httpService->getConfig()->getQueryParams());
+        $key = 'product-cache:v2:' . $context . ':' . $key;
+        $store = \Illuminate\Support\Facades\Cache::tags($tags);
+        $cached = $store->get($key);
+        if ($cached !== null) {
+            return $cached;
+        }
+        $namespace = $store->getTags()->getNamespace();
+        $lock = \Illuminate\Support\Facades\Cache::lock('product-cache-lock:' . sha1($namespace . $key), 120);
+        return $lock->block(30, function () use ($store, $key, $loader, $ttl, $namespace) {
+            $cached = $store->get($key);
+            if ($cached !== null) {
+                return $cached;
+            }
+            $data = $loader();
+            // A webhook received during loading must not be overwritten by this older request.
+            if ($data !== null && $store->getTags()->getNamespace() === $namespace) {
+                $store->put($key, $data, $ttl * 60);
+            }
+            return $data;
+        });
+    }
+
+    private function productApiData(string $url, array $tags = ['product-catalog'], int $ttl = 5): array
+    {
+        return $this->cachedProductData('api:' . $url, $tags, function () use ($url) {
+            $this->httpService->setUrl($url);
+            $response = $this->httpService->invoke('GET');
+            if ($response->failed()) {
+                throw new PrestashopConnectorException($this->httpService);
+            }
+            return $response->toArray();
+        }, $ttl);
+    }
+
+    public function getCompleteProductById(int $id): ?ProductEntity
+    {
+        $data = $this->cachedProductData('detail:' . $id, ['product-catalog', 'product:' . $id], function () use ($id) {
+            $product = $this->getProductById($id);
+            return $product?->withFeatures()->toArray();
+        });
+        return $data === null ? null : ProductEntity::fromSnapshot($data, $this, true);
+    }
+
     public function countProducts(array $filter = []): int
     {
         $queryString = http_build_query(['display' => '[id]'] + $filter);
-        $this->httpService->setUrl("/products?{$queryString}");
-        $response = $this->httpService->invoke('GET');
-
-        if ($response->failed()) {
-            throw new PrestashopConnectorException($this->httpService);
-        }
-
-        if(empty($response->toArray())) {
-            return 0; // No products found
-        }
-
-        $products = $response->toArray()['products'] ?? [];
+        $products = $this->productApiData("/products?{$queryString}")['products'] ?? [];
         return count($products);
     }
 
@@ -40,34 +83,19 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     public function productsList(array $displayOptions = ['display' => 'full'], ?Filter $filter = null): Collection
     {
         $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
-        if (!empty($displayOptions)) {
-            $queryString = http_build_query($displayOptions);
-            $this->httpService->setUrl("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1&sort=[$sorting]");
-        } else {
-            $this->httpService->setUrl("/products");
-        }
-
-        Log::debug("Fetching product list with options: " . json_encode($displayOptions));
-
-        $response = $this->httpService->invoke('GET');
-
-        if ($response->failed()) {
-            throw new PrestashopConnectorException($this->httpService);
-        }
-
+        $displayOptions['sort'] = "[$sorting]";
+        $queryString = http_build_query($displayOptions);
+        $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1")['products'] ?? [];
         $collection = new Collection();
-        $products = $response->toArray()['products'] ?? [];
         foreach ($products as $productData) {
-            if(is_null($filter)) {
-                $filter = new Filter($productData); // Create a default filter if none is provided
-            }
+            $productFilter = $filter ?? new Filter([]);
             
-            if($filter->match($productData) !== true) {
+            if($productFilter->match($productData) !== true) {
                 continue; // Skip products that do not match the filter criteria
             }
 
             try {
-                $product = ProductEntity::create($filter->productData, $this);
+                $product = ProductEntity::create($productFilter->productData, $this);
                 // $product->withCombinations(); @deprecated 
                 $collection->push($product);
             } catch (EntityExceptions $e) {
@@ -165,56 +193,42 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return null; // Product not found
         }
 
-        return $this->getProductById($productId);
+        return $this->getCompleteProductById($productId);
         
     }
 
     public function getProductById(int $id): ?ProductEntity
     {
-        $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
-        $response = $this->httpService->invoke('GET');
-
-        if ($response->failed()) {
-            if ($response->getHttpCode() === 404) {
-                return null; // Product not found
+        $data = $this->cachedProductData('base:' . $id, ['product-catalog', 'product:' . $id], function () use ($id) {
+            $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
+            $response = $this->httpService->invoke('GET');
+            if ($response->failed()) {
+                if ($response->getHttpCode() === 404) {
+                    return null;
+                }
+                throw new PrestashopConnectorException($this->httpService);
             }
-            throw new PrestashopConnectorException($this->httpService);
-        }
-
-        $productData = $response->toArray()['products'][0];
-        $product = ProductEntity::create($productData, $this);
-        return $product;
+            return ProductEntity::create($response->toArray()['products'][0], $this)->toArray();
+        });
+        return $data === null ? null : ProductEntity::fromSnapshot($data, $this);
     }
 
     public function buildFiltersProducts(int $categoryId): ?FilterEntity
     {
-        $this->httpService->setUrl("/filters?id_category={$categoryId}&ws_key={$this->httpService->getConfig()->apikey}");
-        $response = $this->httpService->invoke('GET');
-
-        if ($response->failed()) {
-            return null; // Failed to retrieve filters for the category
-        }
-
-        if (empty($response->toArray()['data']['filters'])) {
+        $payload = $this->productApiData("/filters?id_category={$categoryId}");
+        if (empty($payload['data']['filters'])) {
             Log::warning("No filters found for category ID {$categoryId}");
             return null; // No filters found for the category
         }
 
-        $filtersData = $response->toArray()['data']['filters'];
+        $filtersData = $payload['data']['filters'];
         return FilterEntity::create($filtersData, $this);
 
     }
 
     public function findProductIdBySlug(string $slug): ?int
     {
-        $this->httpService->setUrl("/catalog?by_slug={$slug}");
-        $response = $this->httpService->invoke('GET');
-
-        if ($response->failed()) {
-            throw new PrestashopConnectorException($this->httpService);
-        }
-
-        $products = $response->toArray()['data'] ?? [];
+        $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug))['data'] ?? [];
         if (empty($products)) {
             return null; // No product found with the given slug
         }

@@ -179,7 +179,7 @@ class ProductController extends Controller
             ], 400);
         }
 
-        $productDetail = $this->productService->getProductById($id);
+        $productDetail = $this->productService->getCompleteProductById($id);
         if (!$productDetail) {
             return response([
                 'success' => false,

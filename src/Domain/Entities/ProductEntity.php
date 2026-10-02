@@ -4,13 +4,10 @@ declare(strict_types=1);
 namespace PS\Webservice\Domain\Entities;
 
 use Illuminate\Support\Facades\Log;
-use PS\Webservice\Commands\ElasticSearch\IndexElk;
 use PS\Webservice\Domain\Entities\Validations\ProductValidator;
 use PS\Webservice\Domain\Models\PS\Products\ProductConfigurator;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Facades\JsonDataStorage;
-use PS\Webservice\Facades\Queue;
-use PS\Webservice\Service\ElkService;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\ProductBuilder;
 use PS\Webservice\Traits\ProductManipulation;
@@ -32,61 +29,41 @@ class ProductEntity extends Entity implements ObjectInterface
     protected bool $isNormalized = false;
     protected bool $haveFeatures = false;
 
-    public function __construct(array $data, PrestashopServiceInterface|null $service)
+    public function __construct(array $data, PrestashopServiceInterface|null $service, bool $snapshot = false)
     {
         $this->service = $service;
         $this->data = $data;
 
-        $entityId = $this->data['id'] ?? null;
-
-        if ($entityId === null) {
-            $this->normalizeData();
+        if ($snapshot) {
+            $this->isNormalized = true;
             return;
         }
-
-        $cacheKey = static::class . ':' . $entityId;
-
-        $tags = [
-            "entity",
-            $this->cacheTag,
-            $this->cacheTag . ':' . $entityId,
-        ];
-
-        if(array_key_exists('name', $this->data)) {
-            $tags[] = sha1((string) $this->data['name']);
-        }
-
-        $this->tags($tags);
-
-        $cached = $this->getFromCache($cacheKey);
-
-        if ($cached !== null) {
-            //check if the hash of the cached data is the same as the current data
-            $this->normalizeData();
-            if (isset($cached['hash']) && $cached['hash'] === $this->hash()) {
-                $this->data = $cached;
-                return;
-            }
-
-        }
-
-        // save the hash of the data to the cache to detect changes in the future
-        $this->data['hash'] = $this->hash();
         $this->normalizeData();
-        $this->setToCache($cacheKey, $this->data, $this->cacheTTL);
+    }
 
-        //index on elk
-        Queue::push(ElkService::QUEUE_NAME, ['product_ids' => [$this->getId()]]);
+    /** Restore an already normalized snapshot without applying VAT or loading associations again. */
+    public static function fromSnapshot(array $data, PrestashopServiceInterface $service, bool $complete = false): self
+    {
+        $entity = new self($data, $service, true);
+        $entity->haveFeatures = $complete;
+        return $entity;
     }
 
     public static function create(array $data, PrestashopServiceInterface $service): self
     {
+        if (count($data) === 1 && isset($data['id'])) {
+            $product = $service->getProductById((int) $data['id']);
+            if ($product === null) {
+                throw new \RuntimeException('Product not found: ' . $data['id']);
+            }
+            return $product;
+        }
         $class = new self($data, $service);
         if(ProductValidator::isValid($class)) {
             return $class;
         } else {
             /** @var \PS\Webservice\Service\PS\Order $service */
-            return $service->getProductById($data['id']);
+            throw new \RuntimeException('Incomplete product payload: ' . ($data['id'] ?? 'unknown'));
         }
     }
 

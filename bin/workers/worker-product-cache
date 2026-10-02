@@ -1,0 +1,38 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/../../bootstrap/app.php';
+
+use Illuminate\Support\Facades\Log;
+use PS\Webservice\Service\PS\Product;
+use PS\Webservice\Service\RedisQueue;
+
+$queue = $container->get(RedisQueue::class);
+$productService = $container->get(Product::class);
+while (true) {
+    try {
+        $job = $queue->pop([Product::CACHE_QUEUE], 10);
+        if ($job === null) {
+            continue;
+        }
+        $payload = $job['payload'];
+        $id = (int) ($payload['product_id'] ?? 0);
+        if ($id <= 0) {
+            continue;
+        }
+        try {
+            $productService->getCompleteProductById($id);
+            Log::info('Product cache refreshed', ['product_id' => $id]);
+        } catch (\Throwable $e) {
+            $attempt = (int) ($payload['attempt'] ?? 0) + 1;
+            Log::error('Product cache refresh failed', ['product_id' => $id, 'attempt' => $attempt, 'error' => $e->getMessage()]);
+            if ($attempt < 3) {
+                sleep(5 * $attempt);
+                $queue->push(Product::CACHE_QUEUE, ['product_id' => $id, 'attempt' => $attempt]);
+            }
+        }
+    } catch (\Throwable $e) {
+        Log::error('Product cache worker failed', ['error' => $e->getMessage()]);
+        sleep(5);
+    }
+}
