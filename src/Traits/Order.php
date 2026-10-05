@@ -7,7 +7,6 @@ use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
-use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\PS\Order as OrderService;
 
@@ -18,7 +17,7 @@ trait Order
     protected int $carrierId;
     private OrderService $orderService;
 
-    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = []): OrderSession
+    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = [], array $serverCart = []): OrderSession
     {
 
         $this->orderService = $orderService;
@@ -46,7 +45,11 @@ trait Order
         foreach ($serverCartProducts as $product) {
             $this->addProduct($product);
         }
-        $this->manageCartRules($payload);
+        if (!empty($serverCart['cart_rules'])) {
+            $this->orderSession->applyCouponCart($serverCart);
+        } else {
+            $this->manageCartRules($payload);
+        }
         $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
 
         return $orderSession;
@@ -62,32 +65,12 @@ trait Order
         return $this->orderSession->getLineItems();
     }
 
-    private function manageDiscounts(array $cartRules): void
-    {
-        $this->orderSession->addDiscount(new Discount(
-            name: $cartRules['code'],
-            amount_off: $this->mathReduction($cartRules['reduction_percent'] ?? null, $cartRules['reduction_amount'] ?? null),
-            code: $cartRules['code'],
-            duration: 'once'
-        ));
-    }
-
     public function manageCartRules(OrderEntity $payload)
     {
         $cartRules = $payload->getCartRules();
         $carrierDetails = $this->orderService->getCarrierDetail($payload->id_carrier);
         if (is_null($carrierDetails)) {
             throw new \InvalidArgumentException('Invalid carrier ID: ' . $payload->id_carrier);
-        }
-
-        // add discount if there are cart rules applied to this cart - in a real implementation we would need to check if the cart rules are still valid and applicable to this cart before applying them to the payment session
-        //FIXME: maybe there are a bug
-        foreach ($cartRules->toArray() as $rule) {
-            if (isset($payload->cart_rules)) {
-                foreach ($payload->cart_rules as $clientRule) {
-                    $this->manageDiscounts($clientRule);
-                }
-            }
         }
 
         //check for free shipping cart rule
@@ -112,23 +95,4 @@ trait Order
         return false;
     }
 
-    /**
-     * @deprecated 
-     */
-    private function mathReduction(?float $reductionPercent = null, ?float $reductionAmount = null): float
-    {
-        return $reductionPercent;
-
-        $total = $this->orderSession->total();
-
-        if (!empty($reductionPercent)) {
-            $reduction = ($total * ($reductionPercent / 100));
-        }
-
-        if (!empty($reductionAmount)) {
-            $reduction = $reductionAmount;
-        }
-
-        return max($reduction, 0);
-    }
 }

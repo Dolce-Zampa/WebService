@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/MlabFactoryApiException.php';
 require_once __DIR__ . '/MlabFactoryApiHelper.php';
+require_once __DIR__ . '/MlabFactoryCoupon.php';
 
 abstract class MlabFactoryApiBaseModuleFrontController extends ModuleFrontController
 {

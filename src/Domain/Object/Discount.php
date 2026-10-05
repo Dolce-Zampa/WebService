@@ -10,6 +10,8 @@ final class Discount
         public float $amount_off,
         public string $code,
         public string $duration = 'once',
+        public string $type = 'percent',
+        public string $currency = 'eur',
     ) {}
 
     public function toArray(): array

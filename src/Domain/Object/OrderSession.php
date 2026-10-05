@@ -16,6 +16,7 @@ class OrderSession implements ObjectInterface
 {
     use UuidGenerator;
     protected array $data;
+    private ?float $payableTotal = null;
     private Order $service;
 
     private CustomerEntity $customer;
@@ -153,7 +154,7 @@ class OrderSession implements ObjectInterface
                     'name' => $product->name,
                     'images' => [build_product_image_url($product->getImages()[0]['id'], $product->name, 'small_default')],
                 ],
-                'unit_amount' => (int) ($price * 100),
+                'unit_amount' => (int) round($price * 100),
             ],
             'quantity' => $quantity
         ];
@@ -167,15 +168,49 @@ class OrderSession implements ObjectInterface
                 'product_data' => [
                     'name' => $name,
                 ],
-                'unit_amount' => (int) ($price * 100),
+                'unit_amount' => (int) round($price * 100),
             ],
             'quantity' => $quantity
         ];
     }
 
+    public function applyCouponCart(array $cart): void
+    {
+        if (empty($cart['currency_iso'])) {
+            throw new \InvalidArgumentException('Cart currency is required.');
+        }
+        $currency = strtolower($cart['currency_iso']);
+        if ($currency !== 'eur') {
+            throw new \InvalidArgumentException('Unsupported cart currency.');
+        }
+        $shipping = $cart['totals']['shipping_tax_incl'] ?? null;
+        $grandTotal = $cart['totals']['grand_total_tax_incl'] ?? null;
+        if (!is_numeric($shipping) || !is_numeric($grandTotal) || !is_finite((float) $shipping) || !is_finite((float) $grandTotal) || $shipping < 0 || $grandTotal < 0) {
+            throw new \InvalidArgumentException('Invalid discounted cart totals.');
+        }
+        if ($shipping > 0) {
+            $this->addCarrierLineItem('Shipping', 1, (float) $shipping);
+        }
+        $discount = round($this->total() - (float) $grandTotal, 2);
+        if ($discount < -0.01 || $discount > $this->total()) {
+            throw new \InvalidArgumentException('Discounted cart total does not match payment lines.');
+        }
+        $code = (string) ($cart['cart_rules'][0]['code'] ?? '');
+        $this->data['metadata']['coupon_code'] = $code;
+        if ($discount > 0) {
+            $this->addDiscount(new Discount('Cart ' . $cart['id'] . ' discount', $discount, $code, type: 'amount'));
+        }
+        $this->payableTotal = (float) $grandTotal;
+    }
+
+    public function payableTotal(): float
+    {
+        return $this->payableTotal ?? $this->total();
+    }
+
     public function addDiscount(Discount $discount): void
     {
-        $existingCoupon = $this->service->findExistingStripeCoupon($discount->code);
+        $existingCoupon = $discount->type === 'amount' ? null : $this->service->findExistingStripeCoupon($discount->code);
 
         if ($existingCoupon) {
             $stripeCouponId = $existingCoupon->id;
@@ -183,7 +218,8 @@ class OrderSession implements ObjectInterface
             $stripeCouponId = $this->service->createCouponCode($discount);
         }
 
-        // 3. Struttura corretta per Stripe Checkout
+        $this->data['metadata']['coupon_code'] = $discount->code;
+        // Stripe Checkout supports one aggregate discount.
         $this->data['discounts'] = [
             [
                 'coupon' => $stripeCouponId

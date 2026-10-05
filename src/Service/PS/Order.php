@@ -244,14 +244,15 @@ class Order extends Cart implements PrestashopServiceInterface
 
     public function createCouponCode(Discount $discount): string
     {
-        // 2. Se non esiste, lo crei al volo
-        $stripeCoupon = \Stripe\Coupon::create([
-            'name' => $discount->name,
-            // Usi 'percent_off' o 'amount_off' in base al tuo sconto
-            'percent_off' => $discount->amount_off,
-            'duration' => $discount->duration, // 'once', 'forever', 'repeating'
-        ]);
-        
+        $params = ['name' => $discount->name, 'duration' => $discount->duration];
+        if ($discount->type === 'amount') {
+            $params['amount_off'] = (int) round($discount->amount_off * 100);
+            $params['currency'] = $discount->currency;
+        } else {
+            $params['percent_off'] = $discount->amount_off;
+        }
+        $stripeCoupon = \Stripe\Coupon::create($params);
+
         return $stripeCoupon->id;
     }
 

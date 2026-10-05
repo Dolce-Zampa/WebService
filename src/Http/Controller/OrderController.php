@@ -135,8 +135,21 @@ class OrderController extends CartController
         // Create payment session
         try {
             $paymentService = $this->stripeService;
+            $codes = [];
+            if (!empty($payload['coupon_code'])) {
+                $codes[] = trim((string) $payload['coupon_code']);
+            }
+            foreach ($payload['cart_rules'] ?? [] as $rule) {
+                if (!is_array($rule) || empty($rule['code'])) {
+                    throw new \InvalidArgumentException('Coupon code is required.');
+                }
+                $codes[] = trim((string) $rule['code']);
+            }
+            if ($codes !== [] || !empty($cart->toArray()['cart_rules'])) {
+                $cart = $this->orderService->prepareCouponCart($payload['id_cart'], $customerId, $guestId, (int) $payload['id_carrier'], $codes, $payload);
+            }
             $newOrder = OrderEntity::create($payload, $this->orderService);
-            $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? []);
+            $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray());
 
             //save in cache the order session only for 24h
             $this->setToCache($orderSession->metadata['cart_id'], ["orderSession" => $orderSession, "cart" => $cart], 24 * 60); //FIXME: customer data should be encrypted
