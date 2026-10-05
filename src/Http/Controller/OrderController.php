@@ -6,6 +6,7 @@ namespace PS\Webservice\Http\Controller;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Traits\Order as OrderHelper;
@@ -21,16 +22,27 @@ class OrderController extends CartController
 
     protected PaymentGatewayInterface $stripeService;
 
-    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService)
+    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, PrestashopRepository $prestashopRepository)
     {
+        $this->cartService = $orderService;
+        $this->prestashopRepository = $prestashopRepository;
         $this->stripeService = $stripeService;
         $this->orderService = $orderService;
     }
 
     public function orderHistory(Request $request, Response $response, array $argv): Response
     {
-        $customerId = $argv['customerId'];
-        $orders = $this->orderService->getOrderListFromUserId($customerId);
+        $customerId = (int) ($argv['customerId'] ?? 0);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
+        }
+
+        if ($authenticatedCustomerId !== $customerId) {
+            return response(['error' => 'Forbidden'], 403);
+        }
+
+        $orders = $this->orderService->getOrderListFromUserId((string) $authenticatedCustomerId);
 
         if (is_null($orders)) {
             return response([], 404);
@@ -43,7 +55,12 @@ class OrderController extends CartController
     public function getOrder(Request $request, Response $response, array $argv): Response
     {
         $orderId = $argv['orderId'];
-        $cartList = $this->orderService->orderDetails($orderId);
+        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDeny($request);
+        if ($authenticatedCustomerId instanceof Response) {
+            return $authenticatedCustomerId;
+        }
+
+        $cartList = $this->orderService->orderDetails((string) $orderId, (string) $authenticatedCustomerId);
 
         if (is_null($cartList)) {
             return response([], 404);
@@ -56,9 +73,6 @@ class OrderController extends CartController
     public function confirmOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
-        $customerId = $payload['id_customer'] ?? null;
-        $guestId = $payload['id_guest'] ?? null;
-
         if (!is_array($payload)) {
             return response([
                 'success' => false,
@@ -66,6 +80,14 @@ class OrderController extends CartController
                 'error' => 'Invalid payload format'
             ], 400);
         }
+
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
+        }
+
+        $customerId = $ownerContext['customerId'];
+        $guestId = $ownerContext['guestId'];
 
         $cartId = $payload['id_cart'] ?? null;
         if ($cartId === null) {
@@ -116,17 +138,26 @@ class OrderController extends CartController
     {
         $payload = $request->getParsedBody();
         if (!is_array($payload)) {
-            throw new \InvalidArgumentException('Invalid payload format', 400);
+            return response([
+                'success' => false,
+                'status' => 'invalid_payload',
+                'error' => 'Invalid payload format'
+            ], 400);
         }
 
-        // Ownership check: require customer or guest identification — never trust anonymous cart access
-        $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
-        $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;
-
-        if ($customerId === null && $guestId === null) {
-            return response(['error' => 'Customer ID or guest ID is required'], 403);
+        $ownerContext = $this->resolveOwnerContext($request, $payload);
+        if ($ownerContext instanceof Response) {
+            return $ownerContext;
         }
 
+        $customerId = $ownerContext['customerId'];
+        $guestId = $ownerContext['guestId'];
+
+        if (!isset($payload['id_cart'])) {
+            return response(['error' => 'Cart ID is required'], 400);
+        }
+
+        $payload = $this->normalizeOwnerPayload($payload, $ownerContext);
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response([], 404);
