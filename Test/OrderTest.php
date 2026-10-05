@@ -334,8 +334,7 @@ final class OrderTest extends TestCase
                 'id_guest',
                 'id_carrier',
                 'coupon_code',
-                'recovery_attempt',
-                'customer_email'
+                'recovery_attempt'
             ];
             $toCheck = $orderSession->toArray();
             foreach ($expectedSessionKeys as $key) {
@@ -348,6 +347,7 @@ final class OrderTest extends TestCase
                     throw new \Exception("Missing expected metadata key: $key");
                 }
             }
+            $this->assertArrayNotHasKey('customer_email', $toCheck['metadata']);
             return 'http://checkout.url';
         });
 
@@ -482,8 +482,7 @@ final class OrderTest extends TestCase
                 'id_guest',
                 'id_carrier',
                 'coupon_code',
-                'recovery_attempt',
-                'customer_email'
+                'recovery_attempt'
             ];
             $toCheck = $orderSession->toArray();
             foreach ($expectedSessionKeys as $key) {
@@ -496,6 +495,7 @@ final class OrderTest extends TestCase
                     throw new \Exception("Missing expected metadata key: $key");
                 }
             }
+            $this->assertArrayNotHasKey('customer_email', $toCheck['metadata']);
             return 'http://checkout.url';
         });
 
