@@ -391,8 +391,12 @@ class StripeWebhookController extends OrderController
         }
 
         $metadataFromCache = $cachedSession->metadata ?? [];
-        $customerId = $metadataFromCache['id_customer'] ?? null;
-        $guestId = $metadataFromCache['id_guest'] ?? null;
+        $customerId = isset($metadataFromCache['id_customer']) && (int) $metadataFromCache['id_customer'] > 0
+            ? (int) $metadataFromCache['id_customer']
+            : null;
+        $guestId = isset($metadataFromCache['id_guest']) && (int) $metadataFromCache['id_guest'] > 0
+            ? (int) $metadataFromCache['id_guest']
+            : null;
         $customerDetails = $cachedSession->getCustomer();
 
         if (!is_null($customerId) && !is_null($guestId)) {
