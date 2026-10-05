@@ -177,16 +177,35 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
             throw new \InvalidArgumentException('Seller city is required before saving the supplier address');
         }
 
-        // Get id state and id country for the supplier address
-        $state = State::where('name', $manufacture->state)->first();
+        $idCountry = (int) ($manufacture->id_country ?? 0);
+        $idState = (int) ($manufacture->id_state ?? 0);
+        $stateName = trim((string) $manufacture->state);
+        $stateQuery = State::query();
+        if ($idState > 0) {
+            $stateQuery->where('id_state', $idState);
+        } elseif ($stateName !== '') {
+            $stateQuery->where('name', $stateName);
+        }
+        if ($idCountry > 0) {
+            $stateQuery->where('id_country', $idCountry);
+        }
+
+        $state = ($idState > 0 || $stateName !== '') ? $stateQuery->first() : null;
+        if ($state !== null) {
+            $idCountry = (int) $state->id_country;
+            $idState = (int) $state->id_state;
+        } elseif ($idCountry <= 0) {
+            throw new \InvalidArgumentException('A valid seller country or state is required');
+        }
+
         $supplier->address()->updateOrCreate(
             ['id_supplier' => $supplier->id_supplier],
             [
                 'address1' => $manufacture->address,
                 'city' => $city,
                 'postcode' => $manufacture->zip_code,
-                'id_country' => $state->id_country,
-                'id_state' => $state->id_state,
+                'id_country' => $idCountry,
+                'id_state' => $idState,
                 'dni' => $manufacture->fiscal_code,
                 'phone' => $manufacture->phone_number,
                 'vat_number' => $manufacture->vat_number,
