@@ -66,8 +66,14 @@ class OrderEntity implements ObjectInterface
 		$customerData['invoice_address'] = $this->data['invoice_address'] ?? $customerData['invoice_address'] ?? null;
 		$customerData['phone'] = $customerData['phone'] ?? $customerData['phone_mobile'] ?? null;
 		$customer = CustomerEntity::create($customerData, $this->service);
-		$idLang = $this->data['id_lang'] ?? $this->data['cart']['id_lang'] ?? $customerData['id_lang'] ?? null;
-		if (!is_numeric($idLang) || (int) $idLang <= 0) {
+		$idLang = null;
+		foreach ([$this->data['id_lang'] ?? null, $this->data['cart']['id_lang'] ?? null, $customerData['id_lang'] ?? null] as $languageId) {
+			if (is_numeric($languageId) && (int) $languageId > 0) {
+				$idLang = (int) $languageId;
+				break;
+			}
+		}
+		if ($idLang === null) {
 			$idLang = DB::table('configuration')->where('name', 'PS_LANG_DEFAULT')->value('value');
 		}
 		if (!is_numeric($idLang) || (int) $idLang <= 0) {
