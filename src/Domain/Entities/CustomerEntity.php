@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use Illuminate\Support\Facades\DB;
+use PS\Webservice\Domain\Models\PS\State;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
@@ -61,7 +63,7 @@ class CustomerEntity implements ObjectInterface
 	public function normalizeData(): void
 	{
             $this->data = $this->normalizeCustomerPayload($this->data);
-            if($this->data['uuid'] === null) {
+            if (($this->data['uuid'] ?? null) === null) {
                 $this->data['uuid'] = Uuid::uuid4()->toString();
             }
 	}
@@ -72,31 +74,44 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeCustomerPayload(array $customer): array
     {
+        foreach (['email', 'firstname', 'lastname'] as $field) {
+            if (!isset($customer[$field]) || !is_string($customer[$field]) || trim($customer[$field]) === '') {
+                throw new \InvalidArgumentException("Customer {$field} is required");
+            }
+        }
+
+        $deliveryAddress = $customer['delivery_address'] ?? null;
+        $phone = $customer['phone'] ?? null;
+        if (!is_string($phone) || trim($phone) === '') {
+            $phone = is_array($deliveryAddress)
+                ? ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? null)
+                : null;
+        }
         $normalized = [
-            'email' => (string) $customer['email'],
-            'password' => (string) isset($customer['password']) ? $customer['password'] : '', //FIXME: generate a random password if not provided, to allow account creation from the order confirmation page
-            'firstname' => (string) $customer['firstname'],
-            'lastname' => (string) $customer['lastname'],
-            'phone' => (string) $customer['phone'],
-            'newsletter' => (bool) $customer['newsletter']
+            'email' => (string) ($customer['email'] ?? ''),
+            'password' => (string) ($customer['password'] ?? ''),
+            'firstname' => (string) ($customer['firstname'] ?? ''),
+            'lastname' => (string) ($customer['lastname'] ?? ''),
+            'phone' => (string) ($customer['phone'] ?? ''),
+            'newsletter' => (bool) ($customer['newsletter'] ?? false),
         ];
 
         if(isset($customer['id'])) {
             $normalized['id'] = $customer['id'];
         }
+        if (isset($customer['id_lang'])) {
+            $normalized['id_lang'] = (int) $customer['id_lang'];
+        }
 
-        $customer['delivery_address']['phone_mobile'] = $customer['phone'] ?? null;
-        if (isset($customer['delivery_address']) && is_array($customer['delivery_address'])) {
+        if (is_array($customer['delivery_address'] ?? null)) {
             $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address']);
         }
 
-        if (isset($customer['invoice_address']) && is_array($customer['invoice_address'])) {
+        if (is_array($customer['invoice_address'] ?? null)) {
             $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address']);
         } else {
             $normalized['invoice_address'] = null;
         }
-
-        $normalized['invoice_address'] = null;
 
         return $normalized;
     }
@@ -107,22 +122,28 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeDeliveryAddress(array $deliveryAddress): array
     {
-        $deliveryAddressData = '';
-        if(!empty($deliveryAddress['address1'])) {
-            $deliveryAddressData = $deliveryAddress['address1'];
-        }
-        
-        return [
+        $normalized = [
             'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
-            'firstname' => (string) $this->data['firstname'],
-            'lastname' => (string) $this->data['lastname'],
-            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', $deliveryAddressData))),
-            'city' => (string) $deliveryAddress['city'],
-            'postcode' => (string) $deliveryAddress['postcode'],
-            'id_country' => 10, //FIXME: Default country ID should be determined dynamically based on the delivery address details
+            'firstname' => (string) ($this->data['firstname'] ?? ''),
+            'lastname' => (string) ($this->data['lastname'] ?? ''),
+            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
+            'city' => (string) ($deliveryAddress['city'] ?? ''),
+            'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
+            'id_country' => isset($deliveryAddress['id_country']) && is_numeric($deliveryAddress['id_country'])
+                ? (int) $deliveryAddress['id_country']
+                : 10,
             'phone_mobile' => (string) ($this->data['phone'] ?? ''),
-            'id_state' => 228, //FIXME: State ID should be determined dynamically based on the delivery address details
+            'id_state' => isset($deliveryAddress['id_state']) && is_numeric($deliveryAddress['id_state'])
+                ? (int) $deliveryAddress['id_state']
+                : 228,
         ];
+        foreach (['address2', 'state', 'country'] as $field) {
+            if (isset($deliveryAddress[$field]) && is_string($deliveryAddress[$field])) {
+                $normalized[$field] = $deliveryAddress[$field];
+            }
+        }
+
+        return $normalized;
     }
 
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData

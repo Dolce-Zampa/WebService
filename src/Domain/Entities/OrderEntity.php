@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use Illuminate\Support\Facades\DB;
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
@@ -60,7 +61,24 @@ class OrderEntity implements ObjectInterface
 
 	public function normalizeData(): void
 	{
-		$customer = CustomerEntity::create($this->data['customer'], $this->service);
+		$customerData = $this->data['customer'] ?? [];
+		$customerData['delivery_address'] = $this->data['delivery_address'] ?? $customerData['delivery_address'] ?? null;
+		$customerData['invoice_address'] = $this->data['invoice_address'] ?? $customerData['invoice_address'] ?? null;
+		$customerData['phone'] = $customerData['phone'] ?? $customerData['phone_mobile'] ?? null;
+		$customer = CustomerEntity::create($customerData, $this->service);
+		$idLang = null;
+		foreach ([$this->data['id_lang'] ?? null, $this->data['cart']['id_lang'] ?? null, $customerData['id_lang'] ?? null] as $languageId) {
+			if (is_numeric($languageId) && (int) $languageId > 0) {
+				$idLang = (int) $languageId;
+				break;
+			}
+		}
+		if ($idLang === null) {
+			$idLang = DB::table('configuration')->where('name', 'PS_LANG_DEFAULT')->value('value');
+		}
+		if (!is_numeric($idLang) || (int) $idLang <= 0) {
+			throw new \InvalidArgumentException('Order language is required and must be a positive integer');
+		}
 		$data = [
 			'id' => $this->data['id'],
 			'id_carrier' => $this->data['id_carrier'], //
@@ -68,6 +86,8 @@ class OrderEntity implements ObjectInterface
 			'id_customer' => $this->data['id_customer'],
 			'reference' => (string) $this->data['reference'],
 			'id_cart' => $this->data['id_cart'],
+			'payment_module' => $this->data['payment_module'] ?? null,
+			'create_account' => $this->data['create_account'] ?? false,
 			'current_state' => (int) $this->data['current_state'],
 			'date_add' => (string) $this->data['date_add'],
 			'total_paid_tax_incl' => (float) $this->data['total_paid_tax_incl'],
@@ -75,12 +95,8 @@ class OrderEntity implements ObjectInterface
 			'customer' => $customer->toArray(),
 			'expires_at' => $this->data['expires_at'] ?? time() + 3600,
 			'recovery_attempt' => $this->data['recovery_attempt'] ?? false,
-			'id_lang' => $this->data['id_lang'] ?? 1, //FIXME: id_lang is not always present in the order data, should be determined based on the customer or cart data
+			'id_lang' => (int) $idLang,
 		];
-		$data['customer']['delivery_address'] = $this->data['delivery_address'];
-		$data['customer']['invoice_address'] = $this->data['invoice_address'];
-		$data['customer']['phone'] = $this->data['customer']['phone_mobile'] ?? null; //FIXME: phone_mobile is used as a fallback for phone, but ideally should be determined based on the customer data
-
         $currentCartRule = $this->currentCartRule();
         $data['cartRules'] = CartRuleEntity::create($currentCartRule, $this->service) ?? [];
 

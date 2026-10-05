@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use Illuminate\Support\Facades\DB;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 use PS\Webservice\Domain\ObjectInterface;
@@ -52,7 +53,16 @@ class ManufactureEntity extends Entity implements ObjectInterface
 		$this->data['firstname'] = $this->data['first_name'];
 		$this->data['lastname'] = $this->data['last_name'];
 		$this->data['newsletter'] = (bool) ($this->data['newsletter'] ?? false);
-		$this->data['id_country'] = (int) 11; //FIXME: Hardcoded country ID, should be dynamic based on actual data
+		if (isset($this->data['id_country'])) {
+			$this->data['id_country'] = (int) $this->data['id_country'];
+		} elseif (isset($this->data['country']) && is_string($this->data['country']) && trim($this->data['country']) !== '') {
+			$idCountry = DB::table('country_lang')
+				->where('name', trim($this->data['country']))
+				->value('id_country');
+			if (is_numeric($idCountry)) {
+				$this->data['id_country'] = (int) $idCountry;
+			}
+		}
 		
 		$isPremium = Manufacturer::where('id_manufacturer', $this->getId())
 			->where('premium', true)

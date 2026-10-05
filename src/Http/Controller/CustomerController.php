@@ -180,12 +180,54 @@ class CustomerController extends Controller
 
         $serviceResponse = $this->customerService->getAddresses($customerId);
         $data = $serviceResponse->toArray();
+        $addresses = $data['data']['addresses']['all'] ?? $data['data']['addresses'] ?? [];
+        if (!is_array($addresses)) {
+            $addresses = [];
+        }
+        $addresses = array_values(array_filter($addresses, 'is_array'));
 
-        //FIXME: delivery_address and invoice_address are hardcoded to the first two addresses. This should be improved to select the correct addresses based on the customer's preferences or default settings.
+        $query = $request->getQueryParams();
+        $deliveryAddress = $this->selectCustomerAddress($addresses, $query['id_address_delivery'] ?? null, 'delivery');
+        $invoiceAddress = $this->selectCustomerAddress($addresses, $query['id_address_invoice'] ?? null, 'invoice');
+
+        if (count($addresses) === 1) {
+            $deliveryAddress ??= $addresses[0];
+            $invoiceAddress ??= $addresses[0];
+        }
+
         return response([
-            'delivery_address' => $data['data']['addresses'][0],
-            'invoice_address' => $data['data']['addresses'][1] ?? $data['data']['addresses'][0],
+            'delivery_address' => $deliveryAddress,
+            'invoice_address' => $invoiceAddress,
         ]);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $addresses
+     * @return array<string, mixed>|null
+     */
+    private function selectCustomerAddress(array $addresses, mixed $requestedId, string $type): ?array
+    {
+        if ($requestedId !== null) {
+            if (!is_numeric($requestedId) || (int) $requestedId <= 0) {
+                throw new \InvalidArgumentException("id_address_{$type} must be a positive integer", 400);
+            }
+
+            foreach ($addresses as $address) {
+                if ((int) ($address['id'] ?? $address['id_address'] ?? 0) === (int) $requestedId) {
+                    return $address;
+                }
+            }
+
+            throw new \InvalidArgumentException("Address {$requestedId} does not belong to the customer", 400);
+        }
+
+        foreach ($addresses as $address) {
+            if (!empty($address["is_default_{$type}"]) || ($address['type'] ?? null) === $type) {
+                return $address;
+            }
+        }
+
+        return null;
     }
 
     public function updateAddresses(Request $request, Response $response, array $argv): Response
@@ -238,6 +280,12 @@ class CustomerController extends Controller
         }
 
         $this->validateDeliveryAddress($customer['delivery_address']);
+        if (isset($customer['invoice_address'])) {
+            if (!is_array($customer['invoice_address'])) {
+                throw new \InvalidArgumentException('Field invoice_address must be an object', 400);
+            }
+            $this->validateDeliveryAddress($customer['invoice_address'], 'invoice_address', false);
+        }
 
         return true;
     }
@@ -351,24 +399,31 @@ class CustomerController extends Controller
     /**
      * @param array<string, mixed> $deliveryAddress
      */
-    private function validateDeliveryAddress(array $deliveryAddress): void
+    private function validateDeliveryAddress(array $deliveryAddress, string $fieldName = 'delivery_address', bool $requirePhone = true): void
     {
-        $requiredFields = ['alias', 'address1', 'city', 'postcode', 'id_country', 'phone_mobile'];
+        $requiredFields = ['alias', 'address1', 'city', 'postcode', 'id_country'];
+        if ($requirePhone) {
+            $requiredFields[] = 'phone_mobile';
+        }
 
         foreach ($requiredFields as $field) {
             if (!array_key_exists($field, $deliveryAddress)) {
-                throw new \InvalidArgumentException("Missing required delivery_address field: {$field}", 400);
+                throw new \InvalidArgumentException("Missing required {$fieldName} field: {$field}", 400);
             }
         }
 
-        foreach (['alias', 'address1', 'city', 'postcode', 'phone_mobile'] as $field) {
+        $stringFields = ['alias', 'address1', 'city', 'postcode'];
+        if ($requirePhone) {
+            $stringFields[] = 'phone_mobile';
+        }
+        foreach ($stringFields as $field) {
             if (!is_string($deliveryAddress[$field]) || trim($deliveryAddress[$field]) === '') {
-                throw new \InvalidArgumentException("Field {$field} in delivery_address must be a non-empty string", 400);
+                throw new \InvalidArgumentException("Field {$field} in {$fieldName} must be a non-empty string", 400);
             }
         }
 
         if (!is_int($deliveryAddress['id_country']) || $deliveryAddress['id_country'] <= 0) {
-            throw new \InvalidArgumentException('Field id_country in delivery_address must be a positive integer', 400);
+            throw new \InvalidArgumentException("Field id_country in {$fieldName} must be a positive integer", 400);
         }
     }
 
