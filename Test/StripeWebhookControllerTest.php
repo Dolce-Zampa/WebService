@@ -361,6 +361,22 @@ final class StripeWebhookControllerTest extends TestCase
         $this->assertSame(200, $result->getStatusCode());
     }
 
+    public function test_checkout_without_carrier_metadata_is_rejected(): void
+    {
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->never())->method('confirmSessionOrder');
+        $controller = $this->controllerWithCheckoutCache($orderService, null);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Missing id_carrier in Stripe session metadata');
+        $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test_missing_carrier',
+            'amount_total' => 5000,
+            'currency' => 'eur',
+            'metadata' => ['cart_id' => '42'],
+        ]));
+    }
+
     public function test_returns_500_when_amount_total_is_zero(): void
     {
         $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
