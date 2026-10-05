@@ -50,16 +50,6 @@ final class OrderTest extends TestCase
             $table->integer('active');
             $table->integer('id_shop');
         });
-        \Illuminate\Database\Capsule\Manager::schema()->dropIfExists('configuration');
-        \Illuminate\Database\Capsule\Manager::schema()->create('configuration', function ($table) {
-            $table->string('name')->primary();
-            $table->string('value')->nullable();
-        });
-        \Illuminate\Database\Capsule\Manager::table('configuration')->insert([
-            'name' => 'PS_LANG_DEFAULT',
-            'value' => '1',
-        ]);
-
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
 
@@ -265,6 +255,7 @@ final class OrderTest extends TestCase
                         'email' => 'john.doe@example.com',
                         'firstname' => 'John',
                         'lastname' => 'Doe',
+                        'id_lang' => 1,
                         'phone' => null,
                         'delivery_address' => null,
                         'newsletter' => false,
@@ -420,6 +411,7 @@ final class OrderTest extends TestCase
                         'email' => 'john.doe@example.com',
                         'firstname' => 'John',
                         'lastname' => 'Doe',
+                        'id_lang' => 1,
                         'phone' => null,
                         'delivery_address' => null,
                         'newsletter' => false,
