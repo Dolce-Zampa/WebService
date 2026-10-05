@@ -1,0 +1,16 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+Grazie per aver ordinato presso {shop_name}!
+
+Il tuo ordine con riferimento {order_name} è stato spedito.
+
+Segui il tuo ordine e scarica la tua fattura dal nostro negozio, vai alla sezione [Storico e dettagli degli ordini]({history_url}) della tua area cliente.
+
+Se hai un account ospite, puoi seguire le fasi del tuo ordine tramite la sezione [Tracciamento Ospite]({guest_tracking_url}) nel nostro negozio.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

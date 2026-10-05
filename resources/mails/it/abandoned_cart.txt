@@ -1,0 +1,25 @@
+Hello {firstname} {lastname},
+
+We noticed you left some items in your cart at {shop_name}.
+
+Don't worry, we've saved them for you! Complete your purchase now before they're gone.
+
+YOUR CART ITEMS:
+{products_list}
+
+Total: {cart_total}
+
+COMPLETE YOUR PURCHASE:
+{recovery_url}
+
+Click the link above to return to your cart and complete your order.
+
+If you have any questions, please don't hesitate to contact us.
+
+Thank you for shopping with us!
+{shop_name}
+{shop_url}
+
+---
+This email was sent because you have items in your shopping cart. 
+If you did not request this email, you can safely ignore it.

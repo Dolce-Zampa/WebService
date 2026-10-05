@@ -1,0 +1,11 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+Questa è una email di prova del tuo negozio.
+Se puoi leggere questo, significa che il test ha avuto successo!
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

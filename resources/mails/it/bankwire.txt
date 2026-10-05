@@ -1,0 +1,26 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+Grazie per aver ordinato presso {shop_name}!
+
+ID Ordine {order_name} - In attesa di pagamento
+
+Il tuo ordine con riferimento {order_name} è stato registrato con successo, e sarà spedito non appena sarà ricevuto il pagamento.
+
+Metodo di pagamento: Bonifico bancario
+
+Hai scelto di pagare con bonifico bancario. Di seguito le coordinate per poter effettuare il bonifico:
+Importo:  {total_paid}
+Titolare del conto:  {bankwire_owner}
+Dettagli sull'account: {bankwire_details}
+Dettagli sulla banca: {bankwire_address}
+Si prega di specificare il riferimento dell'ordine nella causale del bonifico.
+
+Segui il tuo ordine e scarica la tua fattura dal nostro negozio, vai alla sezione [Storico e dettagli degli ordini]({history_url}) della tua area cliente.
+
+Se hai un account ospite, puoi seguire le fasi del tuo ordine tramite la sezione [Tracciamento Ospite]({guest_tracking_url}) nel nostro negozio.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

@@ -1,0 +1,13 @@
+ 
+
+{shop_url}
+
+Salve,
+
+Nuovo messaggio di avviso salvato
+
+ATTENZIONE: hai ricevuto un nuovo avviso per il registro log nel Back Office.
+Puoi verificarlo nella sezione Parametri avanzati > Logs del tuo back office.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

@@ -1,0 +1,13 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+Buono sconto generato
+
+Di seguito il tuo nuovo buono sconto: {voucher_num}
+Per utilizzarlo, semplicemente copia/incolla questo codice durante il check out.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

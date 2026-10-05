@@ -1,0 +1,12 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+{reply}
+
+Si prega di non rispondere direttamente a questa email, non la riceveremmo. Per rispondere, clicca sul seguente link: {link}
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

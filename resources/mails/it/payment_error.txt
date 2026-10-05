@@ -1,0 +1,18 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+ID Ordine {order_name} - Errore di pagamento
+
+Abbiamo riscontrato un errore durante l'elaborazione del pagamento del tuo ordine con riferimento {order_name} da {shop_name}. Si prega di contattarci al più presto possibile.
+
+La spedizione avverrà non appena il pagamento sarà stato ricevuto.
+
+Segui il tuo ordine e scarica la tua fattura dal nostro negozio, vai alla sezione [Storico e dettagli degli ordini]({history_url}) della tua area cliente.
+
+Se hai un account ospite, puoi seguire le fasi del tuo ordine tramite la sezione [Tracciamento Ospite]({guest_tracking_url}) nel nostro negozio.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)
