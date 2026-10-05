@@ -139,7 +139,11 @@ class CustomerEntity implements ObjectInterface
             'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
             'city' => (string) ($deliveryAddress['city'] ?? ''),
             'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
-            'id_country' => $countryId ?? 10,
+            'id_country' => isset($deliveryAddress['id_country'])
+                && is_numeric($deliveryAddress['id_country'])
+                && (int) $deliveryAddress['id_country'] > 0
+                ? (int) $deliveryAddress['id_country']
+                : 10,
             'phone_mobile' => (string) ($this->data['phone'] ?? ''),
             'id_state' => isset($deliveryAddress['id_state']) && is_numeric($deliveryAddress['id_state'])
                 ? (int) $deliveryAddress['id_state']
