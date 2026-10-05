@@ -2,8 +2,8 @@ name: Docker Image CI
 
 on:
   push:
-    tags:
-      - 'RC*.*.*'
+    branches:
+      - staging
 
 jobs:
   build:
@@ -30,4 +30,23 @@ jobs:
     - name: Push the Docker image
       run: |
         docker push ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Deploy to Docker Swarm 
+        uses: appleboy/ssh-action@v1.2.0 
+        with: 
+          host: ${{ secrets.SWARM_HOST }} 
+          username: ${{ secrets.SWARM_USER }} 
+          key: ${{ secrets.SWARM_SSH_KEY }} 
+          script: |
+            export WEBSERVICE_STAGING_TAG=${{ github.ref_name }}
+            docker service update --image ghcr.io/dolce-zampa/webservice:${WEBSERVICE_STAGING_TAG} dolcezampa_webservice
 
