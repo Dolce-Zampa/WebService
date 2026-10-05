@@ -17,7 +17,7 @@ class CodPaymentService implements PaymentGatewayInterface
     public function createPaymentSession(OrderSession $orderSession): string
     {
         $metadata = $orderSession->metadata;
-        $customer = json_decode($metadata['customer']);
+        $customer = (object) $orderSession->getCustomer()->toArray();
 
         $orderSession->service()->confirmSessionOrder(
             $metadata['cart_id'],
@@ -29,7 +29,7 @@ class CodPaymentService implements PaymentGatewayInterface
             $customer->firstname,
             $customer->lastname,
             $customer,
-            $orderSession->total(),
+            $orderSession->payableTotal(),
             'Cash on Delivery'
         );
         // must return a URL to redirect

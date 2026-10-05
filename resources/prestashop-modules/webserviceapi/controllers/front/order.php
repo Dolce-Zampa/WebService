@@ -24,19 +24,6 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             throw new MlabFactoryApiException('Cart is empty.', 422, array('id_cart' => (int) $cart->id));
         }
 
-        // ========== APPLICA IL COUPON SE PRESENTE ==========
-        if (!empty($payload['coupon_code'])) {
-            $result = $this->applyCouponToCart($cart, $payload['coupon_code']);
-
-            if (!$result['success']) {
-                throw new MlabFactoryApiException($result['error'], 422, ['coupon_code' => $payload['coupon_code']]);
-            }
-
-            // Ricarica il carrello con lo sconto applicato
-            $cart = new Cart((int) $cart->id);
-        }
-        // ===================================================
-
         // Determine if this is a guest or registered customer
         $isGuest = (int) $cart->id_customer === 0 && (int) $cart->id_guest > 0;
 
@@ -114,7 +101,29 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             );
         }
 
-        $this->addCustomCartRule($cart, $amountPaid);
+        if (!empty($payload['coupon_code'])) {
+            $result = $this->applyCouponToCart($cart, trim((string) $payload['coupon_code']));
+            if (!$result['success']) {
+                throw new MlabFactoryApiException($result['error'], 422);
+            }
+        }
+        foreach ($cart->getCartRules(CartRule::FILTER_ACTION_ALL, false) as $existing) {
+            $error = MlabFactoryCoupon::error(new CartRule((int) $existing['id_cart_rule']), $cart, $this->context);
+            if ($error !== null) {
+                throw new MlabFactoryApiException($error, 422);
+            }
+        }
+        if (!array_key_exists('amount_paid', $payload)) {
+            $amountPaid = (float) $cart->getOrderTotal(true, Cart::BOTH);
+        }
+        if (count($cart->getCartRules(CartRule::FILTER_ACTION_ALL, false))) {
+            if (!is_finite($amountPaid) || $amountPaid < 0 || abs($amountPaid - (float) $cart->getOrderTotal(true, Cart::BOTH)) > 0.01) {
+                throw new MlabFactoryApiException('Paid amount does not match the discounted cart total.', 422);
+            }
+        } else {
+            $this->addCustomCartRule($cart, $amountPaid);
+        }
+
 
         $paymentModule->validateOrder(
             (int) $cart->id,
@@ -325,23 +334,16 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             ];
         }
 
-        // Verifica se la cart rule è valida per questo carrello/customer
-        if (!$cartRule->checkValidity($context, $cart->id, false)) {
-            $errors = $cartRule->getValidityErrors();
-            return [
-                'success' => false,
-                'error' => 'Coupon is not valid: ' . implode(', ', $errors)
-            ];
+        $error = MlabFactoryCoupon::error($cartRule, $cart, $context);
+        if ($error !== null) {
+            return ['success' => false, 'error' => $error];
         }
-
-        // Rimuovi eventuali cart rule esistenti (opzionale)
-        $cart->removeCartRules();
-
-        // Applica la cart rule al carrello
-        $cart->addCartRule($cartRule->id);
-
-        // Aggiorna il carrello per ricalcolare i totali
-        $cart->update();
+        if (!MlabFactoryCoupon::contains($cart, $cartRule->id) && !$cart->addCartRule($cartRule->id)) {
+            return ['success' => false, 'error' => 'Unable to apply coupon.'];
+        }
+        if (!$cart->update()) {
+            return ['success' => false, 'error' => 'Unable to persist coupon.'];
+        }
 
         return [
             'success' => true,

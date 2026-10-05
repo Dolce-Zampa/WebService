@@ -43,3 +43,9 @@ class Db
         return $this->metadata;
     }
 }
+
+class Currency
+{
+    public $iso_code = "EUR";
+    public function __construct($id) {}
+}

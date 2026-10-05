@@ -237,6 +237,31 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return null;
     }
 
+    public function prepareCouponCart($cartId, $customerId, $guestId, int $carrierId, array $codes, array $checkout = []): CartEntity
+    {
+        $codes = array_values(array_unique($codes));
+        if ($codes === []) {
+            $codes = [''];
+        }
+        foreach ($codes as $code) {
+            $this->httpService->setUrl('/cart_rules?' . http_build_query(['ws_key' => $this->httpService->getConfig()->apikey]));
+            $response = $this->httpService->invoke('POST', [
+                'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId,
+                'id_carrier' => $carrierId, 'checkout' => true, 'code' => $code,
+                'delivery_address' => $checkout['delivery_address'] ?? null,
+                'invoice_address' => $checkout['invoice_address'] ?? null,
+                'email' => $checkout['customer']['email'] ?? null,
+                'firstname' => $checkout['customer']['firstname'] ?? null,
+                'lastname' => $checkout['customer']['lastname'] ?? null,
+            ]);
+            $data = $response->toArray();
+            if ($response->failed() || empty($data['data']['cart'])) {
+                throw new \InvalidArgumentException($data['error']['message'] ?? 'Unable to validate coupon cart.');
+            }
+        }
+        return CartEntity::create($data['data']['cart'], $this);
+    }
+
     public function validateCoupon(string $code, string $cartId, ?string $customerId = null, ?string $guestId = null): array|false
     {
         $query = [
