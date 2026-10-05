@@ -138,7 +138,7 @@ class StripeWebhookController extends OrderController
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
         $customerId = isset($metadata->id_customer) && (int) $metadata->id_customer > 0 ? (int) $metadata->id_customer : null;
         $guestId = isset($metadata->id_guest) && (int) $metadata->id_guest > 0 ? (int) $metadata->id_guest : null;
-        $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : 14; //FIXME: default carrier id should be configurable, not hardcoded
+        $carrierId = filter_var($metadata->id_carrier ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $couponCode = isset($metadata->coupon_code) ? (string) $metadata->coupon_code : null;
 
         if ($cartId <= 0) {
@@ -161,7 +161,7 @@ class StripeWebhookController extends OrderController
             throw new \RuntimeException('Invalid amount_total in Stripe session ' . $session->id);
         }
 
-        if ($carrierId === null) {
+        if ($carrierId === false) {
             Log::error('Stripe webhook: missing id_carrier in metadata for session ' . $session->id . ', cart ' . $cartId);
             throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
         }
@@ -423,7 +423,7 @@ class StripeWebhookController extends OrderController
         $newOrder = OrderEntity::create($orderToCreate, $this->orderService);
 
 
-        $order = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? []);
+        $order = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray());
 
         $paymentUrl = $this->stripeService->createPaymentSession($order);
 
