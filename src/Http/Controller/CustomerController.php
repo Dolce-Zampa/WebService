@@ -280,6 +280,12 @@ class CustomerController extends Controller
         }
 
         $this->validateDeliveryAddress($customer['delivery_address']);
+        if (isset($customer['invoice_address'])) {
+            if (!is_array($customer['invoice_address'])) {
+                throw new \InvalidArgumentException('Field invoice_address must be an object', 400);
+            }
+            $this->validateDeliveryAddress($customer['invoice_address'], 'invoice_address', false);
+        }
 
         return true;
     }
@@ -393,24 +399,31 @@ class CustomerController extends Controller
     /**
      * @param array<string, mixed> $deliveryAddress
      */
-    private function validateDeliveryAddress(array $deliveryAddress): void
+    private function validateDeliveryAddress(array $deliveryAddress, string $fieldName = 'delivery_address', bool $requirePhone = true): void
     {
-        $requiredFields = ['alias', 'address1', 'city', 'postcode', 'id_country', 'phone_mobile'];
+        $requiredFields = ['alias', 'address1', 'city', 'postcode', 'id_country'];
+        if ($requirePhone) {
+            $requiredFields[] = 'phone_mobile';
+        }
 
         foreach ($requiredFields as $field) {
             if (!array_key_exists($field, $deliveryAddress)) {
-                throw new \InvalidArgumentException("Missing required delivery_address field: {$field}", 400);
+                throw new \InvalidArgumentException("Missing required {$fieldName} field: {$field}", 400);
             }
         }
 
-        foreach (['alias', 'address1', 'city', 'postcode', 'phone_mobile'] as $field) {
+        $stringFields = ['alias', 'address1', 'city', 'postcode'];
+        if ($requirePhone) {
+            $stringFields[] = 'phone_mobile';
+        }
+        foreach ($stringFields as $field) {
             if (!is_string($deliveryAddress[$field]) || trim($deliveryAddress[$field]) === '') {
-                throw new \InvalidArgumentException("Field {$field} in delivery_address must be a non-empty string", 400);
+                throw new \InvalidArgumentException("Field {$field} in {$fieldName} must be a non-empty string", 400);
             }
         }
 
         if (!is_int($deliveryAddress['id_country']) || $deliveryAddress['id_country'] <= 0) {
-            throw new \InvalidArgumentException('Field id_country in delivery_address must be a positive integer', 400);
+            throw new \InvalidArgumentException("Field id_country in {$fieldName} must be a positive integer", 400);
         }
     }
 

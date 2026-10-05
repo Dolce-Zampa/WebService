@@ -103,11 +103,17 @@ class CustomerEntity implements ObjectInterface
             $normalized['id_lang'] = (int) $customer['id_lang'];
         }
 
+        if (isset($customer['delivery_address']) && !is_array($deliveryAddress)) {
+            throw new \InvalidArgumentException('Customer delivery_address must be an object');
+        }
         if (is_array($deliveryAddress)) {
             $normalized['delivery_address'] = $this->normalizeDeliveryAddress($deliveryAddress);
         }
 
-        if (isset($customer['invoice_address']) && is_array($customer['invoice_address'])) {
+        if (isset($customer['invoice_address'])) {
+            if (!is_array($customer['invoice_address'])) {
+                throw new \InvalidArgumentException('Customer invoice_address must be an object');
+            }
             $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address']);
         } else {
             $normalized['invoice_address'] = null;
@@ -139,6 +145,9 @@ class CustomerEntity implements ObjectInterface
         }
 
         $idState = $deliveryAddress['id_state'] ?? null;
+        if ($idState === '' || $idState === 0 || $idState === '0') {
+            $idState = null;
+        }
         if (($idState === null || $idState === '') && !empty($deliveryAddress['state'])) {
             $stateCode = trim((string) $deliveryAddress['state']);
             $idState = State::where('id_country', (int) $idCountry)

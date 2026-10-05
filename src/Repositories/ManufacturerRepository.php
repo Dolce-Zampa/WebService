@@ -191,6 +191,9 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
         }
 
         $state = ($idState > 0 || $stateName !== '') ? $stateQuery->first() : null;
+        if ($state === null && ($idState > 0 || $stateName !== '')) {
+            throw new \InvalidArgumentException('Seller state does not match the supplied country');
+        }
         if ($state !== null) {
             $idCountry = (int) $state->id_country;
             $idState = (int) $state->id_state;

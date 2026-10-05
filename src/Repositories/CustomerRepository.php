@@ -18,6 +18,11 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
      */
     public function saveNewCustomer(ObjectInterface $customer): \stdClass
     {
+        $password = $customer->get('password');
+        if (!is_string($password) || trim($password) === '') {
+            throw new RuntimeException('A non-empty customer password is required to create an account');
+        }
+
         $existingCustomer = $this->db->table(Customer::tableName())
             ->where('email', $customer->email)
             ->first();
@@ -37,7 +42,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                 ->where('id_customer', $existingCustomer->id_customer)
                 ->update([
                     'sub' => $customer->sub,
-                    'passwd' => sha1($customer->password),
+                    'passwd' => sha1($password),
                     'birthday' => $customer->birthday,
                     'firstname' => $customer->firstname,
                     'lastname' => $customer->lastname,
@@ -59,7 +64,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                 ->insert([
                     'sub' => $customer->sub,
                     'email' => $customer->email,
-                    'passwd' => sha1($customer->password),
+                    'passwd' => sha1($password),
                     'uuid' => $customer->uuid,
                     'birthday' => $customer->birthday,
                     'firstname' => $customer->firstname,
