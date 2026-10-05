@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use Illuminate\Support\Facades\DB;
+use PS\Webservice\Domain\Models\PS\State;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
@@ -61,7 +63,7 @@ class CustomerEntity implements ObjectInterface
 	public function normalizeData(): void
 	{
             $this->data = $this->normalizeCustomerPayload($this->data);
-            if($this->data['uuid'] === null) {
+            if (($this->data['uuid'] ?? null) === null) {
                 $this->data['uuid'] = Uuid::uuid4()->toString();
             }
 	}
@@ -72,6 +74,19 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeCustomerPayload(array $customer): array
     {
+        foreach (['email', 'firstname', 'lastname'] as $field) {
+            if (!isset($customer[$field]) || !is_string($customer[$field]) || trim($customer[$field]) === '') {
+                throw new \InvalidArgumentException("Customer {$field} is required");
+            }
+        }
+
+        $deliveryAddress = $customer['delivery_address'] ?? null;
+        $phone = $customer['phone'] ?? null;
+        if (!is_string($phone) || trim($phone) === '') {
+            $phone = is_array($deliveryAddress)
+                ? ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? null)
+                : null;
+        }
         $normalized = [
             'email' => (string) ($customer['email'] ?? ''),
             'password' => (string) ($customer['password'] ?? ''),
@@ -83,6 +98,9 @@ class CustomerEntity implements ObjectInterface
 
         if(isset($customer['id'])) {
             $normalized['id'] = $customer['id'];
+        }
+        if (isset($customer['id_lang'])) {
+            $normalized['id_lang'] = (int) $customer['id_lang'];
         }
 
         if (is_array($customer['delivery_address'] ?? null)) {

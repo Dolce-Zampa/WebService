@@ -4,8 +4,6 @@ require_once __DIR__ . '/MlabFactoryApiException.php';
 
 class MlabFactoryApiHelper
 {
-    const DEFAULT_COUNTRY_ID = 10;
-
     public static function getArrayValue(array $data, $key, array $fallbackKeys = array())
     {
         if (array_key_exists($key, $data)) {
@@ -597,7 +595,7 @@ class MlabFactoryApiHelper
         $address->postcode = (string) self::getValue($data, 'postcode', (string) $address->postcode);
         $address->city = (string) self::getValue($data, 'city', (string) $address->city);
         $currentCountryId = (int) $address->id_country;
-        $fallbackCountryId = $currentCountryId > 0 ? $currentCountryId : self::DEFAULT_COUNTRY_ID;
+        $fallbackCountryId = $currentCountryId > 0 ? $currentCountryId : (int) Configuration::get('PS_COUNTRY_DEFAULT');
         $address->id_country = (int) self::getValue($data, 'id_country', $fallbackCountryId);
         $address->id_state = (int) self::getValue($data, 'id_state', (int) $address->id_state);
         $address->phone = (string) self::getValue($data, 'phone', (string) $address->phone);
