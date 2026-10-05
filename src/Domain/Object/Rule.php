@@ -25,10 +25,13 @@ final class Rule
 
     public function normalizeData(array $toDecode = []): void
     {
+        // Configuration files wrap each rule in a "rule" object, while callers
+        // may also provide an already-normalized rule.
+        $data = is_array($this->data['rule'] ?? null) ? $this->data['rule'] : $this->data;
         $rule = [
-            "id" => (int) $this->data['id'],
-            "rule" => $this->data['rule'],
-            "conditions" => $this->data['conditions'] ?? [],
+            "id" => (int) ($data['id'] ?? 0),
+            "rule" => $data['rule'] ?? null,
+            "conditions" => $data['conditions'] ?? [],
         ];
 
         $this->data = $rule;
