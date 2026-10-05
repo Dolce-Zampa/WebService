@@ -87,6 +87,16 @@ class CustomerEntity implements ObjectInterface
                 ? ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? null)
                 : null;
         }
+        $countryId = is_array($deliveryAddress)
+            && isset($deliveryAddress['id_country'])
+            && is_numeric($deliveryAddress['id_country'])
+            && (int) $deliveryAddress['id_country'] > 0
+            ? (int) $deliveryAddress['id_country']
+            : null;
+        $country = is_array($deliveryAddress) ? ($deliveryAddress['country'] ?? null) : null;
+        if (is_array($deliveryAddress) && $countryId === null && (!is_string($country) || trim($country) === '')) {
+            throw new \InvalidArgumentException('Address country is required');
+        }
         $normalized = [
             'email' => $customer['email'],
             'password' => $customer['password'] ?? null,

@@ -12,7 +12,11 @@ final class CouponFlowTest extends TestCase
     {
         return OrderSession::create([
             'cart_id' => 10, 'id_customer' => 5, 'id_guest' => null, 'id_carrier' => 2,
-            'customer' => CustomerEntity::create(['email' => 'test@example.com'], $service),
+            'customer' => CustomerEntity::create([
+                'email' => 'test@example.com',
+                'firstname' => 'Test',
+                'lastname' => 'Customer',
+            ], $service),
         ], $service);
     }
 
