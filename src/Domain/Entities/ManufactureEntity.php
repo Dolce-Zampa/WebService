@@ -52,7 +52,9 @@ class ManufactureEntity extends Entity implements ObjectInterface
 		$this->data['firstname'] = $this->data['first_name'];
 		$this->data['lastname'] = $this->data['last_name'];
 		$this->data['newsletter'] = (bool) ($this->data['newsletter'] ?? false);
-		$this->data['id_country'] = (int) 11; //FIXME: Hardcoded country ID, should be dynamic based on actual data
+		if (isset($this->data['id_country'])) {
+			$this->data['id_country'] = (int) $this->data['id_country'];
+		}
 		
 		$isPremium = Manufacturer::where('id_manufacturer', $this->getId())
 			->where('premium', true)

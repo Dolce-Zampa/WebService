@@ -24,6 +24,12 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
 
         $isSeller = $customer->get('is_seller');
         $id_default_group = $isSeller ? 5 : 3; 
+        $idLang = $customer->get('id_lang') ?: $this->db->table('configuration')
+            ->where('name', 'PS_LANG_DEFAULT')
+            ->value('value');
+        if (!is_numeric($idLang) || (int) $idLang <= 0) {
+            throw new RuntimeException('A valid customer language is required');
+        }
 
         if ($existingCustomer) {
             // Se esiste un cliente con la stessa email, aggiorna il record esistente
@@ -39,7 +45,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'date_upd' => Carbon::now(),
                     'uuid' => $customer->uuid,
                     'active' => 1,
-                    'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
+                    'id_lang' => (int) $idLang,
                     'newsletter_date_add' => $customer->newsletter_date_add ?? null,
                     'max_payment_days' => 0,
                     'secure_key' => md5(uniqid((string) mt_rand(), true)) , // only 32 char
@@ -63,7 +69,7 @@ class CustomerRepository extends PrestashopRepository implements RepositoryInter
                     'date_add' => Carbon::now(),
                     'date_upd' => Carbon::now(),
                     'active' => 1,
-                    'id_lang' => 1, //FIXME: language should be dynamic based on customer preference
+                    'id_lang' => (int) $idLang,
                     'newsletter_date_add' => $customer->newsletter_date_add ?? null,
                     'max_payment_days' => 0,
                     'secure_key' => md5(microtime() . rand()),

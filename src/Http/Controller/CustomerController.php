@@ -180,12 +180,54 @@ class CustomerController extends Controller
 
         $serviceResponse = $this->customerService->getAddresses($customerId);
         $data = $serviceResponse->toArray();
+        $addresses = $data['data']['addresses']['all'] ?? $data['data']['addresses'] ?? [];
+        if (!is_array($addresses)) {
+            $addresses = [];
+        }
+        $addresses = array_values(array_filter($addresses, 'is_array'));
 
-        //FIXME: delivery_address and invoice_address are hardcoded to the first two addresses. This should be improved to select the correct addresses based on the customer's preferences or default settings.
+        $query = $request->getQueryParams();
+        $deliveryAddress = $this->selectCustomerAddress($addresses, $query['id_address_delivery'] ?? null, 'delivery');
+        $invoiceAddress = $this->selectCustomerAddress($addresses, $query['id_address_invoice'] ?? null, 'invoice');
+
+        if (count($addresses) === 1) {
+            $deliveryAddress ??= $addresses[0];
+            $invoiceAddress ??= $addresses[0];
+        }
+
         return response([
-            'delivery_address' => $data['data']['addresses'][0],
-            'invoice_address' => $data['data']['addresses'][1] ?? $data['data']['addresses'][0],
+            'delivery_address' => $deliveryAddress,
+            'invoice_address' => $invoiceAddress,
         ]);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $addresses
+     * @return array<string, mixed>|null
+     */
+    private function selectCustomerAddress(array $addresses, mixed $requestedId, string $type): ?array
+    {
+        if ($requestedId !== null) {
+            if (!is_numeric($requestedId) || (int) $requestedId <= 0) {
+                throw new \InvalidArgumentException("id_address_{$type} must be a positive integer", 400);
+            }
+
+            foreach ($addresses as $address) {
+                if ((int) ($address['id'] ?? $address['id_address'] ?? 0) === (int) $requestedId) {
+                    return $address;
+                }
+            }
+
+            throw new \InvalidArgumentException("Address {$requestedId} does not belong to the customer", 400);
+        }
+
+        foreach ($addresses as $address) {
+            if (!empty($address["is_default_{$type}"]) || ($address['type'] ?? null) === $type) {
+                return $address;
+            }
+        }
+
+        return null;
     }
 
     public function updateAddresses(Request $request, Response $response, array $argv): Response
