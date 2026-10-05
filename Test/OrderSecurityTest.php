@@ -2,10 +2,8 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
-use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
-use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Http\Controller\OrderController;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
