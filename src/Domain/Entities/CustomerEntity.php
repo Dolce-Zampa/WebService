@@ -73,30 +73,27 @@ class CustomerEntity implements ObjectInterface
     private function normalizeCustomerPayload(array $customer): array
     {
         $normalized = [
-            'email' => (string) $customer['email'],
-            'password' => (string) isset($customer['password']) ? $customer['password'] : '', //FIXME: generate a random password if not provided, to allow account creation from the order confirmation page
-            'firstname' => (string) $customer['firstname'],
-            'lastname' => (string) $customer['lastname'],
-            'phone' => (string) $customer['phone'],
-            'newsletter' => (bool) $customer['newsletter']
+            'email' => (string) ($customer['email'] ?? ''),
+            'password' => (string) ($customer['password'] ?? ''),
+            'firstname' => (string) ($customer['firstname'] ?? ''),
+            'lastname' => (string) ($customer['lastname'] ?? ''),
+            'phone' => (string) ($customer['phone'] ?? ''),
+            'newsletter' => (bool) ($customer['newsletter'] ?? false),
         ];
 
         if(isset($customer['id'])) {
             $normalized['id'] = $customer['id'];
         }
 
-        $customer['delivery_address']['phone_mobile'] = $customer['phone'] ?? null;
-        if (isset($customer['delivery_address']) && is_array($customer['delivery_address'])) {
+        if (is_array($customer['delivery_address'] ?? null)) {
             $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address']);
         }
 
-        if (isset($customer['invoice_address']) && is_array($customer['invoice_address'])) {
+        if (is_array($customer['invoice_address'] ?? null)) {
             $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address']);
         } else {
             $normalized['invoice_address'] = null;
         }
-
-        $normalized['invoice_address'] = null;
 
         return $normalized;
     }
@@ -107,22 +104,28 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeDeliveryAddress(array $deliveryAddress): array
     {
-        $deliveryAddressData = '';
-        if(!empty($deliveryAddress['address1'])) {
-            $deliveryAddressData = $deliveryAddress['address1'];
-        }
-        
-        return [
+        $normalized = [
             'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
             'firstname' => (string) $this->data['firstname'],
             'lastname' => (string) $this->data['lastname'],
-            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', $deliveryAddressData))),
-            'city' => (string) $deliveryAddress['city'],
-            'postcode' => (string) $deliveryAddress['postcode'],
-            'id_country' => 10, //FIXME: Default country ID should be determined dynamically based on the delivery address details
+            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
+            'city' => (string) ($deliveryAddress['city'] ?? ''),
+            'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
+            'id_country' => isset($deliveryAddress['id_country']) && is_numeric($deliveryAddress['id_country'])
+                ? (int) $deliveryAddress['id_country']
+                : 10,
             'phone_mobile' => (string) ($this->data['phone'] ?? ''),
-            'id_state' => 228, //FIXME: State ID should be determined dynamically based on the delivery address details
+            'id_state' => isset($deliveryAddress['id_state']) && is_numeric($deliveryAddress['id_state'])
+                ? (int) $deliveryAddress['id_state']
+                : 228,
         ];
+        foreach (['address2', 'state', 'country'] as $field) {
+            if (isset($deliveryAddress[$field]) && is_string($deliveryAddress[$field])) {
+                $normalized[$field] = $deliveryAddress[$field];
+            }
+        }
+
+        return $normalized;
     }
 
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData

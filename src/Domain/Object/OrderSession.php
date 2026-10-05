@@ -67,6 +67,24 @@ class OrderSession implements ObjectInterface
 
         $this->customer = $customer;
         $customerDetails = $customer->toArray();
+        $metadata = [
+            'cart_id' => (string) $cartId,
+            'id_customer' => (string) ($data['id_customer'] ?? ''),
+            'id_guest' => (string) ($data['id_guest'] ?? ''),
+            'id_carrier' => (string) $data['id_carrier'],
+            'coupon_code' => (string) ($data['discounts'][0]['coupon'] ?? ''),
+            'recovery_attempt' => $this->metadataBoolean($data['recovery_attempt'] ?? false, 'recovery_attempt'),
+            'create_account' => $this->metadataBoolean($data['create_account'] ?? false, 'create_account'),
+            'newsletter' => $this->metadataBoolean($customerDetails['newsletter'] ?? false, 'newsletter'),
+        ];
+        $paymentModule = $data['payment_module'] ?? env('PAYMENT_MODULE');
+        if ($paymentModule !== null && $paymentModule !== '') {
+            if (!is_string($paymentModule) || !preg_match('/^[a-z][a-z0-9_-]*$/i', $paymentModule)) {
+                throw new \InvalidArgumentException('Invalid payment module.');
+            }
+            $metadata['payment_module'] = $paymentModule;
+        }
+
         $this->data = [
             'mode' => 'payment',
             // 'permissions' => [ 
@@ -78,17 +96,18 @@ class OrderSession implements ObjectInterface
             'line_items' => $data['line_items'] ?? [],
             // Only include IDs with positive integer values; null, empty strings, '0',
             // and negative values are excluded as all PrestaShop entity IDs must be > 0.
-            'metadata' => [
-                'cart_id' => $cartId,
-                'id_customer' => $data['id_customer'],
-                'id_guest' => $data['id_guest'],
-                'id_carrier' => $data['id_carrier'],
-                'coupon_code' => $data['discounts'][0]['coupon'] ?? null,
-                'recovery_attempt' => $data['recovery_attempt'] ?? false,
-                'customer_email' => $customerDetails['email'] ?? throw new \InvalidArgumentException('customer email is required to create an order session'),
-            ],
+            'metadata' => $metadata,
         ];
 
+    }
+
+    private function metadataBoolean(mixed $value, string $name): string
+    {
+        if (!is_bool($value) && !in_array($value, [0, 1, '0', '1'], true)) {
+            throw new \InvalidArgumentException($name . ' must be a boolean value.');
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
     }
 
     /**
@@ -267,6 +286,16 @@ class OrderSession implements ObjectInterface
     public function getCustomer(): CustomerEntity
     {
         return $this->customer;
+    }
+
+    public function toCacheData(): array
+    {
+        return [
+            'orderSession' => [
+                'metadata' => $this->data['metadata'],
+                'customer' => $this->customer->toArray(),
+            ],
+        ];
     }
 
     public function hash(): string

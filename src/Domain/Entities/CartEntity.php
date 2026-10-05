@@ -15,7 +15,7 @@ use PS\Webservice\Traits\UuidGenerator;
 *    "id_currency": 1,
 *    "id_lang": 1,
 *    "id_carrier": 2,
-*    "replace_products": true,
+*    "replace_products": false,
 *    "id_address_delivery": 34,
 *    "id_address_invoice": 34,
 *    "products": [
@@ -95,9 +95,19 @@ class CartEntity implements ObjectInterface
 	{
 		$dataPayLoad = $this->data;
 		$dataPayLoad['id_cart'] = $this->data['id'];
-		$dataPayLoad['replace_products'] = false; //FIXME: on prestashop web service module /controllers/front/cart.php:59 this is set to true by default, but it cause issue when updating cart with new products, because it delete all existing products before adding new ones, so we set it to false by default and let the caller decide if they want to replace products or not
-		$dataPayLoad['id_address_delivery'] = $this->data['id_address_delivery'] ?? null; // Is not required at these point FIXME: on prestashop web service module /controllers/front/cart.php:59
-		$dataPayLoad['id_address_invoice'] = $this->data['id_address_invoice'] ?? null; // Is not required at these point FIXME: on prestashop web service module /controllers/front/cart.php:60
+		$replaceProducts = $this->data['replace_products'] ?? false;
+		if (!is_bool($replaceProducts)) {
+			throw new \InvalidArgumentException('replace_products must be a boolean.');
+		}
+		$dataPayLoad['replace_products'] = $replaceProducts;
+		foreach (['id_address_delivery', 'id_address_invoice'] as $addressField) {
+			$addressId = filter_var($this->data[$addressField] ?? null, FILTER_VALIDATE_INT);
+			if ($addressId === false || $addressId <= 0) {
+				unset($dataPayLoad[$addressField]);
+			} else {
+				$dataPayLoad[$addressField] = $addressId;
+			}
+		}
 		return new \PS\Webservice\Domain\Object\PayloadServiceData($dataPayLoad, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
 	}
 

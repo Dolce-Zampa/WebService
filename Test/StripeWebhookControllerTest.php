@@ -440,16 +440,62 @@ final class StripeWebhookControllerTest extends TestCase
         $orderService = $this->createMock(Order::class);
         $orderService->expects($this->once())->method('confirmSessionOrder')->with(
             621, null, 359, 15, null, 'guest@example.com', 'Stefano', 'Galmarini',
-            $this->callback(fn ($details) => $details->delivery_address === $customer['delivery_address']
-                && $details->phone === '3312345678'), 104.0
+            $this->callback(function ($details) use ($customer): bool {
+                return $details->delivery_address['address1'] === $customer['delivery_address']['address1']
+                    && $details->delivery_address['country'] === 'IT'
+                    && $details->phone === '3312345678'
+                    && $details->payment_module === 'webserviceapi'
+                    && $details->create_account === true
+                    && $details->newsletter === true;
+            }), 104.0
         );
         $controller = $this->controllerWithCheckoutCache($orderService, ['orderSession' => [
             'id_customer' => null, 'id_guest' => 359, 'customer' => $customer,
         ]]);
         $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_test_guest', 'amount_total' => 10400, 'currency' => 'eur',
-            'metadata' => ['cart_id' => '621', 'id_guest' => '359', 'id_carrier' => '15', 'customer_email' => 'guest@example.com'],
+            'metadata' => [
+                'cart_id' => '621',
+                'id_guest' => '359',
+                'id_carrier' => '15',
+                'customer_email' => 'guest@example.com',
+                'payment_module' => 'webserviceapi',
+                'create_account' => 'true',
+                'newsletter' => 'true',
+            ],
             'customer_details' => ['address' => ['line1' => 'Different billing address']],
+            'shipping_details' => ['address' => [
+                'line1' => 'Via Consegna 1',
+                'city' => 'Arcisate',
+                'postal_code' => '21051',
+                'country' => 'IT',
+            ]],
+        ]));
+    }
+
+    public function test_invalid_stripe_shipping_address_is_rejected(): void
+    {
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->never())->method('confirmSessionOrder');
+        $controller = $this->controllerWithCheckoutCache($orderService, ['orderSession' => [
+            'id_customer' => null,
+            'id_guest' => 359,
+            'customer' => [
+                'email' => 'guest@example.com',
+                'firstname' => 'Stefano',
+                'lastname' => 'Galmarini',
+                'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051'],
+            ],
+        ]]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Incomplete Stripe delivery address data.');
+        $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test_invalid_address',
+            'amount_total' => 10400,
+            'currency' => 'eur',
+            'metadata' => ['cart_id' => '621', 'id_guest' => '359', 'id_carrier' => '15'],
+            'shipping_details' => ['address' => ['line1' => 'Via Consegna 1']],
         ]));
     }
 
