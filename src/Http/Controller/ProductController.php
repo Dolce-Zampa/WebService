@@ -119,7 +119,10 @@ class ProductController extends Controller
         );
 
         $firstCategory = (int) (explode('|', $category ?? '')[0] ?? 0);
-        $paginatedData['filters'] = $this->productService->buildFiltersProducts($firstCategory)?->toArray();
+        $paginatedData['filters'] = [];
+        if ($firstCategory >= 0) {
+            $paginatedData['filters'] = $this->productService->buildFiltersProducts($firstCategory)?->toArray();
+        }
 
         return response([
             'products' => $paginatedData['data'],
