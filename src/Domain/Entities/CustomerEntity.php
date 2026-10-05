@@ -106,8 +106,8 @@ class CustomerEntity implements ObjectInterface
     {
         $normalized = [
             'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
-            'firstname' => (string) $this->data['firstname'],
-            'lastname' => (string) $this->data['lastname'],
+            'firstname' => (string) ($this->data['firstname'] ?? ''),
+            'lastname' => (string) ($this->data['lastname'] ?? ''),
             'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
             'city' => (string) ($deliveryAddress['city'] ?? ''),
             'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
