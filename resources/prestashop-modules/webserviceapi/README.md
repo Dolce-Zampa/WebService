@@ -424,3 +424,31 @@ o valori di attivazione diversi da true/false/0/1 restituiscono HTTP 400.
 Il campo prodotto `active` continua a seguire il comportamento preesistente:
 se omesso, il prodotto viene disattivato. Per mantenerlo pubblicato inviare
 `active: 1`. La risposta include entrambi i valori del configuratore.
+
+### Coupon e checkout
+
+La validazione usa le condizioni native di PrestaShop e restituisce `valid: false`
+con il messaggio di errore quando il coupon non è applicabile. Applicare nuovamente
+lo stesso codice non duplica lo sconto. Le altre regole compatibili restano nel carrello.
+
+Il backend prepara il checkout con `POST /api/cart_rules`, `checkout: true`,
+`id_cart`, un identificatore del proprietario e `id_carrier`; può inviare anche
+`code`, `delivery_address` e `invoice_address`. Senza `code`, verifica le regole
+esistenti e restituisce il carrello aggiornato. `currency_iso` identifica la valuta
+nel carrello serializzato.
+
+Per carrelli con coupon, il pagamento usa prodotti, spedizione e totale finale
+calcolati da PrestaShop. Stripe riceve un unico sconto a importo fisso corrispondente
+alla riduzione effettiva, anche quando sono presenti più regole o restrizioni sui
+prodotti. Percentuali e importi forniti dal client non vengono usati. Il codice
+originale rimane nei metadata; la conferma conserva tutte le regole del carrello
+e rifiuta importi pagati diversi dal totale scontato. La valuta supportata è EUR.
+
+Distribuire insieme il modulo e il backend PsWebService aggiornati.
+
+Test (dalla radice PsWebService):
+
+```sh
+APP_DISABLE_CACHE=false php vendor/bin/phpunit Test
+php vendor/bin/phpunit resources/prestashop-modules/webserviceapi/Test/CouponValidationTest.php
+```

@@ -53,13 +53,49 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
             throw new MlabFactoryApiException('id_cart is required.', 422);
         }
 
-        if ($couponCode === '') {
+        if ($couponCode === '' && empty($payload['checkout'])) {
             throw new MlabFactoryApiException('Coupon code is required.', 422);
         }
 
         $idCustomer = (int) MlabFactoryApiHelper::getValue($payload, 'id_customer', 0);
         $idGuest = (int) MlabFactoryApiHelper::getValue($payload, 'id_guest', 0);
         $cart = $this->getOwnedCart($idCart, $idCustomer, $idGuest);
+        if (!empty($payload['checkout'])) {
+            if (!empty($payload['delivery_address']) || !empty($payload['invoice_address'])) {
+                $customer = (int) $cart->id_customer > 0
+                    ? MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer)
+                    : MlabFactoryApiHelper::createCustomerFromGuest($cart, $payload);
+                $cart->id_customer = (int) $customer->id;
+                $cart->secure_key = (string) $customer->secure_key;
+                foreach (array('delivery', 'invoice') as $type) {
+                    $field = $type . '_address';
+                    if (!empty($payload[$field]) && is_array($payload[$field])) {
+                        $address = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload[$field]);
+                        $property = 'id_address_' . $type;
+                        $cart->$property = (int) $address->id;
+                    }
+                }
+            }
+            $carrierId = MlabFactoryApiHelper::resolveCarrierId($cart, $payload);
+            if ($carrierId <= 0 && !$cart->isVirtualCart()) {
+                throw new MlabFactoryApiException('Carrier is required for checkout.', 422);
+            }
+            $cart->id_carrier = $carrierId;
+            $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
+            if (!$cart->update()) {
+                throw new MlabFactoryApiException('Unable to update checkout cart.', 500);
+            }
+            foreach ($cart->getCartRules(CartRule::FILTER_ACTION_ALL, false) as $existing) {
+                $error = MlabFactoryCoupon::error(new CartRule((int) $existing['id_cart_rule']), $cart, $this->context);
+                if ($error !== null) {
+                    throw new MlabFactoryApiException($error, 422);
+                }
+            }
+            if ($couponCode === '') {
+                MlabFactoryCoupon::setContext($cart, $this->context);
+                return array('cart' => MlabFactoryApiHelper::serializeCart($cart));
+            }
+        }
         $validation = $this->validateCouponForCart($cart, $couponCode);
 
         if (!$validation['valid']) {
@@ -71,7 +107,7 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
             throw new MlabFactoryApiException('Coupon not found.', 404, array('code' => $couponCode));
         }
 
-        if (!$cart->addCartRule((int) $coupon['id'])) {
+        if (!MlabFactoryCoupon::contains($cart, $coupon['id']) && !$cart->addCartRule((int) $coupon['id'])) {
             throw new MlabFactoryApiException('Unable to apply coupon to cart.', 422, array('code' => $couponCode));
         }
 
@@ -153,12 +189,11 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
             );
         }
 
-        $this->applyCartContext($cart);
-        $check = $cartRule->checkValidity($this->context, false, true);
+        $check = MlabFactoryCoupon::error($cartRule, $cart, $this->context);
 
         return array(
-            'valid' => true, //FIXME: we return true even if the coupon is not valid because we want to provide details about why it's not valid in the message and coupon fields. The caller can use the 'valid' field to determine if the coupon can be applied, and use the 'message' and 'coupon' fields for more information.
-            'message' => 'Coupon is valid.',
+            'valid' => $check === null,
+            'message' => $check === null ? 'Coupon is valid.' : $check,
             'coupon' => array(
                 'id' => (int) $cartRule->id,
                 'code' => (string) $cartRule->code,
@@ -200,36 +235,6 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
         }
 
         return $cart;
-    }
-
-    protected function applyCartContext(Cart $cart)
-    {
-        $this->context->cart = $cart;
-
-        if ((int) $cart->id_customer > 0) {
-            $customer = new Customer((int) $cart->id_customer);
-            if (Validate::isLoadedObject($customer)) {
-                $this->context->customer = $customer;
-                $this->context->language = new Language((int) ($customer->id_lang ?: Configuration::get('PS_LANG_DEFAULT')));
-                $this->context->currency = new Currency((int) Configuration::get('PS_CURRENCY_DEFAULT'));
-
-                if ($this->context->cookie) {
-                    $this->context->cookie->id_customer = (int) $customer->id;
-                    $this->context->cookie->customer_lastname = (string) $customer->lastname;
-                    $this->context->cookie->customer_firstname = (string) $customer->firstname;
-                    $this->context->cookie->logged = true;
-                    $this->context->cookie->is_guest = false;
-                    $this->context->cookie->passwd = (string) $customer->passwd;
-                    $this->context->cookie->email = (string) $customer->email;
-                    $this->context->cookie->id_lang = (int) $this->context->language->id;
-                }
-            }
-        }
-
-        if ($this->context->cookie) {
-            $this->context->cookie->id_cart = (int) $cart->id;
-            $this->context->cookie->write();
-        }
     }
 
     protected function serializeCartRuleRow(array $row)

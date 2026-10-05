@@ -314,6 +314,7 @@ class MlabFactoryApiHelper
             'id_customer' => (int) $cart->id_customer,
             'id_guest' => (int) $cart->id_guest,
             'id_currency' => (int) $cart->id_currency,
+            'currency_iso' => (string) (new Currency((int) $cart->id_currency))->iso_code,
             'id_lang' => (int) $cart->id_lang,
             'id_address_delivery' => (int) $cart->id_address_delivery,
             'id_address_invoice' => (int) $cart->id_address_invoice,

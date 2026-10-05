@@ -29,6 +29,7 @@ final class CartMetadataSerializationTest extends TestCase
         ];
 
         $serialized = \MlabFactoryApiHelper::serializeCart($cart);
+        self::assertSame('EUR', $serialized['currency_iso']);
         self::assertCount(3, $serialized['products']);
         foreach (array_slice($serialized['products'], 0, 2) as $product) {
             self::assertSame(8, $product['id_manufacturer']);
