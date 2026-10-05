@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Traits;
 
+use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Object\OrderSession;
@@ -45,9 +46,12 @@ trait Order
         foreach ($serverCartProducts as $product) {
             $this->addProduct($product);
         }
+        $freeShipping = $this->checkForFreeShippingCartRule($payload->getCartRules());
         if (!empty($serverCart['cart_rules'])) {
-            $this->orderSession->applyCouponCart($serverCart);
-        } else {
+            $this->orderSession->applyCouponCart(
+                $freeShipping ? $this->withoutShipping($serverCart) : $serverCart
+            );
+        } elseif (!$freeShipping) {
             $this->orderSession->addCartShipping($serverCart);
         }
         $this->tags(['order-session'])->setEncryptedToCache($payload->id_cart, $orderSession->toCacheData(), 36 * 60);
@@ -63,6 +67,46 @@ trait Order
     public function getProducts(): array
     {
         return $this->orderSession->getLineItems();
+    }
+
+    private function checkForFreeShippingCartRule(?CartRuleEntity $cartRules): bool
+    {
+        if ($cartRules === null) {
+            return false;
+        }
+
+        foreach ($cartRules->toArray() as $cartRule) {
+            $rule = $cartRule['rule'] ?? [];
+            $conditions = $rule['conditions'] ?? [];
+            if (($rule['rule'] ?? null) === 'free-shipping'
+                && is_numeric($conditions['minimum-spend'] ?? null)
+                && (float) $conditions['minimum-spend'] <= $this->orderSession->total()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Removes the carrier charge from API totals when local free-shipping rules apply. */
+    private function withoutShipping(array $cart): array
+    {
+        $shipping = $cart['totals']['shipping_tax_incl'] ?? $cart['total_shipping_tax_incl'] ?? 0;
+        if (!is_numeric($shipping) || (float) $shipping < 0) {
+            throw new \InvalidArgumentException('Cart shipping total is required and must be valid.');
+        }
+
+        if (isset($cart['totals']['shipping_tax_incl'])) {
+            $cart['totals']['shipping_tax_incl'] = 0.0;
+        }
+        if (isset($cart['total_shipping_tax_incl'])) {
+            $cart['total_shipping_tax_incl'] = 0.0;
+        }
+        if (isset($cart['totals']['grand_total_tax_incl'])) {
+            $cart['totals']['grand_total_tax_incl'] = (float) $cart['totals']['grand_total_tax_incl'] - (float) $shipping;
+        }
+
+        return $cart;
     }
 
 }
