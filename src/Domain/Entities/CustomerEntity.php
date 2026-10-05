@@ -88,12 +88,12 @@ class CustomerEntity implements ObjectInterface
                 : null;
         }
         $normalized = [
-            'email' => $customer['email'],
-            'password' => $customer['password'] ?? null,
-            'firstname' => $customer['firstname'],
-            'lastname' => $customer['lastname'],
-            'phone' => $phone,
-            'newsletter' => (bool) ($customer['newsletter'] ?? false)
+            'email' => (string) ($customer['email'] ?? ''),
+            'password' => (string) ($customer['password'] ?? ''),
+            'firstname' => (string) ($customer['firstname'] ?? ''),
+            'lastname' => (string) ($customer['lastname'] ?? ''),
+            'phone' => (string) ($customer['phone'] ?? ''),
+            'newsletter' => (bool) ($customer['newsletter'] ?? false),
         ];
 
         if(isset($customer['id'])) {
@@ -103,17 +103,11 @@ class CustomerEntity implements ObjectInterface
             $normalized['id_lang'] = (int) $customer['id_lang'];
         }
 
-        if (isset($customer['delivery_address']) && !is_array($deliveryAddress)) {
-            throw new \InvalidArgumentException('Customer delivery_address must be an object');
-        }
-        if (is_array($deliveryAddress)) {
-            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($deliveryAddress);
+        if (is_array($customer['delivery_address'] ?? null)) {
+            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address']);
         }
 
-        if (isset($customer['invoice_address'])) {
-            if (!is_array($customer['invoice_address'])) {
-                throw new \InvalidArgumentException('Customer invoice_address must be an object');
-            }
+        if (is_array($customer['invoice_address'] ?? null)) {
             $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address']);
         } else {
             $normalized['invoice_address'] = null;
@@ -128,52 +122,28 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeDeliveryAddress(array $deliveryAddress): array
     {
-        foreach (['address1', 'city', 'postcode'] as $field) {
-            if (!isset($deliveryAddress[$field]) || !is_string($deliveryAddress[$field]) || trim($deliveryAddress[$field]) === '') {
-                throw new \InvalidArgumentException("Address {$field} is required");
-            }
-        }
-
-        $idCountry = filter_var($deliveryAddress['id_country'] ?? null, FILTER_VALIDATE_INT);
-        if (($idCountry === false || $idCountry <= 0) && !empty($deliveryAddress['country'])) {
-            $idCountry = DB::table('country')
-                ->where('iso_code', strtoupper(trim((string) $deliveryAddress['country'])))
-                ->value('id_country');
-        }
-        if ($idCountry === false || $idCountry <= 0) {
-            throw new \InvalidArgumentException('Address country is required and must match a configured country');
-        }
-
-        $idState = $deliveryAddress['id_state'] ?? null;
-        if ($idState === '' || $idState === 0 || $idState === '0') {
-            $idState = null;
-        }
-        if (($idState === null || $idState === '') && !empty($deliveryAddress['state'])) {
-            $stateCode = trim((string) $deliveryAddress['state']);
-            $idState = State::where('id_country', (int) $idCountry)
-                ->where(function ($query) use ($stateCode) {
-                    $query->where('iso_code', $stateCode)->orWhere('name', $stateCode);
-                })
-                ->value('id_state');
-            if ($idState === null) {
-                throw new \InvalidArgumentException('Address state does not match the configured country');
-            }
-        }
-        if ($idState !== null && $idState !== '' && (!is_numeric($idState) || (int) $idState <= 0)) {
-            throw new \InvalidArgumentException('Address id_state must be a positive integer when provided');
-        }
-
-        return [
-            'alias' => (string) ($deliveryAddress['alias'] ?? ''),
-            'firstname' => (string) ($deliveryAddress['firstname'] ?? $this->data['firstname']),
-            'lastname' => (string) ($deliveryAddress['lastname'] ?? $this->data['lastname']),
-            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', $deliveryAddress['address1']))),
-            'city' => $deliveryAddress['city'],
-            'postcode' => $deliveryAddress['postcode'],
-            'id_country' => (int) $idCountry,
-            'phone_mobile' => $deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? $this->data['phone'],
-            'id_state' => $idState === null || $idState === '' ? null : (int) $idState,
+        $normalized = [
+            'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
+            'firstname' => (string) ($this->data['firstname'] ?? ''),
+            'lastname' => (string) ($this->data['lastname'] ?? ''),
+            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
+            'city' => (string) ($deliveryAddress['city'] ?? ''),
+            'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
+            'id_country' => isset($deliveryAddress['id_country']) && is_numeric($deliveryAddress['id_country'])
+                ? (int) $deliveryAddress['id_country']
+                : 10,
+            'phone_mobile' => (string) ($this->data['phone'] ?? ''),
+            'id_state' => isset($deliveryAddress['id_state']) && is_numeric($deliveryAddress['id_state'])
+                ? (int) $deliveryAddress['id_state']
+                : 228,
         ];
+        foreach (['address2', 'state', 'country'] as $field) {
+            if (isset($deliveryAddress[$field]) && is_string($deliveryAddress[$field])) {
+                $normalized[$field] = $deliveryAddress[$field];
+            }
+        }
+
+        return $normalized;
     }
 
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData

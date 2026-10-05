@@ -78,14 +78,15 @@ class ConfirmOrderSession implements ObjectInterface
     {
         $data = $this->data;
         $this->data = [
-            'payment_module' => env('PAYMENT_MODULE'), //FIXME: better on env Default payment module, should be determined dynamically based on the cart details
+            'payment_module' => $data['payment_module'] ?? env('PAYMENT_MODULE'),
             'id_order_state' => (int) $data['order_state'],
             'payment_label' => $data['payment_label'] ?? 'Online Payment',
             'amount_paid' => (float) $data['amount_paid'],
             'id_cart' => $data['id_cart'],
             'id_customer' => $data['id_customer'],
             'id_guest' => $data['id_guest'],
-            'create_account' => (bool)($data['create_account'] ?? false),
+            'create_account' => (bool) ($data['create_account'] ?? false),
+            'newsletter' => (bool) ($data['newsletter'] ?? false),
             'id_carrier' => isset($data['id_carrier']) ? (int) $data['id_carrier'] : 14,
             'coupon_code' => $data['coupon_code'] ?? null,
         ];
@@ -105,6 +106,11 @@ class ConfirmOrderSession implements ObjectInterface
 
         if ($this->data['id_order_state'] <= 0) {
             $errors[] = 'id_order_state is required and must be greater than 0';
+        }
+
+        if (!is_string($this->data['payment_module'])
+            || !preg_match('/^[a-z][a-z0-9_-]*$/i', $this->data['payment_module'])) {
+            $errors[] = 'payment_module must be a configured module name';
         }
 
         if ($this->data['id_customer'] === null && $this->data['id_guest'] === null) {
