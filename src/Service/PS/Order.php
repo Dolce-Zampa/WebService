@@ -149,6 +149,7 @@ class Order extends Cart implements PrestashopServiceInterface
         // Add guest registration data if provided
         if ($confirmSession->shouldCreateAccount()) {
             $orderData['create_account'] = true;
+            $orderData['newsletter'] = $confirmSession->newsletter;
             $orderData['email'] = $confirmSession->getCustomer()->email;
             $orderData['firstname'] = $confirmSession->getCustomer()->firstname;
             $orderData['lastname'] = $confirmSession->getCustomer()->lastname;
@@ -218,7 +219,9 @@ class Order extends Cart implements PrestashopServiceInterface
                     'id_guest' => $guestId,
                     'order_state' => ConfirmOrderSession::ORDER_STATE['confirm'],
                     'amount_paid' => $amountPaid,
-                    'create_account' => false, //FIXME: no account creation data from Stripe, default to false
+                    'payment_module' => $customerDetails->payment_module ?? null,
+                    'create_account' => $customerDetails->create_account ?? false,
+                    'newsletter' => $customerDetails->newsletter ?? false,
                     'id_carrier' => $carrierId,
                     'coupon_code' => $couponCode,
                     'payment_label' => $paymentMethod,
@@ -233,8 +236,13 @@ class Order extends Cart implements PrestashopServiceInterface
                 'firstname' => $firstname,
                 'lastname' => $lastname,
                 'phone' => $customerDetails->phone ?? null,
-                'delivery_address' => (array) $customerDetails->delivery_address, //FIXME: no address data from Stripe, set to null
-                'newsletter' => false, //FIXME: no newsletter subscription data from Stripe, default to false
+                'delivery_address' => is_array($customerDetails->delivery_address ?? null)
+                    ? $customerDetails->delivery_address
+                    : null,
+                'invoice_address' => is_array($customerDetails->invoice_address ?? null)
+                    ? $customerDetails->invoice_address
+                    : null,
+                'newsletter' => $customerDetails->newsletter ?? false,
             ], $this)
         );
 

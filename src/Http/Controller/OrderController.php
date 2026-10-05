@@ -150,9 +150,16 @@ class OrderController extends CartController
             }
             $newOrder = OrderEntity::create($payload, $this->orderService);
             $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray());
+            if (empty($orderSession->metadata['payment_module'])) {
+                throw new \InvalidArgumentException('A payment module must be selected or configured.');
+            }
 
             //save in cache the order session only for 24h
-            $this->setToCache($orderSession->metadata['cart_id'], ["orderSession" => $orderSession, "cart" => $cart], 24 * 60); //FIXME: customer data should be encrypted
+            $this->tags(['order-session'])->setEncryptedToCache(
+                $orderSession->metadata['cart_id'],
+                $orderSession->toCacheData(),
+                24 * 60
+            );
             $checkoutUrl = $paymentService->createPaymentSession($orderSession);
 
             return response([

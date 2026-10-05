@@ -25,6 +25,8 @@ trait Order
             'cart_id' => $payload->id_cart,
             'id_customer' => $payload->id_customer ?? null,
             'id_guest' => $payload->id_guest ?? null,
+            'payment_module' => $payload->payment_module ?? $serverCart['payment_module'] ?? null,
+            'create_account' => $payload->create_account ?? false,
             'id_carrier' => $payload->id_carrier,
             'expires_at' => $payload->expires_at ?? time() + 3600,
             'recovery_attempt' => $payload->recovery_attempt ?? false,
@@ -50,7 +52,7 @@ trait Order
         } else {
             $this->manageCartRules($payload);
         }
-        $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
+        $this->tags(['order-session'])->setEncryptedToCache($payload->id_cart, $orderSession->toCacheData(), 36 * 60);
 
         return $orderSession;
     }

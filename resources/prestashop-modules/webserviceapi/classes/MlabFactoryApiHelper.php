@@ -560,6 +560,15 @@ class MlabFactoryApiHelper
 
     public static function ensureAddressForCustomer(Customer $customer, array $data)
     {
+        if (!empty($data['country'])) {
+            $countryIso = strtoupper(trim((string) $data['country']));
+            $countryId = preg_match('/^[A-Z]{2}$/', $countryIso) ? (int) Country::getByIso($countryIso) : 0;
+            if ($countryId <= 0) {
+                throw new MlabFactoryApiException('Address country is invalid.', 422);
+            }
+            $data['id_country'] = $countryId;
+        }
+
         if (!empty($data['id_address'])) {
             $address = new Address((int) $data['id_address']);
             if (!Validate::isLoadedObject($address) || (int) $address->id_customer !== (int) $customer->id) {
