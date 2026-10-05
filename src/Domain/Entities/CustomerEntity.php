@@ -87,9 +87,19 @@ class CustomerEntity implements ObjectInterface
                 ? ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? null)
                 : null;
         }
+        $countryId = is_array($deliveryAddress)
+            && isset($deliveryAddress['id_country'])
+            && is_numeric($deliveryAddress['id_country'])
+            && (int) $deliveryAddress['id_country'] > 0
+            ? (int) $deliveryAddress['id_country']
+            : null;
+        $country = is_array($deliveryAddress) ? ($deliveryAddress['country'] ?? null) : null;
+        if (is_array($deliveryAddress) && $countryId === null && (!is_string($country) || trim($country) === '')) {
+            throw new \InvalidArgumentException('Address country is required');
+        }
         $normalized = [
             'email' => (string) ($customer['email'] ?? ''),
-            'password' => (string) ($customer['password'] ?? ''),
+            'password' => $customer['password'] ?? null,
             'firstname' => (string) ($customer['firstname'] ?? ''),
             'lastname' => (string) ($customer['lastname'] ?? ''),
             'phone' => (string) ($customer['phone'] ?? ''),
@@ -129,9 +139,7 @@ class CustomerEntity implements ObjectInterface
             'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
             'city' => (string) ($deliveryAddress['city'] ?? ''),
             'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
-            'id_country' => isset($deliveryAddress['id_country']) && is_numeric($deliveryAddress['id_country'])
-                ? (int) $deliveryAddress['id_country']
-                : 10,
+            'id_country' => $countryId ?? 10,
             'phone_mobile' => (string) ($this->data['phone'] ?? ''),
             'id_state' => isset($deliveryAddress['id_state']) && is_numeric($deliveryAddress['id_state'])
                 ? (int) $deliveryAddress['id_state']

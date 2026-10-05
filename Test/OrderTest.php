@@ -50,6 +50,15 @@ final class OrderTest extends TestCase
             $table->integer('active');
             $table->integer('id_shop');
         });
+        \Illuminate\Database\Capsule\Manager::schema()->dropIfExists('configuration');
+        \Illuminate\Database\Capsule\Manager::schema()->create('configuration', function ($table) {
+            $table->string('name')->primary();
+            $table->string('value')->nullable();
+        });
+        \Illuminate\Database\Capsule\Manager::table('configuration')->insert([
+            'name' => 'PS_LANG_DEFAULT',
+            'value' => '1',
+        ]);
 
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
@@ -77,6 +86,7 @@ final class OrderTest extends TestCase
         $requestMock->method('getParsedBody')->willReturn([
             'id' => 1,
             'id_cart' => 1,
+            'id_lang' => 1,
             'reference' => 'REF123',
             'current_state' => 2,
             'date_add' => '2026-01-01',
@@ -240,7 +250,7 @@ final class OrderTest extends TestCase
                     'cart_id' => 204,
                     'id_customer' => null,
                     'id_guest' => 123,
-                    'id_carrier' => 0,
+                    'id_carrier' => 1,
                     'customer' => CustomerEntity::create([
                         'id' => null,
                         'email' => 'john.doe@example.com',
@@ -395,7 +405,7 @@ final class OrderTest extends TestCase
                     'cart_id' => 204,
                     'id_customer' => null,
                     'id_guest' => 123,
-                    'id_carrier' => 0,
+                    'id_carrier' => 1,
                     'customer' => CustomerEntity::create([
                         'id' => null,
                         'email' => 'john.doe@example.com',
