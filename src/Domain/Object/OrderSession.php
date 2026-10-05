@@ -103,7 +103,7 @@ class OrderSession implements ObjectInterface
 
     private function metadataBoolean(mixed $value, string $name): string
     {
-        if (!is_bool($value) && !in_array($value, [0, 1, '0', '1'], true)) {
+        if (!is_bool($value) && !in_array($value, [0, 1, '0', '1', 'true', 'false'], true)) {
             throw new \InvalidArgumentException($name . ' must be a boolean value.');
         }
 
