@@ -3,10 +3,8 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Traits;
 
-use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
-use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\PS\Order as OrderService;
 
@@ -48,7 +46,7 @@ trait Order
         if (!empty($serverCart['cart_rules'])) {
             $this->orderSession->applyCouponCart($serverCart);
         } else {
-            $this->manageCartRules($payload);
+            $this->orderSession->addCartShipping($serverCart);
         }
         $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
 
@@ -63,36 +61,6 @@ trait Order
     public function getProducts(): array
     {
         return $this->orderSession->getLineItems();
-    }
-
-    public function manageCartRules(OrderEntity $payload)
-    {
-        $cartRules = $payload->getCartRules();
-        $carrierDetails = $this->orderService->getCarrierDetail($payload->id_carrier);
-        if (is_null($carrierDetails)) {
-            throw new \InvalidArgumentException('Invalid carrier ID: ' . $payload->id_carrier);
-        }
-
-        //check for free shipping cart rule
-        if ($this->checkForFreeShippingCartRule($cartRules) === false) {
-            $this->orderSession->addCarrierLineItem(
-                name: $carrierDetails->name,
-                quantity: 1,
-                price: (float) $carrierDetails->price_with_tax,
-                type: 'carrier'
-            );
-        }
-    }
-
-    private function checkForFreeShippingCartRule(CartRuleEntity $cartRules): bool
-    {
-        foreach ($cartRules->toArray() as $cartRule) {
-            if ($cartRule['rule']['rule'] == "free-shipping" && $cartRule['rule']['conditions']['minimum-spend'] <= $this->orderSession->total()) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
 }

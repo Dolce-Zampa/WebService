@@ -261,17 +261,17 @@ final class OrderSecurityTest extends TestCase
     public static function serverCartShippingCases(): array
     {
         return [
-            'variants above threshold' => ['119.99', '29.90', 2, false],
-            'below threshold' => ['30.00', '38.99', 2, true],
-            'exactly 99' => ['30.00', '39.00', 2, false],
-            'above threshold by one cent' => ['30.00', '39.01', 2, false],
-            'quantity reaches threshold' => ['33.00', '0.00', 3, false],
+            'free shipping from cart' => ['119.99', '29.90', 2, 0.0],
+            'cart shipping price' => ['30.00', '38.99', 2, 4.55],
+            'different cart shipping price' => ['30.00', '39.00', 2, 3.32],
+            'free shipping over threshold' => ['30.00', '39.01', 2, 0.0],
+            'free shipping for quantity' => ['33.00', '0.00', 3, 0.0],
         ];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('serverCartShippingCases')]
     public function test_create_order_uses_server_cart_variant_prices_and_ignores_frontend_prices(
-        string $firstPrice, string $secondPrice, int $firstQuantity, bool $expectedShipping
+        string $firstPrice, string $secondPrice, int $firstQuantity, float $expectedShipping
     ): void
     {
         $this->taggedCache
@@ -284,7 +284,7 @@ final class OrderSecurityTest extends TestCase
 
         $serviceMock = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getCartFromId', 'getCarrierDetail', 'getProductPriceById', 'getProductById'])
+            ->onlyMethods(['getCartFromId', 'getProductPriceById', 'getProductById'])
             ->getMock();
 
         $cartServiceStub = $this->getMockBuilder(Cart::class)
@@ -297,24 +297,13 @@ final class OrderSecurityTest extends TestCase
                 ['id_product' => 7, 'id_product_attribute' => 665, 'quantity' => $firstQuantity, 'name' => 'Croquette', 'attributes' => 'Formato: 12 kg', 'reference' => 'CROQ-12', 'price_wt' => $firstPrice],
                 ['id_product' => 7, 'id_product_attribute' => 666, 'quantity' => 1, 'name' => 'Croquette', 'attributes' => 'Formato: 3 kg', 'reference' => 'CROQ-3', 'price_wt' => $secondPrice],
             ],
+            'totals' => ['shipping_tax_incl' => $expectedShipping],
         ], $cartServiceStub);
 
         $serviceMock->expects($this->once())
             ->method('getCartFromId')
             ->with('10', '5', null)
             ->willReturn($cartEntity);
-
-        $carrierEntity = CarrierEntity::create([
-            'id' => 2,
-            'name' => [['id' => 1, 'value' => 'Express']],
-            'price_with_tax' => '6.10',
-            'delay' => [['id' => 1, 'value' => '1-2 days']],
-        ], $cartServiceStub);
-
-        $serviceMock->expects($this->once())
-            ->method('getCarrierDetail')
-            ->with(2)
-            ->willReturn($carrierEntity);
 
         // The catalog's base price must not replace the selected variant's server cart price.
         $serviceMock->expects($this->never())->method('getProductPriceById');
@@ -340,9 +329,9 @@ final class OrderSecurityTest extends TestCase
                 }
                 $shippingLines = array_values(array_filter($session->getLineItems(),
                     static fn (array $line): bool => !isset($line['price_data']['product_data']['metadata']['id_product'])));
-                $this->assertCount($expectedShipping ? 1 : 0, $shippingLines);
-                if ($expectedShipping) {
-                    $this->assertSame(610, $shippingLines[0]['price_data']['unit_amount']);
+                $this->assertCount($expectedShipping > 0 ? 1 : 0, $shippingLines);
+                if ($expectedShipping > 0) {
+                    $this->assertSame((int) round($expectedShipping * 100), $shippingLines[0]['price_data']['unit_amount']);
                     $this->assertSame(1, $shippingLines[0]['quantity']);
                 }
                 return 'https://example.com/checkout';
