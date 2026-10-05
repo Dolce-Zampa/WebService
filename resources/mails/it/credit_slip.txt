@@ -1,0 +1,14 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+ID Ordine {order_name} - Nota di credito
+
+È stata generata una nota di credito a tuo nome per l'ordine con riferimento {order_name}.
+
+Esamina questa nota di credito e scarica la tua fattura dal nostro negozio, vai alla sezione [Note di credito]({history_url}) della tua area utente.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

@@ -1,0 +1,14 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+ID Ordine {order_name} - Il codice del buono è stato generato
+
+Siamo felici di informarti che è stato emesso un buono a tuo nome per l'ordine con riferimento {order_name}.
+CODICE BUONO: {voucher_num} per un importo di {voucher_amount}
+Per utilizzarlo, semplicemente copia/incolla questo codice durante il check out.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

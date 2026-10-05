@@ -218,45 +218,39 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         $productsHtml = '';
 
         foreach ($products as $product) {
+            $priceData = $product['price_data'] ?? [];
+            $productData = $priceData['product_data'] ?? [];
+            $image = $productData['images'][0] ?? '';
+            $name = $productData['name'] ?? '';
 
-            $price = $product['price_data']['unit_amount'] / 100;
-            $image = $product['price_data']['product_data']['images'][0];
-            $name  = $product['price_data']['product_data']['name'];
-
-            if(empty($image) || strpos($image, 'Corriere') !== 0) {
+            if (str_starts_with($name, 'Corriere')) {
                 continue;
             }
 
+            $price = ((int) ($priceData['unit_amount'] ?? 0)) / 100;
+            $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $safeImage = htmlspecialchars($image, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $thumbnail = $safeImage === ''
+                ? ''
+                : '<img src="' . $safeImage . '"
+                    width="64" height="64"
+                    style="display:block;width:64px;height:64px;object-fit:cover;border-radius:8px;"
+                    alt="' . $safeName . '">';
+
             $productsHtml .= '
                 <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                    style="border-bottom:1px solid #E8DED0; padding:15px 0;">
+                    role="presentation" style="border-bottom:1px solid #E9E4DC;">
                     <tr>
 
-                        <td valign="middle">
-                            <img src="' . $image . '"
-                                width="75"
-                                height="75"
-                                style="display:block;
-                                        width:75px;
-                                        height:75px;
-                                        object-fit:cover;
-                                        border-radius:10px;
-                                        border:1px solid #E5D8C8;"
-                                alt="' . $name . '">
+                        <td valign="middle" style="padding:16px 0; width:72px;">
+                            ' . $thumbnail . '
                         </td>
 
                         <td valign="middle"
-                            style="padding-left:15px;
-                                font-family:Arial,Helvetica,sans-serif;">
+                            style="padding:16px 12px;font-family:Arial,Helvetica,sans-serif;">
 
-                            <div style="
-                                font-size:15px;
-                                line-height:20px;
-                                font-weight:bold;
-                                color:#4F463B;">
-                                
-                                ' . $name . '
-
+                            <div style="font-size:14px;line-height:20px;font-weight:600;color:#252525;">
+                                ' . $safeName . '
                             </div>
 
                         </td>
@@ -264,11 +258,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                         <td
                             valign="middle"
                             align="right"
-                            style="
-                                font-family:Arial,Helvetica,sans-serif;
-                                font-size:15px;
-                                font-weight:bold;
-                                color:#A07F55;">
+                            style="padding:16px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;color:#252525;white-space:nowrap;">
 
                             €' . number_format((float)$price, 2, ',', '.') . '
 
@@ -276,9 +266,9 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
 
                     </tr>
                 </table>';
-            }
+        }
 
-            return $productsHtml;
+        return $productsHtml;
     }
    
 }

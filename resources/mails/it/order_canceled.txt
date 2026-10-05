@@ -1,0 +1,15 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+ID Ordine {order_name} - Ordine annullato
+
+Il tuo ordine con riferimento {order_name} su {shop_name} è stato annullato dal venditore.
+Vai nella tua area utente per saperne di più.
+
+Se hai un account ospite, puoi seguire le fasi del tuo ordine tramite la sezione [Tracciamento Ospite]({guest_tracking_url}) nel nostro negozio.
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

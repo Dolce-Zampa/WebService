@@ -1,0 +1,17 @@
+ 
+
+{shop_url}
+
+Salve,
+
+Messaggio da un cliente
+
+Hai ricevuto un nuovo messaggio riguardo all'ordine con riferimento {order_name}.
+Cliente: {firstname} {lastname} ({email})
+
+Messaggio del cliente:
+
+{message}
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

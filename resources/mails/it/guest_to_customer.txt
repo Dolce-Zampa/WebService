@@ -1,0 +1,18 @@
+ 
+
+{shop_url}
+
+Salve {firstname} {lastname},
+
+Il tuo account ospite è stato trasformato in account cliente
+
+Congratulazioni, il tuo account ospite su {shop_name} è stato trasformato in un account cliente!
+Indirizzo email: {email}
+
+Clicca sul link seguente per impostare la tua password:
+{url}
+
+Puoi accedere al tuo account nel nostro sito: [{shop_name}]({shop_url})
+
+[{shop_name}]({shop_url})
+Powered by [PrestaShop](https://www.prestashop-project.org/)

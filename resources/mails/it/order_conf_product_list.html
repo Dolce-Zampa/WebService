@@ -1,0 +1,29 @@
+<div class="product-item" style="display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid #E9E4DC; font-family: Arial, Helvetica, sans-serif;">
+    <img src="{product_image}" alt="{product_name}" class="product-image" style="width: 64px; height: 64px; border-radius: 8px; object-fit: cover; margin-right: 0; border: 0;">
+
+    <div class="product-details" style="flex: 1;">
+        <div class="product-name" style="font-weight: 600; color: #41403E; margin: 0 0 5px 0; font-size: 14px; line-height: 1.35;">
+            {product_name}
+        </div>
+
+        {if isset($product_reference) && $product_reference}
+        <div class="product-reference" style="color: #8B6914; font-size: 12px; margin: 0 0 5px 0;">
+            Rif: {product_reference}
+        </div>
+        {/if}
+
+        <div class="product-quantity" style="color: #727272; font-size: 13px; margin: 0;">
+            Quantità: {product_quantity}
+        </div>
+
+        {if isset($product_customization) && $product_customization}
+        <div style="color: #8B6914; font-size: 12px; margin-top: 5px; font-style: italic;">
+            {product_customization}
+        </div>
+        {/if}
+    </div>
+
+    <div class="product-price" style="font-weight: 600; color: #41403E; font-size: 14px; text-align: right; min-width: 72px; white-space: nowrap;">
+        {product_price}
+    </div>
+</div>

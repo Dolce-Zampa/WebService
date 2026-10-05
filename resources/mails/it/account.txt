@@ -1,0 +1,43 @@
+BENVENUTO NELLA FAMIGLIA DOLCE & ZAMPA!
+
+Ciao {firstname} {lastname}! 👋
+
+Grazie per esserti registrato su Dolce & Zampa!
+
+Siamo felicissimi di darti il benvenuto nella nostra community di amanti degli animali. 
+Il tuo account è stato creato con successo e ora puoi iniziare a esplorare il nostro 
+mondo di prodotti pensati per il benessere dei tuoi amici a quattro zampe.
+
+📧 LE TUE CREDENZIALI DI ACCESSO
+Indirizzo email: {email}
+
+Usa questa email per accedere al tuo account personale su {shop_name}
+
+🔒 CONSIGLI DI SICUREZZA
+• Proteggi il tuo account: Non condividere mai le tue credenziali con nessuno
+• Password sicura: Cambia regolarmente la tua password per maggiore sicurezza
+• Attività sospette: Se noti qualcosa di strano, contattaci immediatamente
+• Email ufficiali: Riceverai comunicazioni solo da indirizzi @dolcezampa.com
+
+COSA PUOI FARE ORA:
+✓ Esplora il nostro catalogo di prodotti selezionati
+✓ Aggiungi i tuoi prodotti preferiti ai desideri
+✓ Gestisci i tuoi ordini e indirizzi di spedizione
+✓ Ricevi offerte esclusive e promozioni riservate
+
+Inizia a fare shopping: {shop_url}
+
+A presto e... fai le feste ai tuoi amici pelosi da parte nostra! 🐕🐈
+
+Il team di Dolce & Zampa
+Un mondo di dolcezza per le tue zampe del cuore
+
+---
+© 2025 {shop_name}. Tutti i diritti riservati.
+
+Visita il nostro negozio: {shop_url}
+Privacy Policy: {shop_url}/privacy-policy
+Contattaci: {shop_url}/contact-us
+
+Questa email è stata inviata a {email} perché hai creato un account su {shop_name}.
+Per qualsiasi domanda, non esitare a contattarci.
