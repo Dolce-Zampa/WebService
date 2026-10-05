@@ -138,7 +138,7 @@ route parlante non viene riconosciuta. Non serve resettare il modulo.
     "id_currency": 1,
     "id_lang": 1,
     "id_carrier": 2,
-    "replace_products": true,
+    "replace_products": false,
     "id_address_delivery": 34,
     "id_address_invoice": 34,
     "products": [
@@ -151,6 +151,14 @@ route parlante non viene riconosciuta. Non serve resettare il modulo.
   }
 }
 ```
+
+Quando si aggiorna un carrello, `replace_products` è `false` se omesso: i prodotti
+esistenti vengono mantenuti e le righe inviate vengono aggiunte/aggiornate.
+Impostarlo esplicitamente a `true` elimina prima i prodotti esistenti.
+Gli indirizzi `id_address_delivery` e `id_address_invoice` sono opzionali:
+se omessi o non positivi, il modulo mantiene quelli già associati al carrello;
+su un carrello cliente, un ID positivo sostituisce l'indirizzo solo dopo la
+verifica di appartenenza al cliente.
 
 ### Recupero carrello cliente o guest
 
@@ -249,6 +257,9 @@ GET /api/wishlists?id_customer=12&id_wishlist=4
 ```
 
 Se `payment_module` non viene passato, l'API usa il valore configurato nel modulo. Ora il modulo stesso puo essere usato come payment module tecnico con nome `webserviceapi`, quindi puoi finalizzare l'ordine senza dipendere da un altro modulo pagamento installato.
+Nel checkout Stripe il modulo selezionato può essere passato con `payment_module`;
+se omesso viene usato `PAYMENT_MODULE`. La finalizzazione accetta solo moduli di
+pagamento installati e attivi.
 
 ## Metodo di pagamento custom
 

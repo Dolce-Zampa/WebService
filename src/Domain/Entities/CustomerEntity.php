@@ -163,7 +163,7 @@ class CustomerEntity implements ObjectInterface
             throw new \InvalidArgumentException('Address id_state must be a positive integer when provided');
         }
 
-        return [
+        $normalized = [
             'alias' => (string) ($deliveryAddress['alias'] ?? ''),
             'firstname' => (string) ($deliveryAddress['firstname'] ?? $this->data['firstname']),
             'lastname' => (string) ($deliveryAddress['lastname'] ?? $this->data['lastname']),
@@ -174,6 +174,13 @@ class CustomerEntity implements ObjectInterface
             'phone_mobile' => $deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? $this->data['phone'],
             'id_state' => $idState === null || $idState === '' ? null : (int) $idState,
         ];
+        foreach (['address2', 'state', 'country'] as $field) {
+            if (isset($deliveryAddress[$field]) && is_string($deliveryAddress[$field])) {
+                $normalized[$field] = $deliveryAddress[$field];
+            }
+        }
+
+        return $normalized;
     }
 
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData

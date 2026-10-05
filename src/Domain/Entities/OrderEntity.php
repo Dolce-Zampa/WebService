@@ -86,6 +86,8 @@ class OrderEntity implements ObjectInterface
 			'id_customer' => $this->data['id_customer'],
 			'reference' => (string) $this->data['reference'],
 			'id_cart' => $this->data['id_cart'],
+			'payment_module' => $this->data['payment_module'] ?? null,
+			'create_account' => $this->data['create_account'] ?? false,
 			'current_state' => (int) $this->data['current_state'],
 			'date_add' => (string) $this->data['date_add'],
 			'total_paid_tax_incl' => (float) $this->data['total_paid_tax_incl'],

@@ -41,6 +41,69 @@ trait UseCache
         }
     }
 
+    protected function setEncryptedToCache(mixed $key, array $value, ?int $ttl = null): void
+    {
+        $plainText = json_encode($value, JSON_THROW_ON_ERROR);
+        $iv = random_bytes(12);
+        $tag = '';
+        $cipherText = openssl_encrypt(
+            $plainText,
+            'aes-256-gcm',
+            $this->cacheEncryptionKey(),
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag
+        );
+        if ($cipherText === false) {
+            throw new \RuntimeException('Unable to encrypt cached checkout data.');
+        }
+
+        $this->setToCache($key, $this->encryptedCachePrefix() . base64_encode($iv . $tag . $cipherText), $ttl);
+    }
+
+    protected function decryptCachedValue(mixed $value): mixed
+    {
+        $prefix = $this->encryptedCachePrefix();
+        if (!is_string($value) || !str_starts_with($value, $prefix)) {
+            return $value;
+        }
+
+        $encoded = substr($value, strlen($prefix));
+        $payload = base64_decode($encoded, true);
+        if ($payload === false || strlen($payload) < 28) {
+            throw new \RuntimeException('Invalid encrypted checkout cache data.');
+        }
+
+        $plainText = openssl_decrypt(
+            substr($payload, 28),
+            'aes-256-gcm',
+            $this->cacheEncryptionKey(),
+            OPENSSL_RAW_DATA,
+            substr($payload, 0, 12),
+            substr($payload, 12, 16)
+        );
+        if ($plainText === false) {
+            throw new \RuntimeException('Unable to decrypt cached checkout data.');
+        }
+
+        return json_decode($plainText, true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    private function cacheEncryptionKey(): string
+    {
+        $applicationKey = (string) env('APP_KEY', '');
+        if ($applicationKey === '') {
+            throw new \RuntimeException('APP_KEY is required to encrypt checkout cache data.');
+        }
+
+        return hash('sha256', $applicationKey, true);
+    }
+
+    private function encryptedCachePrefix(): string
+    {
+        return 'encrypted:v1:';
+    }
+
     protected function tags(array $tags): self
     {
         $this->tags = $tags;

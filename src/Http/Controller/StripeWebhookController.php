@@ -166,7 +166,10 @@ class StripeWebhookController extends OrderController
             throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
         }
 
-        $customerDetails = $this->getCheckoutCustomer($cartId, $customerId, $guestId);
+        $customerDetails = $this->getCheckoutCustomer($cartId, $customerId, $guestId, $session);
+        $customerDetails->payment_module = $this->metadataPaymentModule($metadata->payment_module ?? null);
+        $customerDetails->create_account = $this->metadataBoolean($metadata->create_account ?? null, 'create_account');
+        $customerDetails->newsletter = $this->metadataBoolean($metadata->newsletter ?? null, 'newsletter');
         $email = $customerDetails->email;
         $firstname = $customerDetails->firstname;
         $lastname = $customerDetails->lastname;
@@ -196,9 +199,14 @@ class StripeWebhookController extends OrderController
     }
 
     /** Retrieve the checkout identity and delivery address, including unregistered guests. */
-    protected function getCheckoutCustomer(int $cartId, ?int $customerId, ?int $guestId): object
+    protected function getCheckoutCustomer(
+        int $cartId,
+        ?int $customerId,
+        ?int $guestId,
+        ?\Stripe\StripeObject $stripeSession = null
+    ): object
     {
-        $cached = $this->tags(['order-session'])->getFromCache((string) $cartId);
+        $cached = $this->decryptCachedValue($this->tags(['order-session'])->getFromCache((string) $cartId));
         if (is_array($cached) && array_key_exists('orderSession', $cached)) {
             $cached = $cached['orderSession'];
         }
@@ -224,16 +232,107 @@ class StripeWebhookController extends OrderController
             || $cachedGuestId !== ($guestId ?? 0)) {
             throw new \RuntimeException('Checkout customer identity mismatch for cart ' . $cartId);
         }
-        if (!is_array($customer) || empty($customer['email'])
-            || empty($customer['firstname']) || empty($customer['lastname'])
-            || !is_array($customer['delivery_address'] ?? null)
-            || empty($customer['delivery_address']['address1'])
-            || empty($customer['delivery_address']['city'])
-            || empty($customer['delivery_address']['postcode'])) {
+        if (!is_array($customer)) {
+            throw new \RuntimeException('Incomplete checkout customer data for cart ' . $cartId);
+        }
+
+        $shippingAddress = $this->mapStripeAddress($stripeSession?->shipping_details?->address ?? null, 'delivery');
+        if ($shippingAddress !== null) {
+            $customer['delivery_address'] = $shippingAddress;
+        }
+        $invoiceAddress = $this->mapStripeAddress($stripeSession?->customer_details?->address ?? null, 'invoice');
+        if ($invoiceAddress !== null) {
+            $customer['invoice_address'] = $invoiceAddress;
+        }
+
+        if (empty($customer['email']) || empty($customer['firstname']) || empty($customer['lastname'])
+            || !$this->isValidAddress($customer['delivery_address'] ?? null)) {
             throw new \RuntimeException('Incomplete checkout customer data for cart ' . $cartId);
         }
 
         return (object) $customer;
+    }
+
+    private function mapStripeAddress(mixed $address, string $kind): ?array
+    {
+        if ($address === null) {
+            return null;
+        }
+        if ($address instanceof \Stripe\StripeObject) {
+            $address = $address->toArray();
+        } elseif (is_object($address)) {
+            $address = get_object_vars($address);
+        }
+        if (!is_array($address)) {
+            if ($kind === 'invoice') {
+                return null;
+            }
+            throw new \RuntimeException('Invalid Stripe ' . $kind . ' address data.');
+        }
+
+        $mapped = [
+            'address1' => $address['line1'] ?? null,
+            'address2' => $address['line2'] ?? null,
+            'city' => $address['city'] ?? null,
+            'postcode' => $address['postal_code'] ?? null,
+            'state' => $address['state'] ?? null,
+            'country' => $address['country'] ?? null,
+        ];
+        if (!$this->isValidAddress($mapped)) {
+            if ($kind === 'invoice') {
+                return null;
+            }
+            throw new \RuntimeException('Incomplete Stripe ' . $kind . ' address data.');
+        }
+
+        foreach ($mapped as $field => $value) {
+            if ($value !== null && !is_string($value)) {
+                if ($kind === 'invoice') {
+                    return null;
+                }
+                throw new \RuntimeException('Invalid Stripe ' . $kind . ' address data.');
+            }
+        }
+        if ($mapped['country'] !== null && !preg_match('/^[a-z]{2}$/i', $mapped['country'])) {
+            if ($kind === 'invoice') {
+                return null;
+            }
+            throw new \RuntimeException('Invalid Stripe ' . $kind . ' address data.');
+        }
+
+        return $mapped;
+    }
+
+    private function isValidAddress(mixed $address): bool
+    {
+        return is_array($address)
+            && is_string($address['address1'] ?? null) && trim($address['address1']) !== ''
+            && is_string($address['city'] ?? null) && trim($address['city']) !== ''
+            && is_string($address['postcode'] ?? null) && trim($address['postcode']) !== '';
+    }
+
+    private function metadataPaymentModule(mixed $paymentModule): ?string
+    {
+        if ($paymentModule === null || $paymentModule === '') {
+            return null;
+        }
+        if (!is_string($paymentModule) || !preg_match('/^[a-z][a-z0-9_-]*$/i', $paymentModule)) {
+            throw new \RuntimeException('Invalid payment module in Stripe metadata.');
+        }
+
+        return $paymentModule;
+    }
+
+    private function metadataBoolean(mixed $value, string $name): bool
+    {
+        if ($value === null || $value === '') {
+            return false;
+        }
+        if (!is_string($value) || !in_array($value, ['true', 'false'], true)) {
+            throw new \RuntimeException('Invalid ' . $name . ' value in Stripe metadata.');
+        }
+
+        return $value === 'true';
     }
 
     /**
@@ -252,13 +351,24 @@ class StripeWebhookController extends OrderController
             return;
         }
 
-        $cachedSession = $this->tags(['order-session'])->getFromCache((string)$cartId);
+        $cachedSession = $this->decryptCachedValue($this->tags(['order-session'])->getFromCache((string)$cartId));
 
         if (is_array($cachedSession) && array_key_exists('orderSession', $cachedSession)) {
             $cachedSession = $cachedSession['orderSession'];
         }
 
         if (is_array($cachedSession)) {
+            if (isset($cachedSession['metadata']) && !isset($cachedSession['cart_id'])) {
+                $metadata = $cachedSession['metadata'];
+                $cachedSession = [
+                    'cart_id' => $metadata['cart_id'] ?? $cartId,
+                    'id_customer' => $metadata['id_customer'] ?? null,
+                    'id_guest' => $metadata['id_guest'] ?? null,
+                    'id_carrier' => $metadata['id_carrier'] ?? $carrierId,
+                    'recovery_attempt' => $metadata['recovery_attempt'] ?? false,
+                    'customer' => $cachedSession['customer'] ?? null,
+                ];
+            }
             $customerData = $cachedSession['customer'] ?? [
                 'email' => $metadata->customer_email ?? null,
                 'firstname' => null,
