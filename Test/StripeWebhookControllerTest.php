@@ -451,7 +451,7 @@ final class StripeWebhookControllerTest extends TestCase
         $customer = [
             'email' => 'guest@example.com', 'firstname' => 'Stefano', 'lastname' => 'Galmarini',
             'phone' => '3312345678', 'newsletter' => false,
-            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051'],
+            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051', 'country' => 'IT'],
         ];
         $orderService = $this->createMock(Order::class);
         $orderService->expects($this->once())->method('confirmSessionOrder')->with(
@@ -521,7 +521,7 @@ final class StripeWebhookControllerTest extends TestCase
         $customer = \PS\Webservice\Domain\Entities\CustomerEntity::create([
             'email' => 'guest@example.com', 'firstname' => 'Stefano', 'lastname' => 'Galmarini',
             'phone' => '3312345678', 'newsletter' => false,
-            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051'],
+            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051', 'country' => 'IT'],
         ], $orderService);
         $cached = \PS\Webservice\Domain\Object\OrderSession::create([
             'cart_id' => 621, 'id_customer' => null, 'id_guest' => 359,

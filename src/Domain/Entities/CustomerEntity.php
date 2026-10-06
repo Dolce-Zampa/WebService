@@ -102,7 +102,7 @@ class CustomerEntity implements ObjectInterface
             'password' => $customer['password'] ?? null,
             'firstname' => (string) ($customer['firstname'] ?? ''),
             'lastname' => (string) ($customer['lastname'] ?? ''),
-            'phone' => (string) ($customer['phone'] ?? ''),
+            'phone' => is_string($phone) ? $phone : '',
             'newsletter' => (bool) ($customer['newsletter'] ?? false),
         ];
 
@@ -114,11 +114,11 @@ class CustomerEntity implements ObjectInterface
         }
 
         if (is_array($customer['delivery_address'] ?? null)) {
-            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address']);
+            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address'], $phone);
         }
 
         if (is_array($customer['invoice_address'] ?? null)) {
-            $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address']);
+            $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address'], $phone);
         } else {
             $normalized['invoice_address'] = null;
         }
@@ -130,7 +130,7 @@ class CustomerEntity implements ObjectInterface
      * @param array<string, mixed> $deliveryAddress
      * @return array<string, mixed>
      */
-    private function normalizeDeliveryAddress(array $deliveryAddress): array
+    private function normalizeDeliveryAddress(array $deliveryAddress, ?string $fallbackPhone = null): array
     {
         $normalized = [
             'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
@@ -144,7 +144,7 @@ class CustomerEntity implements ObjectInterface
                 && (int) $deliveryAddress['id_country'] > 0
                 ? (int) $deliveryAddress['id_country']
                 : 10,
-            'phone_mobile' => (string) ($this->data['phone'] ?? ''),
+            'phone_mobile' => (string) ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? $fallbackPhone ?? ''),
             'id_state' => isset($deliveryAddress['id_state']) && is_numeric($deliveryAddress['id_state'])
                 ? (int) $deliveryAddress['id_state']
                 : 228,

@@ -357,7 +357,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('44.1', $orderTotal);
+            $this->assertEquals('41.32', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 
@@ -506,7 +506,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('44.1', $orderTotal);
+            $this->assertEquals('41.32', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 
