@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: prod
+    environment: staging
     permissions:
       contents: read
       packages: write
@@ -33,7 +33,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    environment: prod
+    environment: staging
     needs: build
     permissions:
       contents: read

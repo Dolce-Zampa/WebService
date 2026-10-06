@@ -75,7 +75,7 @@ final class CouponFlowTest extends TestCase
         $session->addCartLineItem(['id_product' => 1, 'name' => 'Product', 'price_wt' => 10, 'quantity' => 1]);
         $session->addCartShipping(['totals' => ['shipping_tax_incl' => 4.55]]);
 
-        $this->assertSame(1455, $session->getLineItems()[1]['price_data']['unit_amount']);
+        $this->assertSame(455, $session->getLineItems()[1]['price_data']['unit_amount']);
     }
 
     public function test_stripe_shipping_rate_uses_the_selected_carrier_mapping(): void

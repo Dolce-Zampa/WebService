@@ -102,7 +102,7 @@ class CustomerEntity implements ObjectInterface
             'password' => $customer['password'] ?? null,
             'firstname' => $customer['firstname'],
             'lastname' => $customer['lastname'],
-            'phone' => $phone,
+            'phone' => is_string($phone) ? $phone : '',
             'newsletter' => (bool) ($customer['newsletter'] ?? false)
         ];
 
@@ -117,14 +117,14 @@ class CustomerEntity implements ObjectInterface
             throw new \InvalidArgumentException('Customer delivery_address must be an object');
         }
         if (is_array($deliveryAddress)) {
-            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($deliveryAddress);
+            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($deliveryAddress, is_string($phone) ? $phone : null);
         }
 
         if (isset($customer['invoice_address'])) {
             if (!is_array($customer['invoice_address'])) {
                 throw new \InvalidArgumentException('Customer invoice_address must be an object');
             }
-            $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address']);
+            $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address'], is_string($phone) ? $phone : null);
         } else {
             $normalized['invoice_address'] = null;
         }
@@ -136,7 +136,7 @@ class CustomerEntity implements ObjectInterface
      * @param array<string, mixed> $deliveryAddress
      * @return array<string, mixed>
      */
-    private function normalizeDeliveryAddress(array $deliveryAddress): array
+    private function normalizeDeliveryAddress(array $deliveryAddress, ?string $fallbackPhone = null): array
     {
         foreach (['address1', 'city', 'postcode'] as $field) {
             if (!isset($deliveryAddress[$field]) || !is_string($deliveryAddress[$field]) || trim($deliveryAddress[$field]) === '') {
@@ -181,7 +181,7 @@ class CustomerEntity implements ObjectInterface
             'city' => $deliveryAddress['city'],
             'postcode' => $deliveryAddress['postcode'],
             'id_country' => (int) $idCountry,
-            'phone_mobile' => $deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? $this->data['phone'],
+            'phone_mobile' => (string) ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? $fallbackPhone ?? ''),
             'id_state' => $idState === null || $idState === '' ? null : (int) $idState,
         ];
         foreach (['address2', 'state', 'country'] as $field) {
