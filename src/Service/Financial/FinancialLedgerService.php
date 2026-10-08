@@ -46,6 +46,12 @@ final class FinancialLedgerService
         return $this->repository->findByProviderTransaction($provider, $providerTransactionId);
     }
 
+    /** @return object|null The original customer payment for a provider transaction. */
+    public function findPaymentByProviderTransaction(string $provider, string $providerTransactionId): ?object
+    {
+        return $this->repository->findPaymentByProviderTransaction($provider, $providerTransactionId);
+    }
+
     /** @return object|null An immutable movement, when known before a provider transaction exists. */
     public function findByProviderSession(string $provider, string $providerSessionId): ?object
     {
