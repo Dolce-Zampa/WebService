@@ -47,6 +47,12 @@ Ogni evento richiede una `idempotency_key` univoca. Il servizio la controlla pri
 
 Il journal conserva sia `occurred_at` (quando il fatto economico o il cambio di stato è avvenuto) sia `received_at` (quando il sistema lo ha acquisito), oltre ai riferimenti `source_event_type` e `source_event_id` dell'evento che l'ha originato. Il servizio non calcola commissioni, non cambia il segno degli importi e non interpreta payload del provider: queste decisioni restano ai chiamanti che registrano il movimento.
 
+## Commissioni per riga d'ordine
+
+`${PS_TABLE_PREFIX}financial_commission_snapshots` conserva il calcolo immutabile effettuato per ciascuna riga d'ordine. La policy `marketplace-commission-v1` applica una commissione fissa del **20%** ai soli prodotti, dopo gli sconti assegnati alla riga; la spedizione è esclusa. Per l'artigiano professionista soggetto a IVA la base è `product_total_tax_excl`; per un artigiano non soggetto a IVA è `product_total_tax_incl`. La tabella conserva entrambi i totali prodotto forniti dal checkout, lo stato IVA, la regola e la versione, la base, la commissione e la spettanza dell'artigiano.
+
+Il calcolo usa aritmetica decimale e `rounding_mode = none`: non vengono applicati arrotondamenti; perciò le colonne hanno scala 12 e mantengono anche frazioni sotto il centesimo. La chiave unica `(order_id, order_item_id)` rende idempotente la registrazione e fa prevalere lo snapshot esistente su qualunque modifica futura alla policy o ai dati del venditore. Più righe dello stesso ordine, anche di artigiani diversi, generano snapshot distinti.
+
 ## Stripe Checkout
 
 Il webhook Stripe alimenta il ledger a partire dall'evento firmato del provider, non dallo stato corrente dell'ordine. Per ogni movimento vengono conservati l'importo lordo nella valuta del provider, l'eventuale Checkout Session, il PaymentIntent (come `provider_transaction_id`), l'account Stripe e lo snapshot dell'ordine quando è già disponibile. Nei metadati entrano solo riferimenti tecnici non sensibili (`stripe_session_id`, `cart_id` e stato di pagamento): non vengono mai copiati carta, indirizzi, email o il payload completo.
