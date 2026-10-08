@@ -40,6 +40,18 @@ final class FinancialLedgerService
         return $this->appendMovementEvent($movement, 'recorded', $idempotencyKey);
     }
 
+    /** @return object|null An immutable movement, when already known to the provider. */
+    public function findByProviderTransaction(string $provider, string $providerTransactionId): ?object
+    {
+        return $this->repository->findByProviderTransaction($provider, $providerTransactionId);
+    }
+
+    /** @return object|null An immutable movement, when known before a provider transaction exists. */
+    public function findByProviderSession(string $provider, string $providerSessionId): ?object
+    {
+        return $this->repository->findByProviderSession($provider, $providerSessionId);
+    }
+
     /**
      * Records a correction as a new adjustment linked to the original movement.
      * The supplied decimal amount is preserved as-is: its sign and magnitude are
@@ -78,6 +90,58 @@ final class FinancialLedgerService
         ?string $sourceEventId = null,
         array $metadata = [],
     ): LedgerAppendResult {
+        return $this->appendStatus(
+            $transactionId,
+            $newStatus,
+            $idempotencyKey,
+            $occurredAt,
+            $sourceEventType,
+            $sourceEventId,
+            $metadata,
+            false,
+        );
+    }
+
+    /**
+     * Persists a provider webhook even when it repeats the current status.
+     * This is intentionally narrower than changeStatus(): a distinct provider
+     * event is audit evidence, while its idempotency key still makes retries a
+     * no-op.
+     *
+     * @param array<string, mixed> $metadata
+     */
+    public function recordProviderStatus(
+        int $transactionId,
+        string $newStatus,
+        string $idempotencyKey,
+        DateTimeImmutable $occurredAt,
+        string $sourceEventType,
+        string $sourceEventId,
+        array $metadata = [],
+    ): LedgerAppendResult {
+        return $this->appendStatus(
+            $transactionId,
+            $newStatus,
+            $idempotencyKey,
+            $occurredAt,
+            $sourceEventType,
+            $sourceEventId,
+            $metadata,
+            true,
+        );
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function appendStatus(
+        int $transactionId,
+        string $newStatus,
+        string $idempotencyKey,
+        DateTimeImmutable $occurredAt,
+        ?string $sourceEventType,
+        ?string $sourceEventId,
+        array $metadata,
+        bool $allowRepeatedStatus,
+    ): LedgerAppendResult {
         $this->assertIdempotencyKey($idempotencyKey);
         $this->assertSourceEvent($sourceEventType, $sourceEventId);
         if (!in_array($newStatus, FinancialMovement::STATUSES, true)) {
@@ -90,7 +154,7 @@ final class FinancialLedgerService
         }
 
         try {
-            return $this->repository->transaction(function () use ($transactionId, $newStatus, $idempotencyKey, $occurredAt, $sourceEventType, $sourceEventId, $metadata): LedgerAppendResult {
+            return $this->repository->transaction(function () use ($transactionId, $newStatus, $idempotencyKey, $occurredAt, $sourceEventType, $sourceEventId, $metadata, $allowRepeatedStatus): LedgerAppendResult {
                 $existing = $this->repository->findEventByIdempotencyKey($idempotencyKey);
                 if ($existing !== null) {
                     return $this->resultFromEvent($existing, false);
@@ -100,7 +164,11 @@ final class FinancialLedgerService
                     throw new DomainException('Cannot change the status of an unknown financial movement.');
                 }
                 $latestEvent = $this->repository->latestStatusEventForUpdate($transactionId);
-                if ($latestEvent === null || !in_array($newStatus, self::ALLOWED_STATUS_TRANSITIONS[$latestEvent->status] ?? [], true)) {
+                if ($latestEvent === null || ($latestEvent->status !== $newStatus
+                    && !in_array($newStatus, self::ALLOWED_STATUS_TRANSITIONS[$latestEvent->status] ?? [], true))) {
+                    throw new DomainException('The requested financial status transition is not allowed.');
+                }
+                if ($latestEvent->status === $newStatus && !$allowRepeatedStatus) {
                     throw new DomainException('The requested financial status transition is not allowed.');
                 }
 
