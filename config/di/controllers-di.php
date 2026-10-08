@@ -56,7 +56,8 @@ $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, f
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
     $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
     $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
-    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService,$mailjet,$payment,$mailer, null, $promotionService);
+    $financialLedger = $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class);
+    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger);
 });
 
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {
