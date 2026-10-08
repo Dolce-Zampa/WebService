@@ -39,6 +39,12 @@ $container->set(\PS\Webservice\Service\Promotions\PromotionService::class, funct
     );
 });
 
+$container->set(\PS\Webservice\Service\Financial\FinancialLedgerService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialLedgerService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class)
+    );
+});
+
 $container->set(\PS\Webservice\Service\PS\Image::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
     return new \PS\Webservice\Service\PS\Image($httpService);

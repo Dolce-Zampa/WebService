@@ -38,3 +38,11 @@ Gli stati ammessi sono `pending`, `available`, `paid`, `reversed`, `failed` e `c
 Le transizioni consentite sono `pending → available|paid|reversed|failed|cancelled`, `available → paid|reversed` e `paid → reversed`. Una rettifica economica non modifica l'importo della riga originaria: registra un nuovo movimento `adjustment` collegato tramite `related_transaction_id`. `occurred_at` è il momento economico dell'evento, `available_at` quello in cui diventa disponibile e `settled_at` quello del regolamento. `created_at` e `updated_at` tracciano l'acquisizione e l'ultimo aggiornamento locale.
 
 Gli indici composti per ordine/artigiano e periodo supportano gli estratti e le riconciliazioni; quelli provider e source-event supportano l'importazione e la tracciabilità degli eventi originali.
+
+## Journal append-only e idempotenza
+
+`${PS_TABLE_PREFIX}financial_transaction_events` conserva il journal immutabile del movimento. La riga `recorded` viene creata insieme al movimento; i cambi di stato producono una riga `status_changed`, mentre correzioni e storni producono rispettivamente `correction` e `reversal` sul nuovo movimento collegato. Perciò `financial_transactions.status` è lo stato iniziale e lo stato corrente si ricava dall'ultimo evento `recorded` o `status_changed`, ordinato per `occurred_at` e `id`.
+
+Ogni evento richiede una `idempotency_key` univoca. Il servizio la controlla prima dell'inserimento e la chiave unica del database risolve le richieste duplicate concorrenti: una ripetizione restituisce l'evento già registrato. Le transizioni con chiavi diverse vengono serializzate tramite lock della riga del movimento e validate contro l'ultimo stato registrato.
+
+Il journal conserva sia `occurred_at` (quando il fatto economico o il cambio di stato è avvenuto) sia `received_at` (quando il sistema lo ha acquisito), oltre ai riferimenti `source_event_type` e `source_event_id` dell'evento che l'ha originato. Il servizio non calcola commissioni, non cambia il segno degli importi e non interpreta payload del provider: queste decisioni restano ai chiamanti che registrano il movimento.
