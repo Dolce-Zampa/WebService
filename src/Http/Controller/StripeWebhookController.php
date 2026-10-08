@@ -162,6 +162,11 @@ class StripeWebhookController extends OrderController
             return;
         }
 
+        if (str_starts_with((string) $event->type, 'refund.')) {
+            $this->recordStripeRefundWebhook($event);
+            return;
+        }
+
         $status = $this->financialStatusForEventType((string) $event->type);
         if ($status === null) {
             return;
@@ -227,6 +232,90 @@ class StripeWebhookController extends OrderController
         ]), $idempotencyKey);
     }
 
+    /**
+     * A Stripe Refund is an economic reversal, not a state mutation of the
+     * payment. Each `re_...` object therefore creates one negative `refund`
+     * movement linked to the original `payment`; later webhooks for that same
+     * Refund append its lifecycle event instead.
+     *
+     * Stripe does not provide a commission formula or a refund shipping
+     * allocation on this object. Those facts are intentionally not inferred
+     * here: their own movements require a provider-supplied amount and their
+     * corresponding original commission/payout movement.
+     */
+    private function recordStripeRefundWebhook(\Stripe\Event $event): void
+    {
+        $object = $event->data->object;
+        if (!$object instanceof \Stripe\StripeObject) {
+            throw new \RuntimeException('Invalid Stripe refund event object.');
+        }
+
+        $eventId = $this->stripeIdentifier($event->id ?? null, 'event');
+        $refundId = $this->stripeIdentifier($object->id ?? null, 'refund');
+        $paymentIntentId = $this->stripeRefundPaymentIntentId($object);
+        if ($paymentIntentId === null) {
+            throw new \RuntimeException('Stripe refund has no payment intent for ledger correlation.');
+        }
+
+        $sourceEventType = 'stripe.' . (string) $event->type;
+        $occurredAt = $this->stripeEventTimestamp($event->created ?? null);
+        $status = $this->stripeRefundStatus($object);
+        $idempotencyKey = 'stripe:webhook:' . hash('sha256', $eventId);
+        $existingRefund = $this->financialTransactionByProviderTransaction($refundId);
+
+        if ($existingRefund !== null) {
+            $this->financialLedger->recordProviderStatus(
+                (int) $existingRefund->id,
+                $status,
+                $idempotencyKey,
+                $occurredAt,
+                $sourceEventType,
+                $eventId,
+                $this->stripeRefundMetadata($object, $refundId, $paymentIntentId),
+            );
+            return;
+        }
+
+        $originalPayment = $this->financialLedger->findPaymentByProviderTransaction('stripe', $paymentIntentId);
+        if ($originalPayment === null) {
+            // Returning an error makes Stripe retry this webhook if events are
+            // delivered out of order. Recording an orphan would break the
+            // immutable audit relationship required for a refund.
+            throw new \RuntimeException('Stripe refund original payment is not recorded.');
+        }
+
+        $currency = $this->stripeCurrency($object);
+        if ($currency !== (string) $originalPayment->currency) {
+            throw new \RuntimeException('Stripe refund currency differs from the original payment.');
+        }
+
+        $refundAmount = $this->stripeGrossAmount($object);
+        if (preg_match('/^0(?:\\.0+)?$/', $refundAmount) === 1) {
+            throw new \RuntimeException('Stripe refund has no positive amount.');
+        }
+
+        $this->financialLedger->recordReversal((int) $originalPayment->id, FinancialMovement::fromArray([
+            'type' => 'refund',
+            'status' => $status,
+            'amount' => '-' . $refundAmount,
+            'currency' => $currency,
+            'occurred_at' => $occurredAt,
+            'order_id' => $this->positiveInteger($originalPayment->order_id),
+            'artisan_id' => $this->positiveInteger($originalPayment->artisan_id),
+            'order_item_id' => $this->positiveInteger($originalPayment->order_item_id),
+            'order_reference' => $this->stripeOptionalIdentifier($originalPayment->order_reference),
+            'artisan_reference' => $this->stripeOptionalIdentifier($originalPayment->artisan_reference),
+            'order_item_reference' => $this->stripeOptionalIdentifier($originalPayment->order_item_reference),
+            'provider' => 'stripe',
+            'provider_account_id' => $this->stripeOptionalIdentifier($event->account ?? null) ?? $this->stripeOptionalIdentifier($originalPayment->provider_account_id),
+            'provider_transaction_id' => $refundId,
+            'provider_event_id' => $eventId,
+            'source_event_type' => $sourceEventType,
+            'source_event_id' => $eventId,
+            'metadata' => $this->stripeRefundMetadata($object, $refundId, $paymentIntentId),
+        ]), $idempotencyKey);
+    }
+
     private function financialStatusForEventType(string $eventType): ?string
     {
         return match ($eventType) {
@@ -249,6 +338,49 @@ class StripeWebhookController extends OrderController
     private function financialTransactionByProviderTransaction(string $providerTransactionId): ?object
     {
         return $this->financialLedger?->findByProviderTransaction('stripe', $providerTransactionId);
+    }
+
+    private function stripeRefundPaymentIntentId(\Stripe\StripeObject $object): ?string
+    {
+        $data = $object->toArray();
+        $paymentIntent = $data['payment_intent'] ?? null;
+        if (is_array($paymentIntent)) {
+            $paymentIntent = $paymentIntent['id'] ?? null;
+        } elseif ($paymentIntent instanceof \Stripe\StripeObject) {
+            $paymentIntent = $paymentIntent->id ?? null;
+        }
+
+        return $this->stripeOptionalIdentifier($paymentIntent);
+    }
+
+    private function stripeRefundStatus(\Stripe\StripeObject $object): string
+    {
+        return match ($this->stripeOptionalIdentifier($object->toArray()['status'] ?? null)) {
+            'pending', 'requires_action' => 'pending',
+            'succeeded' => 'available',
+            'failed' => 'failed',
+            'canceled' => 'cancelled',
+            default => throw new \RuntimeException('Stripe refund has no supported status.'),
+        };
+    }
+
+    /** @return array<string, string> */
+    private function stripeRefundMetadata(\Stripe\StripeObject $object, string $refundId, string $paymentIntentId): array
+    {
+        $metadata = [
+            'stripe_refund_id' => $refundId,
+            'stripe_payment_intent_id' => $paymentIntentId,
+        ];
+        $chargeId = $this->stripeOptionalIdentifier($object->toArray()['charge'] ?? null);
+        if ($chargeId !== null) {
+            $metadata['stripe_charge_id'] = $chargeId;
+        }
+        $status = $this->stripeOptionalIdentifier($object->toArray()['status'] ?? null);
+        if ($status !== null) {
+            $metadata['stripe_refund_status'] = $status;
+        }
+
+        return $metadata;
     }
 
     private function financialTransactionBySession(string $providerSessionId): ?object
