@@ -80,6 +80,21 @@ final class FinancialTransactionRepository
     }
 
     /**
+     * A refund also has a Stripe transaction id, so resolving the source of a
+     * reversal must be restricted to the customer payment rather than merely
+     * the first movement with a matching provider id.
+     */
+    public function findPaymentByProviderTransaction(string $provider, string $providerTransactionId): ?stdClass
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('provider', $provider)
+            ->where('provider_transaction_id', $providerTransactionId)
+            ->where('type', 'payment')
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
      * Some Checkout Session webhooks are emitted before Stripe has assigned a
      * PaymentIntent. The session id lives in non-sensitive reconciliation
      * metadata, so it is also a safe lifecycle correlation key.

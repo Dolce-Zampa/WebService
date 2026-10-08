@@ -120,6 +120,99 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
         self::assertSame('failed', DB::table('financial_transaction_events')->value('status'));
     }
 
+    public function test_partial_and_full_refunds_are_linked_reversals_with_their_own_provider_ids(): void
+    {
+        $controller = $this->controller();
+        $controller->ingest($this->stripeEvent('evt_payment', 'payment_intent.succeeded', [
+            'id' => 'pi_refunded_1',
+            'amount' => 1299,
+            'currency' => 'eur',
+        ]));
+        $controller->ingest($this->stripeEvent('evt_refund_partial', 'refund.created', [
+            'id' => 're_partial_1',
+            'payment_intent' => 'pi_refunded_1',
+            'amount' => 300,
+            'currency' => 'eur',
+            'status' => 'succeeded',
+        ]));
+        $controller->ingest($this->stripeEvent('evt_refund_remaining', 'refund.created', [
+            'id' => 're_remaining_1',
+            'payment_intent' => 'pi_refunded_1',
+            'amount' => 999,
+            'currency' => 'eur',
+            'status' => 'succeeded',
+        ]));
+
+        $payment = DB::table('financial_transactions')->where('provider_transaction_id', 'pi_refunded_1')->first();
+        $refunds = DB::table('financial_transactions')->where('type', 'refund')->orderBy('id')->get();
+
+        self::assertSame(3, DB::table('financial_transactions')->count());
+        self::assertCount(2, $refunds);
+        self::assertSame(['-3', '-9.99'], $refunds->pluck('amount')->map(static fn ($amount): string => (string) $amount)->all());
+        self::assertSame([(int) $payment->id, (int) $payment->id], $refunds->pluck('related_transaction_id')->map(static fn ($id): int => (int) $id)->all());
+        self::assertSame(['re_partial_1', 're_remaining_1'], $refunds->pluck('provider_transaction_id')->all());
+        self::assertSame(['available', 'available'], $refunds->pluck('status')->all());
+        self::assertSame(2, DB::table('financial_transaction_events')->where('event_type', 'reversal')->count());
+    }
+
+    public function test_refund_updates_append_a_status_event_and_retries_are_idempotent(): void
+    {
+        $controller = $this->controller();
+        $controller->ingest($this->stripeEvent('evt_payment_pending', 'payment_intent.processing', [
+            'id' => 'pi_refund_lifecycle',
+            'amount' => 500,
+            'currency' => 'eur',
+        ]));
+        $created = $this->stripeEvent('evt_refund_pending', 'refund.created', [
+            'id' => 're_lifecycle_1',
+            'payment_intent' => 'pi_refund_lifecycle',
+            'amount' => 500,
+            'currency' => 'eur',
+            'status' => 'pending',
+        ]);
+        $updated = $this->stripeEvent('evt_refund_succeeded', 'refund.updated', [
+            'id' => 're_lifecycle_1',
+            'payment_intent' => 'pi_refund_lifecycle',
+            'amount' => 500,
+            'currency' => 'eur',
+            'status' => 'succeeded',
+        ]);
+
+        $controller->ingest($created);
+        $controller->ingest($created);
+        $controller->ingest($updated);
+        $controller->ingest($updated);
+
+        $refund = DB::table('financial_transactions')->where('provider_transaction_id', 're_lifecycle_1')->first();
+        self::assertSame(2, DB::table('financial_transactions')->count());
+        self::assertSame(['reversal', 'status_changed'], DB::table('financial_transaction_events')
+            ->where('financial_transaction_id', $refund->id)
+            ->orderBy('id')
+            ->pluck('event_type')
+            ->all());
+        self::assertSame(['pending', 'available'], DB::table('financial_transaction_events')
+            ->where('financial_transaction_id', $refund->id)
+            ->orderBy('id')
+            ->pluck('status')
+            ->all());
+    }
+
+    public function test_refund_without_an_original_payment_is_not_recorded_as_an_orphan(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('original payment is not recorded');
+
+        $this->controller()->ingest($this->stripeEvent('evt_orphan_refund', 'refund.created', [
+            'id' => 're_orphan_1',
+            'payment_intent' => 'pi_missing',
+            'amount' => 100,
+            'currency' => 'eur',
+            'status' => 'succeeded',
+        ]));
+
+        self::assertSame(0, DB::table('financial_transactions')->count());
+    }
+
     private function controller(): StripeWebhookController
     {
         return new class(
@@ -144,11 +237,17 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
     /** @param array<string, mixed> $session */
     private function checkoutEvent(string $id, string $type, array $session): \Stripe\Event
     {
+        return $this->stripeEvent($id, $type, $session);
+    }
+
+    /** @param array<string, mixed> $object */
+    private function stripeEvent(string $id, string $type, array $object): \Stripe\Event
+    {
         return \Stripe\Event::constructFrom([
             'id' => $id,
             'type' => $type,
             'created' => 1791446400,
-            'data' => ['object' => $session],
+            'data' => ['object' => $object],
         ]);
     }
 }
