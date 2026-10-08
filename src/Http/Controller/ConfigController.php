@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\CouponEntity;
 use PS\Webservice\Domain\Enums\CategoriesMap;
@@ -140,7 +141,21 @@ class ConfigController extends CartController
 
     public function countries(Request $request, Response $response, array $argv): Response
     {
-        return response(["id_country" => 10, "name" => "Italia"], 200);
+        $idCountry = DB::table('configuration')->where('name', 'PS_COUNTRY_DEFAULT')->value('value');
+        $idLang = DB::table('configuration')->where('name', 'PS_LANG_DEFAULT')->value('value');
+        if (!is_numeric($idCountry) || (int) $idCountry <= 0 || !is_numeric($idLang) || (int) $idLang <= 0) {
+            throw new \RuntimeException('Default country and language must be configured');
+        }
+
+        $country = DB::table('country_lang')
+            ->where('id_country', (int) $idCountry)
+            ->where('id_lang', (int) $idLang)
+            ->first(['id_country', 'name']);
+        if ($country === null) {
+            throw new \RuntimeException('Configured default country was not found');
+        }
+
+        return response((array) $country, 200);
     }
 
     public function states(Request $request, Response $response, array $argv): Response

@@ -6,7 +6,6 @@ namespace PS\Webservice\Traits;
 use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
-use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\PS\Order as OrderService;
 
@@ -25,6 +24,8 @@ trait Order
             'cart_id' => $payload->id_cart,
             'id_customer' => $payload->id_customer ?? null,
             'id_guest' => $payload->id_guest ?? null,
+            'payment_module' => $payload->payment_module ?? $serverCart['payment_module'] ?? null,
+            'create_account' => $payload->create_account ?? false,
             'id_carrier' => $payload->id_carrier,
             'expires_at' => $payload->expires_at ?? time() + 3600,
             'recovery_attempt' => $payload->recovery_attempt ?? false,
@@ -45,12 +46,15 @@ trait Order
         foreach ($serverCartProducts as $product) {
             $this->addProduct($product);
         }
+        $freeShipping = $this->checkForFreeShippingCartRule($payload->getCartRules());
         if (!empty($serverCart['cart_rules'])) {
-            $this->orderSession->applyCouponCart($serverCart);
-        } else {
-            $this->manageCartRules($payload);
+            $this->orderSession->applyCouponCart(
+                $freeShipping ? $this->withoutShipping($serverCart) : $serverCart
+            );
+        } elseif (!$freeShipping) {
+            $this->orderSession->addCartShipping($serverCart);
         }
-        $this->tags(['order-session'])->setToCache($payload->id_cart, $orderSession, 36 * 60);
+        $this->tags(['order-session'])->setEncryptedToCache($payload->id_cart, $orderSession->toCacheData(), 36 * 60);
 
         return $orderSession;
     }
@@ -65,34 +69,44 @@ trait Order
         return $this->orderSession->getLineItems();
     }
 
-    public function manageCartRules(OrderEntity $payload)
+    private function checkForFreeShippingCartRule(?CartRuleEntity $cartRules): bool
     {
-        $cartRules = $payload->getCartRules();
-        $carrierDetails = $this->orderService->getCarrierDetail($payload->id_carrier);
-        if (is_null($carrierDetails)) {
-            throw new \InvalidArgumentException('Invalid carrier ID: ' . $payload->id_carrier);
+        if ($cartRules === null) {
+            return false;
         }
 
-        //check for free shipping cart rule
-        if ($this->checkForFreeShippingCartRule($cartRules) === false) {
-            $this->orderSession->addCarrierLineItem(
-                name: $carrierDetails->name,
-                quantity: 1,
-                price: (float) $carrierDetails->price_with_tax,
-                type: 'carrier'
-            );
-        }
-    }
-
-    private function checkForFreeShippingCartRule(CartRuleEntity $cartRules): bool
-    {
         foreach ($cartRules->toArray() as $cartRule) {
-            if ($cartRule['rule']['rule'] == "free-shipping" && $cartRule['rule']['conditions']['minimum-spend'] <= $this->orderSession->total()) {
+            $rule = $cartRule['rule'] ?? [];
+            $conditions = $rule['conditions'] ?? [];
+            if (($rule['rule'] ?? null) === 'free-shipping'
+                && is_numeric($conditions['minimum-spend'] ?? null)
+                && (float) $conditions['minimum-spend'] <= $this->orderSession->total()) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /** Removes the carrier charge from API totals when local free-shipping rules apply. */
+    private function withoutShipping(array $cart): array
+    {
+        $shipping = $cart['totals']['shipping_tax_incl'] ?? $cart['total_shipping_tax_incl'] ?? 0;
+        if (!is_numeric($shipping) || (float) $shipping < 0) {
+            throw new \InvalidArgumentException('Cart shipping total is required and must be valid.');
+        }
+
+        if (isset($cart['totals']['shipping_tax_incl'])) {
+            $cart['totals']['shipping_tax_incl'] = 0.0;
+        }
+        if (isset($cart['total_shipping_tax_incl'])) {
+            $cart['total_shipping_tax_incl'] = 0.0;
+        }
+        if (isset($cart['totals']['grand_total_tax_incl'])) {
+            $cart['totals']['grand_total_tax_incl'] = (float) $cart['totals']['grand_total_tax_incl'] - (float) $shipping;
+        }
+
+        return $cart;
     }
 
 }

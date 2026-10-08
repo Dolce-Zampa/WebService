@@ -61,12 +61,30 @@ class OrderSession implements ObjectInterface
         }
 
         $carrierId = $data['id_carrier'] ?? null;
-        if (is_null($carrierId)) {
-            throw new \InvalidArgumentException('Carrier ID is required for payment session');
+        if (!is_numeric($carrierId) || (int) $carrierId <= 0) {
+            throw new \InvalidArgumentException('A valid carrier ID is required for payment session');
         }
 
         $this->customer = $customer;
         $customerDetails = $customer->toArray();
+        $metadata = [
+            'cart_id' => (string) $cartId,
+            'id_customer' => (string) ($data['id_customer'] ?? ''),
+            'id_guest' => (string) ($data['id_guest'] ?? ''),
+            'id_carrier' => (string) $data['id_carrier'],
+            'coupon_code' => (string) ($data['discounts'][0]['coupon'] ?? ''),
+            'recovery_attempt' => $this->metadataBoolean($data['recovery_attempt'] ?? false, 'recovery_attempt'),
+            'create_account' => $this->metadataBoolean($data['create_account'] ?? false, 'create_account'),
+            'newsletter' => $this->metadataBoolean($customerDetails['newsletter'] ?? false, 'newsletter'),
+        ];
+        $paymentModule = $data['payment_module'] ?? env('PAYMENT_MODULE');
+        if ($paymentModule !== null && $paymentModule !== '') {
+            if (!is_string($paymentModule) || !preg_match('/^[a-z][a-z0-9_-]*$/i', $paymentModule)) {
+                throw new \InvalidArgumentException('Invalid payment module.');
+            }
+            $metadata['payment_module'] = $paymentModule;
+        }
+
         $this->data = [
             'mode' => 'payment',
             // 'permissions' => [ 
@@ -78,17 +96,18 @@ class OrderSession implements ObjectInterface
             'line_items' => $data['line_items'] ?? [],
             // Only include IDs with positive integer values; null, empty strings, '0',
             // and negative values are excluded as all PrestaShop entity IDs must be > 0.
-            'metadata' => [
-                'cart_id' => $cartId,
-                'id_customer' => $data['id_customer'],
-                'id_guest' => $data['id_guest'],
-                'id_carrier' => $data['id_carrier'],
-                'coupon_code' => $data['discounts'][0]['coupon'] ?? null,
-                'recovery_attempt' => $data['recovery_attempt'] ?? false,
-                'customer_email' => $customerDetails['email'] ?? throw new \InvalidArgumentException('customer email is required to create an order session'),
-            ],
+            'metadata' => $metadata,
         ];
 
+    }
+
+    private function metadataBoolean(mixed $value, string $name): string
+    {
+        if (!is_bool($value) && !in_array($value, [0, 1, '0', '1', 'true', 'false'], true)) {
+            throw new \InvalidArgumentException($name . ' must be a boolean value.');
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
     }
 
     /**
@@ -203,6 +222,18 @@ class OrderSession implements ObjectInterface
         $this->payableTotal = (float) $grandTotal;
     }
 
+    public function addCartShipping(array $cart): void
+    {
+        $shipping = $cart['totals']['shipping_tax_incl'] ?? $cart['total_shipping_tax_incl'] ?? null;
+        if (!is_numeric($shipping) || !is_finite((float) $shipping) || (float) $shipping < 0) {
+            throw new \InvalidArgumentException('Cart shipping total is required and must be valid.');
+        }
+
+        if ((float) $shipping > 0) {
+            $this->addCarrierLineItem('Shipping', 1, (float) $shipping);
+        }
+    }
+
     public function payableTotal(): float
     {
         return $this->payableTotal ?? $this->total();
@@ -230,7 +261,24 @@ class OrderSession implements ObjectInterface
 
     public function addCarrier(CarrierEntity $carrier): void
     {
-        $this->data['shipping_options']['shipping_rate'] = 'shr_1TVqLaK37RWIfqdNW4HF98Df'; //FIXME: we need to create a shipping rate in Stripe for this carrier and use its ID here 
+        $carrierId = $carrier->get('id');
+        if (!is_numeric($carrierId) || (int) $carrierId <= 0 ||
+            (int) ($this->data['metadata']['id_carrier'] ?? 0) !== (int) $carrierId) {
+            throw new \InvalidArgumentException('The Stripe shipping carrier must match the selected carrier.');
+        }
+
+        $configuredRates = $_ENV['STRIPE_SHIPPING_RATE_IDS'] ?? getenv('STRIPE_SHIPPING_RATE_IDS') ?: '';
+        $rates = json_decode((string) $configuredRates, true);
+        if (!is_array($rates)) {
+            throw new \InvalidArgumentException('STRIPE_SHIPPING_RATE_IDS must be a JSON object mapping carrier IDs to Stripe shipping rate IDs.');
+        }
+
+        $rateId = $rates[(string) (int) $carrierId] ?? null;
+        if (!is_string($rateId) || !preg_match('/^shr_[A-Za-z0-9]+$/D', $rateId)) {
+            throw new \InvalidArgumentException('No valid Stripe shipping rate is configured for carrier ' . (int) $carrierId . '.');
+        }
+
+        $this->data['shipping_options'] = [['shipping_rate' => $rateId]];
     }
 
     public function generatePayload(): PayloadServiceData
@@ -267,6 +315,16 @@ class OrderSession implements ObjectInterface
     public function getCustomer(): CustomerEntity
     {
         return $this->customer;
+    }
+
+    public function toCacheData(): array
+    {
+        return [
+            'orderSession' => [
+                'metadata' => $this->data['metadata'],
+                'customer' => $this->customer->toArray(),
+            ],
+        ];
     }
 
     public function hash(): string

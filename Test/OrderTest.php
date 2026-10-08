@@ -50,7 +50,6 @@ final class OrderTest extends TestCase
             $table->integer('active');
             $table->integer('id_shop');
         });
-
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
 
@@ -77,6 +76,7 @@ final class OrderTest extends TestCase
         $requestMock->method('getParsedBody')->willReturn([
             'id' => 1,
             'id_cart' => 1,
+            'id_lang' => 1,
             'reference' => 'REF123',
             'current_state' => 2,
             'date_add' => '2026-01-01',
@@ -86,7 +86,8 @@ final class OrderTest extends TestCase
                 'firstname' => 'Marco',
                 'lastname' => 'De Felice',
                 'email' => 'marco.defelice@dolcezampa.com',
-                'phone' => '3319843630'
+                'phone' => '3319843630',
+                'newsletter' => true,
             ],
             'invoice_address' => [
                 'address1' => 'Via Monte Rosa, 13',
@@ -103,6 +104,8 @@ final class OrderTest extends TestCase
                 'country' => 'IT'
             ],
             'id_carrier' => 15,
+            'payment_module' => 'webserviceapi',
+            'create_account' => true,
             'payment_method' => 'stripe',
             'is_guest' => true,
             'cart_rules' => [],
@@ -168,6 +171,9 @@ final class OrderTest extends TestCase
                 'id_guest',
                 'id_carrier',
                 'coupon_code',
+                'payment_module',
+                'create_account',
+                'newsletter',
             ];
 
             $toCheck = $orderSession->toArray();
@@ -182,6 +188,9 @@ final class OrderTest extends TestCase
                     throw new \Exception("Missing expected metadata key: $key");
                 }
             }
+            $this->assertSame('webserviceapi', $toCheck['metadata']['payment_module']);
+            $this->assertSame('true', $toCheck['metadata']['create_account']);
+            $this->assertSame('true', $toCheck['metadata']['newsletter']);
 
             return 'http://checkout.url';
 
@@ -231,12 +240,13 @@ final class OrderTest extends TestCase
                     'cart_id' => 204,
                     'id_customer' => null,
                     'id_guest' => 123,
-                    'id_carrier' => 0,
+                    'id_carrier' => 1,
                     'customer' => CustomerEntity::create([
                         'id' => null,
                         'email' => 'john.doe@example.com',
                         'firstname' => 'John',
                         'lastname' => 'Doe',
+                        'id_lang' => 1,
                         'phone' => null,
                         'delivery_address' => null,
                         'newsletter' => false,
@@ -325,8 +335,7 @@ final class OrderTest extends TestCase
                 'id_guest',
                 'id_carrier',
                 'coupon_code',
-                'recovery_attempt',
-                'customer_email'
+                'recovery_attempt'
             ];
             $toCheck = $orderSession->toArray();
             foreach ($expectedSessionKeys as $key) {
@@ -339,6 +348,7 @@ final class OrderTest extends TestCase
                     throw new \Exception("Missing expected metadata key: $key");
                 }
             }
+            $this->assertArrayNotHasKey('customer_email', $toCheck['metadata']);
             return 'http://checkout.url';
         });
 
@@ -347,7 +357,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('44.1', $orderTotal);
+            $this->assertEquals('41.32', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 
@@ -386,12 +396,13 @@ final class OrderTest extends TestCase
                     'cart_id' => 204,
                     'id_customer' => null,
                     'id_guest' => 123,
-                    'id_carrier' => 0,
+                    'id_carrier' => 1,
                     'customer' => CustomerEntity::create([
                         'id' => null,
                         'email' => 'john.doe@example.com',
                         'firstname' => 'John',
                         'lastname' => 'Doe',
+                        'id_lang' => 1,
                         'phone' => null,
                         'delivery_address' => null,
                         'newsletter' => false,
@@ -473,8 +484,7 @@ final class OrderTest extends TestCase
                 'id_guest',
                 'id_carrier',
                 'coupon_code',
-                'recovery_attempt',
-                'customer_email'
+                'recovery_attempt'
             ];
             $toCheck = $orderSession->toArray();
             foreach ($expectedSessionKeys as $key) {
@@ -487,6 +497,7 @@ final class OrderTest extends TestCase
                     throw new \Exception("Missing expected metadata key: $key");
                 }
             }
+            $this->assertArrayNotHasKey('customer_email', $toCheck['metadata']);
             return 'http://checkout.url';
         });
 
@@ -495,7 +506,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('44.1', $orderTotal);
+            $this->assertEquals('41.32', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 

@@ -39,9 +39,10 @@ final class CouponCheckoutControllerTest extends TestCase
             $this->assertSame('SAVE10', $session->metadata['coupon_code']);
             return 'https://example.com/pay';
         });
-        $payload = ['id' => 1, 'id_cart' => 10, 'id_customer' => 5, 'id_guest' => null, 'id_carrier' => 2,
+        $payload = ['id' => 1, 'id_cart' => 10, 'id_customer' => 5, 'id_guest' => null, 'id_carrier' => 2, 'id_lang' => 1,
             'reference' => '', 'current_state' => 0, 'date_add' => '', 'total_paid_tax_incl' => 1, 'total_paid_tax_excl' => 1,
-            'customer' => ['email' => 'test@example.com'], 'delivery_address' => [], 'invoice_address' => [],
+            'customer' => ['email' => 'test@example.com', 'firstname' => 'Test', 'lastname' => 'Customer'],
+            'delivery_address' => ['id_country' => 10], 'invoice_address' => ['id_country' => 10],
             'cart_rules' => [['code' => 'SAVE10', 'reduction_percent' => 99, 'reduction_amount' => 999]]];
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn($payload);

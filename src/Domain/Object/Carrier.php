@@ -36,7 +36,7 @@ final class Carrier
             'max_height' => $this->data['max_height'],
             'max_depth' => $this->data['max_depth'],
             'max_weight' => $this->data['max_weight'],
-            'price_with_tax' => $this->data['price_with_tax'],
+            'price_with_tax' => $this->data['price_with_tax'] ?? null,
         ];
 
         $this->data = $carrier;
