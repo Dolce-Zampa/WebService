@@ -12,3 +12,7 @@ $container->set(\PS\Webservice\Repositories\ManufacturerRepository::class, funct
 $container->set(\PS\Webservice\Repositories\FinancialTransactionRepository::class, function($c) use($capsule) {
     return new \PS\Webservice\Repositories\FinancialTransactionRepository($capsule);
 });
+
+$container->set(\PS\Webservice\Repositories\FinancialCommissionSnapshotRepository::class, function($c) use($capsule) {
+    return new \PS\Webservice\Repositories\FinancialCommissionSnapshotRepository($capsule);
+});
