@@ -72,6 +72,9 @@ Non viene calcolato né inventato alcuno storno di commissione o rettifica payou
 `GET /api/admin/financial/orders/{orderId}/reconciliation?page=1&per_page=50` espone una vista esclusivamente amministrativa dell'ordine. Richiede sia un access token Cognito valido sia il gruppo `financial-admin` (oppure un subject incluso in `FINANCIAL_ADMIN_SUBS`); gli identificativi dell'ordine non attribuiscono alcun diritto di lettura.
 
 La risposta contiene gli identificativi disponibili, una timeline paginata dei movimenti e dei relativi eventi di stato, incassi, rimborsi, commissioni calcolate e registrate, spettanze, payout e residui. I payout sono esposti come importi positivi pagati al venditore, pur essendo negativi nel ledger dal punto di vista del marketplace. La spedizione resta `not_recorded` finché non esiste un movimento esplicito: l'eventuale differenza non spiegata viene mostrata senza attribuirla automaticamente a spedizione, sconti o altre voci.
+## Notifica vendita al venditore
+
+Dopo un checkout firmato e finalizzato, ogni venditore riceve una sola notifica relativa esclusivamente ai propri prodotti. Il journal di consegna è idempotente e i retry non bloccano la finalizzazione dell'ordine.
 
 ## Test e prerequisiti
 
