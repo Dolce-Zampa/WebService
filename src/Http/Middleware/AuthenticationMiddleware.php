@@ -39,6 +39,8 @@ class AuthenticationMiddleware implements MiddlewareInterface
                 // Keep verified claims on the request for authorization
                 // middleware. Controllers must never recover an identity from
                 // a route parameter, query string or request body.
+                // Keep verified claims on the request for authorization;
+                // resource identity never comes from client input.
                 $request = $request
                     ->withAttribute('user_id', $userId)
                     ->withAttribute('auth_claims', $decodedToken);

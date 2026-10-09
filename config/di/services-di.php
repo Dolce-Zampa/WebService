@@ -52,6 +52,12 @@ $container->set(\PS\Webservice\Service\Financial\FinancialOrderReconciliationSer
     );
 });
 
+$container->set(\PS\Webservice\Service\Financial\FinancialReportService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialReportService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class)
+    );
+});
+
 $container->set(\PS\Webservice\Service\Financial\CommissionCalculator::class, function ($c) {
     return new \PS\Webservice\Service\Financial\CommissionCalculator();
 });
