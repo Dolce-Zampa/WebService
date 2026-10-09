@@ -6,6 +6,7 @@ namespace PS\Webservice\Service\PS;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Enums\TemplateMail;
+use PS\Webservice\Domain\Financial\WeeklySellerFinancialSummary;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Domain\Object\PayloadServiceData;
 use PS\Webservice\Facades\PaymentService;
@@ -211,6 +212,51 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         } catch (\Throwable $e) {
             throw new PrestashopConnectorException($this->httpService, $e);
         }
+    }
+
+    public function sendWeeklySellerFinancialSummary(string $email, string $sellerName, WeeklySellerFinancialSummary $summary): void
+    {
+        try {
+            $this->httpService->setUrl('/mailer?debug=true');
+            $this->httpService->invoke('POST', new PayloadServiceData([
+                'subject' => 'Il tuo riepilogo finanziario settimanale',
+                'to_email' => $email,
+                'to_name' => $sellerName,
+                'template' => TemplateMail::WEEKLY_SELLER_FINANCIAL_SUMMARY->value,
+                'template_vars' => [
+                    'seller_name' => $sellerName,
+                    'period_start' => $summary->period->startsAt->format('d/m/Y'),
+                    'period_end' => $summary->period->endsAt->modify('-1 day')->format('d/m/Y'),
+                    'timezone' => $summary->period->timezone->getName(),
+                    'summary_rows' => $this->weeklyFinancialSummaryRows($summary),
+                    'has_activity' => $summary->hasActivity() ? '1' : '0',
+                ],
+            ]));
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
+    private function weeklyFinancialSummaryRows(WeeklySellerFinancialSummary $summary): string
+    {
+        if ($summary->currencies === []) {
+            return '<tr><td colspan="2" style="padding:12px">Nessuna attività finanziaria nel periodo.</td></tr>';
+        }
+
+        $rows = '';
+        foreach ($summary->currencies as $currency) {
+            $unit = htmlspecialchars($currency->currency, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $amount = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ' ' . $unit;
+            $rows .= '<tr><td colspan="2" style="padding:14px 12px 6px;font-weight:bold;background:#F3EBDD">' . $unit . '</td></tr>'
+                . '<tr><td style="padding:8px 12px">Vendite finalizzate</td><td align="right" style="padding:8px 12px">' . $currency->completedSales . ' · ' . $amount($currency->grossSales) . '</td></tr>'
+                . '<tr><td style="padding:8px 12px">Commissioni</td><td align="right" style="padding:8px 12px">' . $amount($currency->commissions) . '</td></tr>'
+                . '<tr><td style="padding:8px 12px;font-weight:bold">La tua spettanza</td><td align="right" style="padding:8px 12px;font-weight:bold">' . $amount($currency->sellerDue) . '</td></tr>'
+                . '<tr><td style="padding:8px 12px">Payout completati</td><td align="right" style="padding:8px 12px">' . $currency->completedPayouts . ' · ' . $amount($currency->completedPayoutAmount) . '</td></tr>'
+                . '<tr><td style="padding:8px 12px">Payout in attesa</td><td align="right" style="padding:8px 12px">' . $currency->pendingPayouts . ' · ' . $amount($currency->pendingPayoutAmount) . '</td></tr>'
+                . '<tr><td style="padding:8px 12px">Rimborsi</td><td align="right" style="padding:8px 12px">' . $amount($currency->refunds) . '</td></tr>';
+        }
+
+        return $rows;
     }
 
     private function recoveryCartHtml(array $products): string
