@@ -1,0 +1,7 @@
+{shop_name} - Riepilogo finanziario settimanale
+
+Ciao {seller_name},
+
+Periodo: {period_start} - {period_end} ({timezone})
+
+Consulta il riepilogo nel messaggio HTML.

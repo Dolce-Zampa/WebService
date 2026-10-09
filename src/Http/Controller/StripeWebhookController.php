@@ -3,14 +3,18 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use DateTimeImmutable;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
+use PS\Webservice\Domain\Financial\FinancialMovement;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Products\Product;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\MailerInterface;
+use PS\Webservice\Service\Financial\FinancialLedgerService;
+use PS\Webservice\Service\Financial\SellerSaleNotificationService;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
@@ -23,10 +27,14 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 class StripeWebhookController extends OrderController
 {
     use UseCache, OrderTrait;
+    private const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
+    private const MAX_WEBHOOK_TOLERANCE_SECONDS = 300;
     private Order $orderService;
     private MailjetService $mailjetService;
     protected PaymentGatewayInterface $stripeService;
     private ?PromotionService $promotionService = null;
+    private ?FinancialLedgerService $financialLedger;
+    private ?SellerSaleNotificationService $sellerSaleNotifications;
 
     private MailerInterface $mailer;
 
@@ -36,7 +44,9 @@ class StripeWebhookController extends OrderController
         PaymentGatewayInterface $stripeService,
         MailerInterface $mailer,
         mixed $legacyDependency = null,
-        ?PromotionService $promotionService = null
+        ?PromotionService $promotionService = null,
+        ?FinancialLedgerService $financialLedger = null,
+        ?SellerSaleNotificationService $sellerSaleNotifications = null,
     )
     {
         $this->orderService = $orderService;
@@ -48,6 +58,8 @@ class StripeWebhookController extends OrderController
         } else {
             $this->promotionService = $promotionService;
         }
+        $this->financialLedger = $financialLedger;
+        $this->sellerSaleNotifications = $sellerSaleNotifications;
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -93,7 +105,18 @@ class StripeWebhookController extends OrderController
                     $this->promotionService->activatePromotionFromStripeSession($event->data->object);
                     return response(['received' => true], 200);
                 }
-                $this->handleCheckoutSessionCompleted($event->data->object);
+                $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                if ($cartId !== null && $this->sellerSaleNotifications !== null) {
+                    // This happens only after Stripe's signature has been
+                    // checked and PrestaShop has accepted the confirmation.
+                    // The notification service is best-effort and journals
+                    // its own idempotent delivery state.
+                    $this->sellerSaleNotifications->notifyFinalizedSalesForCart(
+                        $cartId,
+                        $this->stripeEventTimestamp($event->created ?? null),
+                    );
+                }
+                $this->recordFinancialWebhook($event);
             } catch (\Exception $e) {
                 Log::critical('Stripe webhook: failed to process checkout.session.completed: ' . $e->getMessage());
                 return response(['error' => 'Failed to process event'], 500);
@@ -103,6 +126,7 @@ class StripeWebhookController extends OrderController
         if( $event->type === 'checkout.session.expired') {
             try {
                 $this->handleCheckoutSessionExpired($event->data->object);
+                $this->recordFinancialWebhook($event);
             } catch (\Exception $e) {
                 Log::critical('Stripe webhook: failed to process checkout.session.expired: ' . $e->getMessage());
                 return response(['error' => 'Failed to process event'], 500);
@@ -111,7 +135,17 @@ class StripeWebhookController extends OrderController
 
         // if session expired or payment failed, we can handle other event types here (e.g. "checkout.session.expired", "payment_intent.payment_failed") to update the order status in PrestaShop accordingly.
         if ($event->type === 'checkout.session.expired' || $event->type === 'payment_intent.payment_failed') {
-            Log::info('Stripe webhook: checkout session expired or failed for session ' . $event->data->object->id);
+            Log::info('Stripe webhook: checkout session expired or failed');
+        }
+
+        if (!in_array($event->type, ['checkout.session.completed', 'checkout.session.expired'], true)) {
+            try {
+                $this->recordFinancialWebhook($event);
+            } catch (\Exception $e) {
+                // Do not include provider payloads, email addresses, or payment data in logs.
+                Log::critical('Stripe webhook: failed to record financial event ' . $event->type . ': ' . $e->getMessage());
+                return response(['error' => 'Failed to process financial event'], 500);
+            }
         }
 
         return response(['received' => true], 200);
@@ -126,13 +160,440 @@ class StripeWebhookController extends OrderController
      */
     protected function constructStripeEvent(string $payload, string $sigHeader, string $secret): \Stripe\Event
     {
-        return \Stripe\Webhook::constructEvent($payload, $sigHeader, $secret);
+        // Stripe validates the signature timestamp as part of verification.
+        // Keep a short, bounded tolerance so an intercepted signed request
+        // cannot be replayed long after it was issued; exact event retries are
+        // additionally harmless because the ledger uses the Stripe event id
+        // as its idempotency key.
+        return \Stripe\Webhook::constructEvent($payload, $sigHeader, $secret, $this->webhookToleranceSeconds());
+    }
+
+    private function webhookToleranceSeconds(): int
+    {
+        $configured = $_ENV['STRIPE_WEBHOOK_TOLERANCE_SECONDS'] ?? self::DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+        if (filter_var($configured, FILTER_VALIDATE_INT) === false) {
+            return self::DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+        }
+
+        $tolerance = (int) $configured;
+        if ($tolerance < 1 || $tolerance > self::MAX_WEBHOOK_TOLERANCE_SECONDS) {
+            return self::DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+        }
+
+        return $tolerance;
+    }
+
+    /**
+     * Copies only reconciliation fields from a verified Stripe webhook into
+     * the financial journal. Checkout completion is `available`, not `paid`:
+     * `paid` remains reserved for a later settlement/payout lifecycle.
+     *
+     * The webhook id is hashed into the idempotency key because provider ids
+     * have no application-controlled maximum length. The original id remains
+     * in the source-event column for reconciliation.
+     */
+    protected function recordFinancialWebhook(\Stripe\Event $event): void
+    {
+        if ($this->financialLedger === null) {
+            return;
+        }
+
+        if (str_starts_with((string) $event->type, 'refund.')) {
+            $this->recordStripeRefundWebhook($event);
+            return;
+        }
+
+        $status = $this->financialStatusForEventType((string) $event->type);
+        if ($status === null) {
+            return;
+        }
+
+        $object = $event->data->object;
+        if (!$object instanceof \Stripe\StripeObject) {
+            throw new \RuntimeException('Invalid Stripe financial event object.');
+        }
+
+        $eventId = $this->stripeIdentifier($event->id ?? null, 'event');
+        $sourceEventType = 'stripe.' . (string) $event->type;
+        $occurredAt = $this->stripeEventTimestamp($event->created ?? null);
+        $sessionId = $this->stripeSessionId($object, (string) $event->type);
+        $transactionId = $this->stripeTransactionId($object, (string) $event->type, $sessionId);
+        $metadata = $this->financialMetadata($object, $sessionId, $transactionId);
+        $idempotencyKey = 'stripe:webhook:' . hash('sha256', $eventId);
+
+        $existing = $transactionId === null
+            ? null
+            : $this->financialTransactionByProviderTransaction($transactionId);
+        // A Checkout Session can be created before Stripe allocates its
+        // PaymentIntent. Session correlation prevents that normal sequence
+        // from becoming two financial movements.
+        $existing ??= $sessionId === null ? null : $this->financialTransactionBySession($sessionId);
+
+        if ($existing !== null) {
+            [$orderId, $orderReference] = $this->financialOrderReference($object);
+            if ($orderId !== null) {
+                $metadata['order_id'] = $orderId;
+            }
+            if ($orderReference !== null) {
+                $metadata['order_reference'] = $orderReference;
+            }
+            $this->financialLedger->recordProviderStatus(
+                (int) $existing->id,
+                $status,
+                $idempotencyKey,
+                $occurredAt,
+                $sourceEventType,
+                $eventId,
+                $metadata,
+            );
+            return;
+        }
+
+        [$orderId, $orderReference] = $this->financialOrderReference($object);
+        $this->financialLedger->record(FinancialMovement::fromArray([
+            'type' => 'payment',
+            'status' => $status,
+            'amount' => $this->stripeGrossAmount($object),
+            'currency' => $this->stripeCurrency($object),
+            'occurred_at' => $occurredAt,
+            'order_id' => $orderId,
+            'order_reference' => $orderReference,
+            'provider' => 'stripe',
+            'provider_account_id' => $this->stripeOptionalIdentifier($event->account ?? null),
+            'provider_transaction_id' => $transactionId,
+            'provider_event_id' => $eventId,
+            'source_event_type' => $sourceEventType,
+            'source_event_id' => $eventId,
+            'metadata' => $metadata,
+        ]), $idempotencyKey);
+    }
+
+    /**
+     * A Stripe Refund is an economic reversal, not a state mutation of the
+     * payment. Each `re_...` object therefore creates one negative `refund`
+     * movement linked to the original `payment`; later webhooks for that same
+     * Refund append its lifecycle event instead.
+     *
+     * Stripe does not provide a commission formula or a refund shipping
+     * allocation on this object. Those facts are intentionally not inferred
+     * here: their own movements require a provider-supplied amount and their
+     * corresponding original commission/payout movement.
+     */
+    private function recordStripeRefundWebhook(\Stripe\Event $event): void
+    {
+        $object = $event->data->object;
+        if (!$object instanceof \Stripe\StripeObject) {
+            throw new \RuntimeException('Invalid Stripe refund event object.');
+        }
+
+        $eventId = $this->stripeIdentifier($event->id ?? null, 'event');
+        $refundId = $this->stripeIdentifier($object->id ?? null, 'refund');
+        $paymentIntentId = $this->stripeRefundPaymentIntentId($object);
+        if ($paymentIntentId === null) {
+            throw new \RuntimeException('Stripe refund has no payment intent for ledger correlation.');
+        }
+
+        $sourceEventType = 'stripe.' . (string) $event->type;
+        $occurredAt = $this->stripeEventTimestamp($event->created ?? null);
+        $status = $this->stripeRefundStatus($object);
+        $idempotencyKey = 'stripe:webhook:' . hash('sha256', $eventId);
+        $existingRefund = $this->financialTransactionByProviderTransaction($refundId);
+
+        if ($existingRefund !== null) {
+            $this->financialLedger->recordProviderStatus(
+                (int) $existingRefund->id,
+                $status,
+                $idempotencyKey,
+                $occurredAt,
+                $sourceEventType,
+                $eventId,
+                $this->stripeRefundMetadata($object, $refundId, $paymentIntentId),
+            );
+            return;
+        }
+
+        $originalPayment = $this->financialLedger->findPaymentByProviderTransaction('stripe', $paymentIntentId);
+        if ($originalPayment === null) {
+            // Returning an error makes Stripe retry this webhook if events are
+            // delivered out of order. Recording an orphan would break the
+            // immutable audit relationship required for a refund.
+            throw new \RuntimeException('Stripe refund original payment is not recorded.');
+        }
+
+        $currency = $this->stripeCurrency($object);
+        if ($currency !== (string) $originalPayment->currency) {
+            throw new \RuntimeException('Stripe refund currency differs from the original payment.');
+        }
+
+        $refundAmount = $this->stripeGrossAmount($object);
+        if (preg_match('/^0(?:\\.0+)?$/', $refundAmount) === 1) {
+            throw new \RuntimeException('Stripe refund has no positive amount.');
+        }
+
+        $this->financialLedger->recordReversal((int) $originalPayment->id, FinancialMovement::fromArray([
+            'type' => 'refund',
+            'status' => $status,
+            'amount' => '-' . $refundAmount,
+            'currency' => $currency,
+            'occurred_at' => $occurredAt,
+            'order_id' => $this->positiveInteger($originalPayment->order_id),
+            'artisan_id' => $this->positiveInteger($originalPayment->artisan_id),
+            'order_item_id' => $this->positiveInteger($originalPayment->order_item_id),
+            'order_reference' => $this->stripeOptionalIdentifier($originalPayment->order_reference),
+            'artisan_reference' => $this->stripeOptionalIdentifier($originalPayment->artisan_reference),
+            'order_item_reference' => $this->stripeOptionalIdentifier($originalPayment->order_item_reference),
+            'provider' => 'stripe',
+            'provider_account_id' => $this->stripeOptionalIdentifier($event->account ?? null) ?? $this->stripeOptionalIdentifier($originalPayment->provider_account_id),
+            'provider_transaction_id' => $refundId,
+            'provider_event_id' => $eventId,
+            'source_event_type' => $sourceEventType,
+            'source_event_id' => $eventId,
+            'metadata' => $this->stripeRefundMetadata($object, $refundId, $paymentIntentId),
+        ]), $idempotencyKey);
+    }
+
+    private function financialStatusForEventType(string $eventType): ?string
+    {
+        return match ($eventType) {
+            'checkout.session.created',
+            'checkout.session.async_payment_pending',
+            'payment_intent.created',
+            'payment_intent.processing',
+            'payment_intent.requires_action',
+            'payment_intent.requires_payment_method' => 'pending',
+            'checkout.session.completed',
+            'checkout.session.async_payment_succeeded',
+            'payment_intent.succeeded' => 'available',
+            'checkout.session.async_payment_failed',
+            'payment_intent.payment_failed' => 'failed',
+            'checkout.session.expired' => 'cancelled',
+            default => null,
+        };
+    }
+
+    private function financialTransactionByProviderTransaction(string $providerTransactionId): ?object
+    {
+        return $this->financialLedger?->findByProviderTransaction('stripe', $providerTransactionId);
+    }
+
+    private function stripeRefundPaymentIntentId(\Stripe\StripeObject $object): ?string
+    {
+        $data = $object->toArray();
+        $paymentIntent = $data['payment_intent'] ?? null;
+        if (is_array($paymentIntent)) {
+            $paymentIntent = $paymentIntent['id'] ?? null;
+        } elseif ($paymentIntent instanceof \Stripe\StripeObject) {
+            $paymentIntent = $paymentIntent->id ?? null;
+        }
+
+        return $this->stripeOptionalIdentifier($paymentIntent);
+    }
+
+    private function stripeRefundStatus(\Stripe\StripeObject $object): string
+    {
+        return match ($this->stripeOptionalIdentifier($object->toArray()['status'] ?? null)) {
+            'pending', 'requires_action' => 'pending',
+            'succeeded' => 'available',
+            'failed' => 'failed',
+            'canceled' => 'cancelled',
+            default => throw new \RuntimeException('Stripe refund has no supported status.'),
+        };
+    }
+
+    /** @return array<string, string> */
+    private function stripeRefundMetadata(\Stripe\StripeObject $object, string $refundId, string $paymentIntentId): array
+    {
+        $metadata = [
+            'stripe_refund_id' => $refundId,
+            'stripe_payment_intent_id' => $paymentIntentId,
+        ];
+        $chargeId = $this->stripeOptionalIdentifier($object->toArray()['charge'] ?? null);
+        if ($chargeId !== null) {
+            $metadata['stripe_charge_id'] = $chargeId;
+        }
+        $status = $this->stripeOptionalIdentifier($object->toArray()['status'] ?? null);
+        if ($status !== null) {
+            $metadata['stripe_refund_status'] = $status;
+        }
+
+        return $metadata;
+    }
+
+    private function financialTransactionBySession(string $providerSessionId): ?object
+    {
+        return $this->financialLedger?->findByProviderSession('stripe', $providerSessionId);
+    }
+
+    private function stripeSessionId(\Stripe\StripeObject $object, string $eventType): ?string
+    {
+        $data = $object->toArray();
+        if (str_starts_with($eventType, 'checkout.session.')) {
+            return $this->stripeOptionalIdentifier($data['id'] ?? null);
+        }
+
+        $metadata = $this->stripeMetadata($data);
+        return $this->stripeOptionalIdentifier($metadata['checkout_session_id'] ?? null);
+    }
+
+    private function stripeTransactionId(\Stripe\StripeObject $object, string $eventType, ?string $sessionId): ?string
+    {
+        $data = $object->toArray();
+        if (str_starts_with($eventType, 'payment_intent.')) {
+            return $this->stripeOptionalIdentifier($data['id'] ?? null);
+        }
+
+        $paymentIntent = $data['payment_intent'] ?? null;
+        if (is_array($paymentIntent)) {
+            $paymentIntent = $paymentIntent['id'] ?? null;
+        } elseif ($paymentIntent instanceof \Stripe\StripeObject) {
+            $paymentIntent = $paymentIntent->id ?? null;
+        }
+
+        return $this->stripeOptionalIdentifier($paymentIntent);
+    }
+
+    /** @return array<string, string|int> */
+    private function financialMetadata(\Stripe\StripeObject $object, ?string $sessionId, ?string $transactionId): array
+    {
+        $data = $object->toArray();
+        $metadata = $this->stripeMetadata($data);
+        $financialMetadata = [];
+
+        if ($sessionId !== null) {
+            $financialMetadata['stripe_session_id'] = $sessionId;
+        }
+        if ($transactionId !== null) {
+            $financialMetadata['stripe_payment_intent_id'] = $transactionId;
+        }
+        $cartId = $this->positiveInteger($metadata['cart_id'] ?? null);
+        if ($cartId !== null) {
+            $financialMetadata['cart_id'] = $cartId;
+        }
+        $paymentStatus = $this->stripeOptionalIdentifier($data['payment_status'] ?? $data['status'] ?? null);
+        if ($paymentStatus !== null) {
+            $financialMetadata['stripe_payment_status'] = $paymentStatus;
+        }
+
+        return $financialMetadata;
+    }
+
+    /** @return array{0: ?int, 1: ?string} */
+    private function financialOrderReference(\Stripe\StripeObject $object): array
+    {
+        $metadata = $this->stripeMetadata($object->toArray());
+        $cartId = $this->positiveInteger($metadata['cart_id'] ?? null);
+        if ($cartId === null) {
+            return [null, null];
+        }
+
+        try {
+            $order = $this->orderService->getOrderByCartId(
+                $cartId,
+                $this->positiveInteger($metadata['id_customer'] ?? null),
+                $this->positiveInteger($metadata['id_guest'] ?? null),
+            );
+        } catch (\Throwable) {
+            // Stripe is the financial source of truth. An unavailable order
+            // lookup must not discard its verified payment event.
+            return [null, null];
+        }
+        if ($order === null) {
+            return [null, null];
+        }
+
+        $orderData = $order->toArray();
+        return [
+            $this->positiveInteger($orderData['id'] ?? null),
+            $this->stripeOptionalIdentifier($orderData['reference'] ?? null),
+        ];
+    }
+
+    private function stripeGrossAmount(\Stripe\StripeObject $object): string
+    {
+        $data = $object->toArray();
+        $amount = $data['amount_total'] ?? $data['amount'] ?? null;
+        if (!is_int($amount) && !(is_string($amount) && ctype_digit($amount))) {
+            throw new \RuntimeException('Stripe financial event has no valid amount.');
+        }
+        $minorUnits = (int) $amount;
+        if ($minorUnits < 0) {
+            throw new \RuntimeException('Stripe financial event has a negative gross amount.');
+        }
+
+        $currency = $this->stripeCurrency($object);
+        if (in_array($currency, ['BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'], true)) {
+            return (string) $minorUnits;
+        }
+
+        return intdiv($minorUnits, 100) . '.' . str_pad((string) ($minorUnits % 100), 2, '0', STR_PAD_LEFT);
+    }
+
+    private function stripeCurrency(\Stripe\StripeObject $object): string
+    {
+        $currency = strtoupper((string) ($object->toArray()['currency'] ?? ''));
+        if (!preg_match('/^[A-Z]{3}$/', $currency)) {
+            throw new \RuntimeException('Stripe financial event has no valid currency.');
+        }
+
+        return $currency;
+    }
+
+    private function stripeEventTimestamp(mixed $timestamp): DateTimeImmutable
+    {
+        if ((!is_int($timestamp) && !(is_string($timestamp) && ctype_digit($timestamp))) || (int) $timestamp < 0) {
+            throw new \RuntimeException('Stripe financial event has no valid timestamp.');
+        }
+
+        return (new DateTimeImmutable('@' . (int) $timestamp))->setTimezone(new \DateTimeZone('UTC'));
+    }
+
+    /** @param array<string, mixed> $data @return array<string, mixed> */
+    private function stripeMetadata(array $data): array
+    {
+        $metadata = $data['metadata'] ?? [];
+        if ($metadata instanceof \Stripe\StripeObject) {
+            $metadata = $metadata->toArray();
+        }
+
+        return is_array($metadata) ? $metadata : [];
+    }
+
+    private function stripeIdentifier(mixed $value, string $kind): string
+    {
+        $identifier = $this->stripeOptionalIdentifier($value);
+        if ($identifier === null) {
+            throw new \RuntimeException('Stripe financial event has no valid ' . $kind . ' identifier.');
+        }
+
+        return $identifier;
+    }
+
+    private function stripeOptionalIdentifier(mixed $value): ?string
+    {
+        if (!is_string($value) && !is_int($value)) {
+            return null;
+        }
+        $identifier = trim((string) $value);
+        if ($identifier === '' || strlen($identifier) > 191) {
+            return null;
+        }
+
+        return $identifier;
+    }
+
+    private function positiveInteger(mixed $value): ?int
+    {
+        if (filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+            return null;
+        }
+
+        return (int) $value;
     }
 
     /**
      * Processes a Stripe checkout.session.completed event and confirms the corresponding order.
      */
-    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): void
+    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): ?int
     {
         $metadata = $session->metadata;
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
@@ -143,7 +604,7 @@ class StripeWebhookController extends OrderController
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for session ' . $session->id);
-            return;
+            return null;
         }
 
         // Convert from Stripe's smallest currency unit to the major unit.
@@ -196,6 +657,7 @@ class StripeWebhookController extends OrderController
         }
 
         Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
+        return $cartId;
     }
 
     /** Retrieve the checkout identity and delivery address, including unregistered guests. */

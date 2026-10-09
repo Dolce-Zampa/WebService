@@ -130,6 +130,16 @@ $app->group('/api/seller', function() use ($app) {
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
 
+/** Financial operations: verified Cognito financial-admin only. */
+$financialReconciliationRoute = $app->get('/api/admin/financial/orders/{orderId}/reconciliation', PS\Webservice\Http\Controller\FinancialReconciliationController::class . ':order');
+$financialReconciliationRoute
+    ->add(new \PS\Webservice\Http\Middleware\FinancialAuthorizationMiddleware(\PS\Webservice\Service\Financial\FinancialAccessPolicy::SCOPE_MARKETPLACE))
+
+/** Financial ledger: authenticated administrators only. */
+$app->get('/api/admin/financial-report', PS\Webservice\Http\Controller\FinancialReportController::class . ':index')
+    ->add(new \PS\Webservice\Http\Middleware\FinancialReportAdminMiddleware())
+    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
 

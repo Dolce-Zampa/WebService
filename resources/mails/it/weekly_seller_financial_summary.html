@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Riepilogo finanziario | {shop_name}</title></head>
+<body style="margin:0;padding:24px;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif;color:#4F463B">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
+    <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;background:#fff;border-radius:16px;overflow:hidden">
+      <tr><td style="padding:30px;background:#C8AE8A;color:#fff;text-align:center"><strong style="font-size:24px">{shop_name}</strong><br><span style="font-size:14px">Riepilogo finanziario settimanale</span></td></tr>
+      <tr><td style="padding:30px"><p>Ciao {seller_name},</p><p>ecco il riepilogo dei movimenti registrati dal <strong>{period_start}</strong> al <strong>{period_end}</strong> ({timezone}).</p>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #E8DED0;border-radius:8px;overflow:hidden">{summary_rows}</table>
+        <p style="font-size:12px;color:#81786D">Gli importi riflettono i movimenti contabili registrati nel periodo; non includono dati di clienti o dettagli di pagamento.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body>
+</html>

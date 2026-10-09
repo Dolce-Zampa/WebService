@@ -1,0 +1,285 @@
+<?php
+
+declare(strict_types=1);
+
+namespace PS\Webservice\Repositories;
+
+use Illuminate\Database\Capsule\Manager;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Collection;
+use DateTimeInterface;
+use PS\Webservice\Domain\Financial\FinancialMovement;
+use stdClass;
+
+/**
+ * Persistence boundary for the financial ledger.
+ *
+ * This repository has intentionally no update or delete operation: financial
+ * facts and their lifecycle are represented by inserts into the two journal
+ * tables only.
+ */
+final class FinancialTransactionRepository
+{
+    // Capsule applies PS_TABLE_PREFIX from config/database.php to these logical names.
+    // Phinx applies that same prefix while creating the physical tables.
+    private const TRANSACTIONS = 'financial_transactions';
+    private const EVENTS = 'financial_transaction_events';
+
+    public function __construct(private readonly Manager $db)
+    {
+    }
+
+    /** @param callable(): mixed $callback */
+    public function transaction(callable $callback): mixed
+    {
+        return $this->db->getConnection()->transaction($callback);
+    }
+
+    public function appendMovement(FinancialMovement $movement): int
+    {
+        return (int) $this->db->table(self::TRANSACTIONS)->insertGetId($movement->toDatabaseValues());
+    }
+
+    /** @param array<string, mixed> $event */
+    public function appendEvent(array $event): int
+    {
+        return (int) $this->db->table(self::EVENTS)->insertGetId($event);
+    }
+
+    public function findEventByIdempotencyKey(string $idempotencyKey): ?stdClass
+    {
+        return $this->db->table(self::EVENTS)->where('idempotency_key', $idempotencyKey)->first();
+    }
+
+    public function findFirstEventForTransaction(int $transactionId): ?stdClass
+    {
+        return $this->db->table(self::EVENTS)
+            ->where('financial_transaction_id', $transactionId)
+            ->orderBy('id')
+            ->first();
+    }
+
+    public function findByProviderEvent(string $provider, string $providerEventId): ?stdClass
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('provider', $provider)
+            ->where('provider_event_id', $providerEventId)
+            ->first();
+    }
+
+    /**
+     * A provider transaction (Stripe PaymentIntent, for example) can emit
+     * several webhooks. The original provider event is deliberately kept on
+     * the immutable movement, while later webhooks are journal events.
+     */
+    public function findByProviderTransaction(string $provider, string $providerTransactionId): ?stdClass
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('provider', $provider)
+            ->where('provider_transaction_id', $providerTransactionId)
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * A refund also has a Stripe transaction id, so resolving the source of a
+     * reversal must be restricted to the customer payment rather than merely
+     * the first movement with a matching provider id.
+     */
+    public function findPaymentByProviderTransaction(string $provider, string $providerTransactionId): ?stdClass
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('provider', $provider)
+            ->where('provider_transaction_id', $providerTransactionId)
+            ->where('type', 'payment')
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * Some Checkout Session webhooks are emitted before Stripe has assigned a
+     * PaymentIntent. The session id lives in non-sensitive reconciliation
+     * metadata, so it is also a safe lifecycle correlation key.
+     */
+    public function findByProviderSession(string $provider, string $providerSessionId): ?stdClass
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('provider', $provider)
+            ->whereJsonContains('metadata->stripe_session_id', $providerSessionId)
+            ->orderBy('id')
+            ->first();
+    }
+
+    public function findTransaction(int $transactionId): ?stdClass
+    {
+        return $this->db->table(self::TRANSACTIONS)->where('id', $transactionId)->first();
+    }
+
+    /** Locks the immutable movement row before an event is appended to it. */
+    public function findTransactionForUpdate(int $transactionId): ?stdClass
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('id', $transactionId)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    public function latestStatusEventForUpdate(int $transactionId): ?stdClass
+    {
+        return $this->db->table(self::EVENTS)
+            ->where('financial_transaction_id', $transactionId)
+            ->whereIn('event_type', ['recorded', 'status_changed'])
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /** @return Collection<int, stdClass> */
+    public function chronologicalForOrder(int $orderId): Collection
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('order_id', $orderId)
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @return array{items: Collection<int, stdClass>, total: int}
+     */
+    public function paginatedChronologicalForOrder(int $orderId, int $page, int $perPage): array
+    {
+        $query = $this->db->table(self::TRANSACTIONS)->where('order_id', $orderId);
+        $total = (int) $query->count();
+
+        return [
+            'items' => $query->orderBy('occurred_at')->orderBy('id')
+                ->forPage($page, $perPage)
+                ->get(),
+            'total' => $total,
+        ];
+    }
+
+    /** @return Collection<int, stdClass> */
+    public function chronologicalForArtisan(int $artisanId): Collection
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('artisan_id', $artisanId)
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Returns only the ledger facts belonging to one seller for a half-open
+     * reporting period.  Keeping this predicate in the persistence boundary
+     * is intentional: a financial summary must never be assembled from an
+     * unscoped list of marketplace movements.
+     *
+     * @return Collection<int, stdClass>
+     */
+    public function movementsForArtisanPeriod(int $artisanId, DateTimeInterface $from, DateTimeInterface $until): Collection
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('artisan_id', $artisanId)
+            ->where('occurred_at', '>=', $from->format('Y-m-d H:i:s'))
+            ->where('occurred_at', '<', $until->format('Y-m-d H:i:s'))
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * The transaction row is immutable, therefore the effective status is the
+     * latest recorded lifecycle event rather than financial_transactions.status.
+     *
+     * @param list<int> $transactionIds
+     * @return array<int, string>
+     */
+    public function latestStatuses(array $transactionIds): array
+    {
+        if ($transactionIds === []) {
+            return [];
+        }
+
+        $events = $this->db->table(self::EVENTS)
+            ->whereIn('financial_transaction_id', $transactionIds)
+            ->whereIn('event_type', ['recorded', 'status_changed'])
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $statuses = [];
+        foreach ($events as $event) {
+            $transactionId = (int) $event->financial_transaction_id;
+            $statuses[$transactionId] ??= (string) $event->status;
+        }
+
+        return $statuses;
+    }
+
+    /** @return Collection<int, stdClass> */
+    public function eventsForTransaction(int $transactionId): Collection
+    {
+        return $this->db->table(self::EVENTS)
+            ->where('financial_transaction_id', $transactionId)
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Read-only base query for the administrative financial report.
+     *
+     * The transaction table intentionally keeps the status first received
+     * from the provider.  A report must instead use the latest lifecycle
+     * event, otherwise a retried webhook could make an available or reversed
+     * movement appear pending again.
+     *
+     * @param array{from?: string, to?: string, artisan_id?: int, order_id?: int, status?: string, provider?: string, type?: string} $filters
+     */
+    public function financialReportQuery(array $filters): Builder
+    {
+        $query = $this->db->table(self::TRANSACTIONS . ' as financial_transaction')
+            ->select([
+                'financial_transaction.id', 'financial_transaction.order_id', 'financial_transaction.artisan_id',
+                'financial_transaction.order_reference', 'financial_transaction.artisan_reference',
+                'financial_transaction.type', 'financial_transaction.amount', 'financial_transaction.currency',
+                'financial_transaction.provider', 'financial_transaction.occurred_at',
+                'financial_transaction.available_at', 'financial_transaction.settled_at',
+            ])
+            ->selectSub(function (Builder $statusQuery): void {
+                $statusQuery->from(self::EVENTS . ' as status_event')
+                    ->select('status_event.status')
+                    ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
+                    ->whereIn('status_event.event_type', ['recorded', 'status_changed'])
+                    ->orderByDesc('status_event.occurred_at')
+                    ->orderByDesc('status_event.id')
+                    ->limit(1);
+            }, 'current_status');
+
+        if (isset($filters['from'])) {
+            $query->where('financial_transaction.occurred_at', '>=', $filters['from']);
+        }
+        if (isset($filters['to'])) {
+            $query->where('financial_transaction.occurred_at', '<', $filters['to']);
+        }
+        foreach (['artisan_id', 'order_id', 'provider', 'type'] as $filter) {
+            if (isset($filters[$filter])) {
+                $query->where('financial_transaction.' . $filter, $filters[$filter]);
+            }
+        }
+        if (isset($filters['status'])) {
+            $query->whereExists(function (Builder $statusQuery) use ($filters): void {
+                $statusQuery->from(self::EVENTS . ' as status_event')
+                    ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
+                    ->whereIn('status_event.event_type', ['recorded', 'status_changed'])
+                    ->where('status_event.status', $filters['status'])
+                    ->whereRaw('status_event.id = (SELECT latest_status_event.id FROM ' . self::EVENTS . ' AS latest_status_event WHERE latest_status_event.financial_transaction_id = financial_transaction.id AND latest_status_event.event_type IN (?, ?) ORDER BY latest_status_event.occurred_at DESC, latest_status_event.id DESC LIMIT 1)', ['recorded', 'status_changed']);
+            });
+        }
+
+        return $query;
+    }
+}
