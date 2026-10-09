@@ -16,3 +16,9 @@ $container->set(\PS\Webservice\Commands\Scheduler\GenerateSitemapHandler::class,
         $c->get(\PS\Webservice\Commands\GenerateSitemap::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSummaryMessageHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSummaryMessageHandler(
+        $c->get(\PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class)
+    );
+});

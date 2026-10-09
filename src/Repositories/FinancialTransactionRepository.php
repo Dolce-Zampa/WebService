@@ -6,6 +6,7 @@ namespace PS\Webservice\Repositories;
 
 use Illuminate\Database\Capsule\Manager;
 use Illuminate\Support\Collection;
+use DateTimeInterface;
 use PS\Webservice\Domain\Financial\FinancialMovement;
 use stdClass;
 
@@ -151,6 +152,54 @@ final class FinancialTransactionRepository
             ->orderBy('occurred_at')
             ->orderBy('id')
             ->get();
+    }
+
+    /**
+     * Returns only the ledger facts belonging to one seller for a half-open
+     * reporting period.  Keeping this predicate in the persistence boundary
+     * is intentional: a financial summary must never be assembled from an
+     * unscoped list of marketplace movements.
+     *
+     * @return Collection<int, stdClass>
+     */
+    public function movementsForArtisanPeriod(int $artisanId, DateTimeInterface $from, DateTimeInterface $until): Collection
+    {
+        return $this->db->table(self::TRANSACTIONS)
+            ->where('artisan_id', $artisanId)
+            ->where('occurred_at', '>=', $from->format('Y-m-d H:i:s'))
+            ->where('occurred_at', '<', $until->format('Y-m-d H:i:s'))
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * The transaction row is immutable, therefore the effective status is the
+     * latest recorded lifecycle event rather than financial_transactions.status.
+     *
+     * @param list<int> $transactionIds
+     * @return array<int, string>
+     */
+    public function latestStatuses(array $transactionIds): array
+    {
+        if ($transactionIds === []) {
+            return [];
+        }
+
+        $events = $this->db->table(self::EVENTS)
+            ->whereIn('financial_transaction_id', $transactionIds)
+            ->whereIn('event_type', ['recorded', 'status_changed'])
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $statuses = [];
+        foreach ($events as $event) {
+            $transactionId = (int) $event->financial_transaction_id;
+            $statuses[$transactionId] ??= (string) $event->status;
+        }
+
+        return $statuses;
     }
 
     /** @return Collection<int, stdClass> */
