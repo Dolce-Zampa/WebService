@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Repositories;
 
 use Illuminate\Database\Capsule\Manager;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use DateTimeInterface;
 use PS\Webservice\Domain\Financial\FinancialMovement;
@@ -226,5 +227,59 @@ final class FinancialTransactionRepository
             ->orderBy('occurred_at')
             ->orderBy('id')
             ->get();
+    }
+
+    /**
+     * Read-only base query for the administrative financial report.
+     *
+     * The transaction table intentionally keeps the status first received
+     * from the provider.  A report must instead use the latest lifecycle
+     * event, otherwise a retried webhook could make an available or reversed
+     * movement appear pending again.
+     *
+     * @param array{from?: string, to?: string, artisan_id?: int, order_id?: int, status?: string, provider?: string, type?: string} $filters
+     */
+    public function financialReportQuery(array $filters): Builder
+    {
+        $query = $this->db->table(self::TRANSACTIONS . ' as financial_transaction')
+            ->select([
+                'financial_transaction.id', 'financial_transaction.order_id', 'financial_transaction.artisan_id',
+                'financial_transaction.order_reference', 'financial_transaction.artisan_reference',
+                'financial_transaction.type', 'financial_transaction.amount', 'financial_transaction.currency',
+                'financial_transaction.provider', 'financial_transaction.occurred_at',
+                'financial_transaction.available_at', 'financial_transaction.settled_at',
+            ])
+            ->selectSub(function (Builder $statusQuery): void {
+                $statusQuery->from(self::EVENTS . ' as status_event')
+                    ->select('status_event.status')
+                    ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
+                    ->whereIn('status_event.event_type', ['recorded', 'status_changed'])
+                    ->orderByDesc('status_event.occurred_at')
+                    ->orderByDesc('status_event.id')
+                    ->limit(1);
+            }, 'current_status');
+
+        if (isset($filters['from'])) {
+            $query->where('financial_transaction.occurred_at', '>=', $filters['from']);
+        }
+        if (isset($filters['to'])) {
+            $query->where('financial_transaction.occurred_at', '<', $filters['to']);
+        }
+        foreach (['artisan_id', 'order_id', 'provider', 'type'] as $filter) {
+            if (isset($filters[$filter])) {
+                $query->where('financial_transaction.' . $filter, $filters[$filter]);
+            }
+        }
+        if (isset($filters['status'])) {
+            $query->whereExists(function (Builder $statusQuery) use ($filters): void {
+                $statusQuery->from(self::EVENTS . ' as status_event')
+                    ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
+                    ->whereIn('status_event.event_type', ['recorded', 'status_changed'])
+                    ->where('status_event.status', $filters['status'])
+                    ->whereRaw('status_event.id = (SELECT latest_status_event.id FROM ' . self::EVENTS . ' AS latest_status_event WHERE latest_status_event.financial_transaction_id = financial_transaction.id AND latest_status_event.event_type IN (?, ?) ORDER BY latest_status_event.occurred_at DESC, latest_status_event.id DESC LIMIT 1)', ['recorded', 'status_changed']);
+            });
+        }
+
+        return $query;
     }
 }
