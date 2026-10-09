@@ -51,7 +51,6 @@ class Category extends PrestashopService implements PrestashopServiceInterface
             'slug' => $slug,
             'short_description' => $additionalDescription !== '' ? $additionalDescription : $description,
             'description' => $description,
-            'additional_description' => $additionalDescription,
             'title' => $metaTitle !== '' ? $metaTitle : $name,
             'meta_title' => $metaTitle,
             'meta_description' => $this->extractTranslatedValue($categoryData['meta_description'] ?? ''),
