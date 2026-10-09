@@ -72,7 +72,6 @@ final class CategoryServiceTest extends TestCase
             'slug' => 'cani',
             'short_description' => 'Promo cani',
             'description' => '<p>Tutto per i cani</p>',
-            'additional_description' => 'Promo cani',
             'title' => 'Categoria Cani',
             'meta_title' => 'Categoria Cani',
             'meta_description' => 'Acquista prodotti per cani',
