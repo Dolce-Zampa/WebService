@@ -26,6 +26,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 class StripeWebhookController extends OrderController
 {
     use UseCache, OrderTrait;
+    private const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
+    private const MAX_WEBHOOK_TOLERANCE_SECONDS = 300;
     private Order $orderService;
     private MailjetService $mailjetService;
     protected PaymentGatewayInterface $stripeService;
@@ -144,7 +146,27 @@ class StripeWebhookController extends OrderController
      */
     protected function constructStripeEvent(string $payload, string $sigHeader, string $secret): \Stripe\Event
     {
-        return \Stripe\Webhook::constructEvent($payload, $sigHeader, $secret);
+        // Stripe validates the signature timestamp as part of verification.
+        // Keep a short, bounded tolerance so an intercepted signed request
+        // cannot be replayed long after it was issued; exact event retries are
+        // additionally harmless because the ledger uses the Stripe event id
+        // as its idempotency key.
+        return \Stripe\Webhook::constructEvent($payload, $sigHeader, $secret, $this->webhookToleranceSeconds());
+    }
+
+    private function webhookToleranceSeconds(): int
+    {
+        $configured = $_ENV['STRIPE_WEBHOOK_TOLERANCE_SECONDS'] ?? self::DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+        if (filter_var($configured, FILTER_VALIDATE_INT) === false) {
+            return self::DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+        }
+
+        $tolerance = (int) $configured;
+        if ($tolerance < 1 || $tolerance > self::MAX_WEBHOOK_TOLERANCE_SECONDS) {
+            return self::DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+        }
+
+        return $tolerance;
     }
 
     /**
