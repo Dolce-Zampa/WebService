@@ -184,6 +184,7 @@ final class FinancialMovement
         if (!is_array($value)) {
             throw new InvalidArgumentException('Financial movement metadata must be an array.');
         }
+        FinancialMetadata::assertSafe($value);
         return $value;
     }
 
