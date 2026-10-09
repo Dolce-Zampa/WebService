@@ -13,4 +13,5 @@ enum TemplateMail: string
     case SUBSCRIPTION_CONFIRMATION = 'subscription_confirmation';
     case REVIEW_REQUEST = 'review_request';
     case WEEKLY_SELLER_FINANCIAL_SUMMARY = 'weekly_seller_financial_summary';
+    case SELLER_SALE = 'seller_sale';
 }

@@ -10,6 +10,7 @@ return [
     \PS\Webservice\Commands\GenerateSitemap::class,
     \PS\Webservice\Commands\SendReviewRequestMailCommand::class,
     \PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class,
+    \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class,
     \PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class,
     \PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class,
     \PS\Webservice\Commands\ElasticSearch\IndexProduct::class,

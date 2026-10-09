@@ -67,6 +67,10 @@ Il webhook viene rifiutato finché il pagamento d'origine non è presente: una r
 
 Non viene calcolato né inventato alcuno storno di commissione o rettifica payout: per registrarli servono sia un importo esplicito fornito dal provider o da una policy contabile approvata, sia il movimento `commission`/`payout` originario da collegare. Analogamente il Refund Stripe non espone una ripartizione verificabile della spedizione; il pagamento Checkout resta lordo e non viene creata una componente spedizione separata senza un importo provider verificabile, per evitare duplicazioni o allocazioni presunte.
 
+## Notifica vendita al venditore
+
+Dopo un checkout firmato e finalizzato, ogni venditore riceve una sola notifica relativa esclusivamente ai propri prodotti. Il journal di consegna è idempotente e i retry non bloccano la finalizzazione dell'ordine.
+
 ## Test e prerequisiti
 
 La suite finanziaria usa fixture SQLite in memoria e copre il journal append-only, precisione `DECIMAL(20,6)`, snapshot della commissione, retry dei webhook, stati pendenti/falliti/disponibili, payout, rimborsi parziali e privacy del metadata Stripe. Per eseguirla:
