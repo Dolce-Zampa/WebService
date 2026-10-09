@@ -10,3 +10,4 @@ require_once 'di/repositories-di.php';
 
 require_once 'di/commands-di.php';
 
+require_once 'di/scheduler-di.php';
