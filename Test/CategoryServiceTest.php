@@ -38,6 +38,9 @@ final class CategoryServiceTest extends TestCase
                         'description' => [
                             ['id' => '1', 'value' => '<p>Tutto per i cani</p>'],
                         ],
+                        'additional_description' => [
+                            ['id' => '1', 'value' => 'Promo cani'],
+                        ],
                         'meta_title' => [
                             ['id' => '1', 'value' => 'Categoria Cani'],
                         ],
