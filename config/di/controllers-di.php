@@ -33,6 +33,12 @@ $container->set(\PS\Webservice\Http\Controller\OrderController::class, function 
     return new \PS\Webservice\Http\Controller\OrderController($orderService,$payment);
 });
 
+$container->set(\PS\Webservice\Http\Controller\FinancialReconciliationController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialReconciliationController(
+        $c->get(\PS\Webservice\Service\Financial\FinancialOrderReconciliationService::class),
+    );
+});
+
 $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, function ($c) {
     $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
     $prestashopService = $c->get(\PS\Webservice\Service\PS\PrestashopService::class);
