@@ -144,6 +144,22 @@ final class FinancialTransactionRepository
             ->get();
     }
 
+    /**
+     * @return array{items: Collection<int, stdClass>, total: int}
+     */
+    public function paginatedChronologicalForOrder(int $orderId, int $page, int $perPage): array
+    {
+        $query = $this->db->table(self::TRANSACTIONS)->where('order_id', $orderId);
+        $total = (int) $query->count();
+
+        return [
+            'items' => $query->orderBy('occurred_at')->orderBy('id')
+                ->forPage($page, $perPage)
+                ->get(),
+            'total' => $total,
+        ];
+    }
+
     /** @return Collection<int, stdClass> */
     public function chronologicalForArtisan(int $artisanId): Collection
     {
