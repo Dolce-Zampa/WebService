@@ -129,6 +129,28 @@ final class ProductCacheTest extends TestCase
         $this->assertNotSame($first, $second);
     }
 
+    public function test_complete_product_exposes_the_lowest_price_from_the_last_thirty_days(): void
+    {
+        $connection = Illuminate\Database\Capsule\Manager::connection();
+        $connection->getSchemaBuilder()->create('fy8ie_product_price_history', function ($table) {
+            $table->integer('id_product');
+            $table->decimal('price', 10, 2);
+            $table->date('date');
+        });
+        $connection->table('fy8ie_product_price_history')->insert([
+            ['id_product' => 7, 'price' => 29.90, 'date' => Carbon\Carbon::today()->subDays(5)->toDateString()],
+            ['id_product' => 7, 'price' => 24.90, 'date' => Carbon\Carbon::today()->subDays(20)->toDateString()],
+            ['id_product' => 7, 'price' => 19.90, 'date' => Carbon\Carbon::today()->subDays(31)->toDateString()],
+        ]);
+        $http = $this->http([], 0);
+        $service = $this->getMockBuilder(Product::class)->setConstructorArgs([$http])->onlyMethods(['getProductById'])->getMock();
+        $service->method('getProductById')->willReturn(ProductEntity::fromSnapshot(['id' => 7, 'price' => 29.90, 'associations' => []], $service, true));
+
+        $product = $service->getCompleteProductById(7);
+
+        $this->assertSame(24.9, $product->toArray()['lowest_price_last_30_days']);
+    }
+
     public function test_http_hit_preserves_response_body_and_webhook_invalidates_category(): void
     {
         $request = (new ServerRequestFactory())->createServerRequest('GET', '/api/products');

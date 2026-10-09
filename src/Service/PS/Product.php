@@ -6,6 +6,7 @@ namespace PS\Webservice\Service\PS;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Database\Capsule\Manager as DB;
 use PS\Webservice\Domain\Entities\EntityExceptions;
 use PS\Webservice\Domain\Entities\FilterEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
@@ -139,6 +140,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 return null;
             }
             $data = $product->withFeatures()->toArray();
+            $data['lowest_price_last_30_days'] = $this->getLowestPriceLast30Days($id);
             $dependencies = [];
             foreach (array_merge($data['bundles'] ?? [], $data['associations']['accessories'] ?? []) as $related) {
                 if (isset($related['id'])) {
@@ -149,6 +151,33 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return ['product' => $data, 'dependencies' => $dependencies];
         }, 0, fn (array $cached) => $this->snapshotIsCurrent($cached));
         return $snapshot === null ? null : ProductEntity::fromSnapshot($snapshot['product'], $this, true);
+    }
+
+    /**
+     * Returns the lowest price applied during the previous thirty days.
+     *
+     * The price-history flow writes one row for each effective product price.
+     * A missing history must not make the product-detail endpoint unavailable,
+     * so consumers receive null until history is available for that product.
+     */
+    private function getLowestPriceLast30Days(int $productId): ?float
+    {
+        try {
+            $startDate = (new \DateTimeImmutable('today -30 days'))->format('Y-m-d');
+            $price = DB::table(env('PS_TABLE_PREFIX', 'fy8ie_') . 'product_price_history')
+                ->where('id_product', $productId)
+                ->whereDate('date', '>=', $startDate)
+                ->min('price');
+
+            return $price === null ? null : (float) $price;
+        } catch (\Throwable $exception) {
+            Log::warning('Unable to retrieve the Omnibus price history', [
+                'product_id' => $productId,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     public function countProducts(array $filter = []): int
