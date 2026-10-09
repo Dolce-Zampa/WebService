@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 use InvalidArgumentException;
+use PS\Webservice\Domain\Financial\FinancialMetadata;
 use PS\Webservice\Domain\Financial\FinancialMovement;
 use PS\Webservice\Domain\Financial\LedgerAppendResult;
 use PS\Webservice\Repositories\FinancialTransactionRepository;
@@ -150,6 +151,7 @@ final class FinancialLedgerService
     ): LedgerAppendResult {
         $this->assertIdempotencyKey($idempotencyKey);
         $this->assertSourceEvent($sourceEventType, $sourceEventId);
+        FinancialMetadata::assertSafe($metadata);
         if (!in_array($newStatus, FinancialMovement::STATUSES, true)) {
             throw new InvalidArgumentException('Unsupported financial movement status.');
         }
