@@ -66,3 +66,9 @@ Un webhook `refund.*` con oggetto Stripe Refund identificabile (`re_...`) genera
 Il webhook viene rifiutato finché il pagamento d'origine non è presente: una riga di rimborso senza legame sarebbe un fatto contabile non riconciliabile. Stripe può quindi ritentare in caso di consegna fuori ordine.
 
 Non viene calcolato né inventato alcuno storno di commissione o rettifica payout: per registrarli servono sia un importo esplicito fornito dal provider o da una policy contabile approvata, sia il movimento `commission`/`payout` originario da collegare. Analogamente il Refund Stripe non espone una ripartizione verificabile della spedizione; il pagamento Checkout resta lordo e non viene creata una componente spedizione separata senza un importo provider verificabile, per evitare duplicazioni o allocazioni presunte.
+
+## Riconciliazione amministrativa per ordine
+
+`GET /api/admin/financial/orders/{orderId}/reconciliation?page=1&per_page=50` espone una vista esclusivamente amministrativa dell'ordine. Richiede sia un access token Cognito valido sia il gruppo `financial-admin` (oppure un subject incluso in `FINANCIAL_ADMIN_SUBS`); gli identificativi dell'ordine non attribuiscono alcun diritto di lettura.
+
+La risposta contiene gli identificativi disponibili, una timeline paginata dei movimenti e dei relativi eventi di stato, incassi, rimborsi, commissioni calcolate e registrate, spettanze, payout e residui. I payout sono esposti come importi positivi pagati al venditore, pur essendo negativi nel ledger dal punto di vista del marketplace. La spedizione resta `not_recorded` finché non esiste un movimento esplicito: l'eventuale differenza non spiegata viene mostrata senza attribuirla automaticamente a spedizione, sconti o altre voci.
