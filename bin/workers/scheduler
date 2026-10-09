@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Log;
 use PS\Webservice\Commands\Scheduler\AppScheduleProvider;
 use PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHandler;
 use PS\Webservice\Commands\Scheduler\GenerateSitemapHandler;
+use PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSummaryMessageHandler;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
 use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
@@ -30,12 +31,14 @@ $handler                = $container->get(SendReviewRequestMailMessageHandler::c
 $generateSitemapHandler = $container->get(GenerateSitemapHandler::class);
 
 $warmProductCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\WarmProductCacheMessageHandler::class);
+$weeklySellerSummaryHandler = $container->get(SendWeeklySellerFinancialSummaryMessageHandler::class);
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(new HandlersLocator([
         \PS\Webservice\Commands\Scheduler\WarmProductCacheMessage::class => [$warmProductCacheHandler],
         \PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessage::class => [$handler],
         \PS\Webservice\Commands\Scheduler\GenerateSitemap::class => [$generateSitemapHandler],
+        \PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSummaryMessage::class => [$weeklySellerSummaryHandler],
     ])),
 ]);
 

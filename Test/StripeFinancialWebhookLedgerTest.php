@@ -120,6 +120,42 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
         self::assertSame('failed', DB::table('financial_transaction_events')->value('status'));
     }
 
+    public function test_completed_checkout_is_available_and_persists_only_reconciliation_metadata(): void
+    {
+        $this->controller()->ingest($this->checkoutEvent(
+            'evt_private_completed',
+            'checkout.session.completed',
+            [
+                'id' => 'cs_private_1',
+                'payment_intent' => 'pi_private_1',
+                'amount_total' => 1299,
+                'currency' => 'eur',
+                'payment_status' => 'paid',
+                'metadata' => [
+                    'cart_id' => '42',
+                    'customer_email' => 'buyer@example.test',
+                    'card_number' => '4242424242424242',
+                    'provider_secret' => 'should-not-be-stored',
+                ],
+                'customer_details' => [
+                    'email' => 'buyer@example.test',
+                    'address' => ['line1' => 'Via privata 1'],
+                ],
+            ],
+        ));
+
+        $movement = DB::table('financial_transactions')->first();
+        $metadata = json_decode((string) $movement->metadata, true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame('available', DB::table('financial_transaction_events')->value('status'));
+        self::assertSame([
+            'stripe_session_id' => 'cs_private_1',
+            'stripe_payment_intent_id' => 'pi_private_1',
+            'cart_id' => 42,
+            'stripe_payment_status' => 'paid',
+        ], $metadata);
+    }
+
     public function test_partial_and_full_refunds_are_linked_reversals_with_their_own_provider_ids(): void
     {
         $controller = $this->controller();
@@ -199,18 +235,48 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
 
     public function test_refund_without_an_original_payment_is_not_recorded_as_an_orphan(): void
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('original payment is not recorded');
-
-        $this->controller()->ingest($this->stripeEvent('evt_orphan_refund', 'refund.created', [
-            'id' => 're_orphan_1',
-            'payment_intent' => 'pi_missing',
-            'amount' => 100,
-            'currency' => 'eur',
-            'status' => 'succeeded',
-        ]));
+        try {
+            $this->controller()->ingest($this->stripeEvent('evt_orphan_refund', 'refund.created', [
+                'id' => 're_orphan_1',
+                'payment_intent' => 'pi_missing',
+                'amount' => 100,
+                'currency' => 'eur',
+                'status' => 'succeeded',
+            ]));
+            self::fail('An orphan refund must be rejected.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('Stripe refund original payment is not recorded.', $exception->getMessage());
+        }
 
         self::assertSame(0, DB::table('financial_transactions')->count());
+        self::assertSame(0, DB::table('financial_transaction_events')->count());
+    }
+
+    public function test_refund_in_a_different_currency_does_not_create_a_reversal(): void
+    {
+        $controller = $this->controller();
+        $controller->ingest($this->stripeEvent('evt_payment_eur', 'payment_intent.succeeded', [
+            'id' => 'pi_eur_only',
+            'amount' => 1000,
+            'currency' => 'eur',
+        ]));
+
+        try {
+            $controller->ingest($this->stripeEvent('evt_refund_usd', 'refund.created', [
+                'id' => 're_wrong_currency',
+                'payment_intent' => 'pi_eur_only',
+                'amount' => 1000,
+                'currency' => 'usd',
+                'status' => 'succeeded',
+            ]));
+            self::fail('A refund in a currency different from its payment must be rejected.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('Stripe refund currency differs from the original payment.', $exception->getMessage());
+        }
+
+        self::assertSame(1, DB::table('financial_transactions')->count());
+        self::assertSame(0, DB::table('financial_transactions')->where('type', 'refund')->count());
+        self::assertSame(1, DB::table('financial_transaction_events')->count());
     }
 
     private function controller(): StripeWebhookController

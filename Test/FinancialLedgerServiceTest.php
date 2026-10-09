@@ -175,6 +175,54 @@ final class FinancialLedgerServiceTest extends TestCase
         self::assertSame([$earlier->transactionId, $later->transactionId], $forArtisan->pluck('id')->map(static fn ($id): int => (int) $id)->all());
     }
 
+    public function test_payout_lifecycle_is_an_append_only_pending_to_paid_journal(): void
+    {
+        $payout = $this->service->record($this->movement([
+            'type' => 'payout',
+            'status' => 'pending',
+            'amount' => '-80.000000',
+            'provider' => 'stripe',
+            'provider_event_id' => 'evt_payout_created',
+            'source_event_type' => 'payout.created',
+            'source_event_id' => 'evt_payout_created',
+        ]), 'payout-created');
+
+        $paid = $this->service->recordProviderStatus(
+            $payout->transactionId,
+            'paid',
+            'payout-paid',
+            new DateTimeImmutable('2026-10-08 15:00:00'),
+            'payout.paid',
+            'evt_payout_paid',
+        );
+
+        self::assertTrue($paid->created);
+        self::assertSame('pending', DB::table('financial_transactions')->where('id', $payout->transactionId)->value('status'));
+        self::assertSame(['pending', 'paid'], $this->repository->eventsForTransaction($payout->transactionId)->pluck('status')->all());
+        self::assertSame(['recorded', 'status_changed'], $this->repository->eventsForTransaction($payout->transactionId)->pluck('event_type')->all());
+    }
+
+    public function test_amounts_are_decimal_strings_at_the_database_precision_boundary(): void
+    {
+        $movement = $this->movement([
+            'amount' => '99999999999999.999999',
+        ]);
+
+        self::assertSame(
+            '99999999999999.999999',
+            $movement->toDatabaseValues()['amount'],
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        FinancialMovement::fromArray([
+            'type' => 'payment',
+            'status' => 'pending',
+            'amount' => 12.99,
+            'currency' => 'EUR',
+            'occurred_at' => '2026-10-08 10:00:00',
+        ]);
+    }
+
     /** @param array<string, mixed> $overrides */
     private function movement(array $overrides = []): FinancialMovement
     {
