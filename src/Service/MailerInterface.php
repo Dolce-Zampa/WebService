@@ -2,6 +2,8 @@
 
 namespace PS\Webservice\Service;
 
+use PS\Webservice\Domain\Financial\WeeklySellerFinancialSummary;
+
 interface MailerInterface
 {
     public function sendSignUpMail(string $email, string $username): void;
@@ -15,4 +17,6 @@ interface MailerInterface
     public function sendRecoveryCartExpired(string $email, string $paymentUrl, array $products, string $cartTotal, $firstname = '');
 
     public function sendReviewRequestMail(string $email, string $firstname, int $idOrder, array $products, string $reviewUrl = ''): void;
+
+    public function sendWeeklySellerFinancialSummary(string $email, string $sellerName, WeeklySellerFinancialSummary $summary): void;
 }

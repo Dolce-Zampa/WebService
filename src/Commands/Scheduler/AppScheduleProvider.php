@@ -16,6 +16,8 @@ final class AppScheduleProvider implements ScheduleProviderInterface
 
     public function getSchedule(): Schedule
     {
+        $financialTimezone = (string) env('FINANCIAL_SUMMARY_TIMEZONE', 'UTC');
+
         return (new Schedule())
             ->add(RecurringMessage::cron('0 3 * * *', new WarmProductCacheMessage(), 'Europe/Rome'))
             ->add(
@@ -24,6 +26,10 @@ final class AppScheduleProvider implements ScheduleProviderInterface
             )
             ->add(
                 RecurringMessage::cron('10 * * * *', new GenerateSitemap())
+            )
+            ->add(
+                // Monday morning: reports always describe the preceding local calendar week.
+                RecurringMessage::cron('0 8 * * 1', new SendWeeklySellerFinancialSummaryMessage(), $financialTimezone)
             );
     }
 }
