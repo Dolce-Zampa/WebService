@@ -66,3 +66,16 @@ Un webhook `refund.*` con oggetto Stripe Refund identificabile (`re_...`) genera
 Il webhook viene rifiutato finché il pagamento d'origine non è presente: una riga di rimborso senza legame sarebbe un fatto contabile non riconciliabile. Stripe può quindi ritentare in caso di consegna fuori ordine.
 
 Non viene calcolato né inventato alcuno storno di commissione o rettifica payout: per registrarli servono sia un importo esplicito fornito dal provider o da una policy contabile approvata, sia il movimento `commission`/`payout` originario da collegare. Analogamente il Refund Stripe non espone una ripartizione verificabile della spedizione; il pagamento Checkout resta lordo e non viene creata una componente spedizione separata senza un importo provider verificabile, per evitare duplicazioni o allocazioni presunte.
+
+## Test e prerequisiti
+
+La suite finanziaria usa fixture SQLite in memoria e copre il journal append-only, precisione `DECIMAL(20,6)`, snapshot della commissione, retry dei webhook, stati pendenti/falliti/disponibili, payout, rimborsi parziali e privacy del metadata Stripe. Per eseguirla:
+
+```sh
+composer install
+vendor/bin/phpunit Test/FinancialLedgerServiceTest.php Test/CommissionSnapshotServiceTest.php Test/StripeFinancialWebhookLedgerTest.php
+```
+
+Servono le estensioni PHP `sqlite3` e `bcmath`, oltre alle dipendenze bloccate in `composer.lock`. Il bootstrap applicativo richiede anche un `.env` valido; i test di dominio/infrastruttura non necessitano di credenziali reali Stripe.
+
+Al momento non esistono route o controller per report, riconciliazione o payout finanziari: quindi non è possibile aggiungere test API/BOLA-IDOR per quei flussi senza introdurne un'implementazione. Restano coperti il rifiuto della firma Stripe non valida nel controller webhook e la whitelist di soli identificativi tecnici nel ledger. Quando gli endpoint saranno disponibili, i test dovranno verificare almeno l'isolamento per artigiano e il rifiuto di identificativi d'ordine/manomessi appartenenti ad altri soggetti.
