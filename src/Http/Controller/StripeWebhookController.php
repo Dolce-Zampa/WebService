@@ -14,6 +14,7 @@ use PS\Webservice\Domain\Models\PS\Products\Product;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\Financial\FinancialLedgerService;
+use PS\Webservice\Service\Financial\SellerSaleNotificationService;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
@@ -33,6 +34,7 @@ class StripeWebhookController extends OrderController
     protected PaymentGatewayInterface $stripeService;
     private ?PromotionService $promotionService = null;
     private ?FinancialLedgerService $financialLedger;
+    private ?SellerSaleNotificationService $sellerSaleNotifications;
 
     private MailerInterface $mailer;
 
@@ -44,6 +46,7 @@ class StripeWebhookController extends OrderController
         mixed $legacyDependency = null,
         ?PromotionService $promotionService = null,
         ?FinancialLedgerService $financialLedger = null,
+        ?SellerSaleNotificationService $sellerSaleNotifications = null,
     )
     {
         $this->orderService = $orderService;
@@ -56,6 +59,7 @@ class StripeWebhookController extends OrderController
             $this->promotionService = $promotionService;
         }
         $this->financialLedger = $financialLedger;
+        $this->sellerSaleNotifications = $sellerSaleNotifications;
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -101,7 +105,17 @@ class StripeWebhookController extends OrderController
                     $this->promotionService->activatePromotionFromStripeSession($event->data->object);
                     return response(['received' => true], 200);
                 }
-                $this->handleCheckoutSessionCompleted($event->data->object);
+                $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                if ($cartId !== null && $this->sellerSaleNotifications !== null) {
+                    // This happens only after Stripe's signature has been
+                    // checked and PrestaShop has accepted the confirmation.
+                    // The notification service is best-effort and journals
+                    // its own idempotent delivery state.
+                    $this->sellerSaleNotifications->notifyFinalizedSalesForCart(
+                        $cartId,
+                        $this->stripeEventTimestamp($event->created ?? null),
+                    );
+                }
                 $this->recordFinancialWebhook($event);
             } catch (\Exception $e) {
                 Log::critical('Stripe webhook: failed to process checkout.session.completed: ' . $e->getMessage());
@@ -579,7 +593,7 @@ class StripeWebhookController extends OrderController
     /**
      * Processes a Stripe checkout.session.completed event and confirms the corresponding order.
      */
-    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): void
+    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): ?int
     {
         $metadata = $session->metadata;
         $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
@@ -590,7 +604,7 @@ class StripeWebhookController extends OrderController
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for session ' . $session->id);
-            return;
+            return null;
         }
 
         // Convert from Stripe's smallest currency unit to the major unit.
@@ -643,6 +657,7 @@ class StripeWebhookController extends OrderController
         }
 
         Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
+        return $cartId;
     }
 
     /** Retrieve the checkout identity and delivery address, including unregistered guests. */
