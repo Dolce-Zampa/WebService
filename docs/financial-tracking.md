@@ -72,3 +72,16 @@ Non viene calcolato né inventato alcuno storno di commissione o rettifica payou
 `GET /api/admin/financial/orders/{orderId}/reconciliation?page=1&per_page=50` espone una vista esclusivamente amministrativa dell'ordine. Richiede sia un access token Cognito valido sia il gruppo `financial-admin` (oppure un subject incluso in `FINANCIAL_ADMIN_SUBS`); gli identificativi dell'ordine non attribuiscono alcun diritto di lettura.
 
 La risposta contiene gli identificativi disponibili, una timeline paginata dei movimenti e dei relativi eventi di stato, incassi, rimborsi, commissioni calcolate e registrate, spettanze, payout e residui. I payout sono esposti come importi positivi pagati al venditore, pur essendo negativi nel ledger dal punto di vista del marketplace. La spedizione resta `not_recorded` finché non esiste un movimento esplicito: l'eventuale differenza non spiegata viene mostrata senza attribuirla automaticamente a spedizione, sconti o altre voci.
+
+## Test e prerequisiti
+
+La suite finanziaria usa fixture SQLite in memoria e copre il journal append-only, precisione `DECIMAL(20,6)`, snapshot della commissione, retry dei webhook, stati pendenti/falliti/disponibili, payout, rimborsi parziali e privacy del metadata Stripe. Per eseguirla:
+
+```sh
+composer install
+vendor/bin/phpunit Test/FinancialLedgerServiceTest.php Test/CommissionSnapshotServiceTest.php Test/StripeFinancialWebhookLedgerTest.php
+```
+
+Servono le estensioni PHP `sqlite3` e `bcmath`, oltre alle dipendenze bloccate in `composer.lock`. Il bootstrap applicativo richiede anche un `.env` valido; i test di dominio/infrastruttura non necessitano di credenziali reali Stripe.
+
+Restano coperti il rifiuto della firma Stripe non valida nel controller webhook e la whitelist di soli identificativi tecnici nel ledger. I test delle API devono inoltre verificare l'accesso amministrativo e il rifiuto di identificativi d'ordine appartenenti ad altri soggetti.
