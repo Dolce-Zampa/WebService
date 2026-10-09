@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Repositories;
 
 use Illuminate\Database\Capsule\Manager;
+use Illuminate\Support\Collection;
 use PS\Webservice\Domain\Financial\CommissionSnapshot;
 use stdClass;
 
@@ -34,5 +35,14 @@ final class FinancialCommissionSnapshotRepository
             ->where('order_id', $orderId)
             ->where('order_item_id', $orderItemId)
             ->first();
+    }
+
+    /** @return Collection<int, stdClass> */
+    public function forOrder(int $orderId): Collection
+    {
+        return $this->db->table(self::SNAPSHOTS)
+            ->where('order_id', $orderId)
+            ->orderBy('order_item_id')
+            ->get();
     }
 }
