@@ -69,6 +69,13 @@ $container->set(\PS\Webservice\Service\Financial\WeeklySellerFinancialSummarySer
     );
 });
 
+$container->set(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\SellerSaleNotificationService(
+        $capsule,
+        $c->get(\PS\Webservice\Service\MailerInterface::class),
+    );
+});
+
 $container->set(\PS\Webservice\Service\PS\Image::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
     return new \PS\Webservice\Service\PS\Image($httpService);

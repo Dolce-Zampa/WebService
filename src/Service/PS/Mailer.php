@@ -237,6 +237,22 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         }
     }
 
+    public function sendSellerSaleNotification(string $email, string $sellerName, string $orderReference, string $finalizedAt, array $items, string $amount, string $status): void
+    {
+        try {
+            $this->httpService->setUrl('/mailer?debug=true');
+            $this->httpService->invoke('POST', new PayloadServiceData([
+                'subject' => 'Hai ricevuto una nuova vendita',
+                'to_email' => $email,
+                'to_name' => $sellerName,
+                'template' => TemplateMail::SELLER_SALE->value,
+                'template_vars' => ['seller_name' => $sellerName, 'order_reference' => $orderReference, 'finalized_at' => $finalizedAt, 'items' => $items, 'amount' => $amount, 'status' => $status],
+            ]));
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
     private function weeklyFinancialSummaryRows(WeeklySellerFinancialSummary $summary): string
     {
         if ($summary->currencies === []) {
