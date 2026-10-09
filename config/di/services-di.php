@@ -45,6 +45,13 @@ $container->set(\PS\Webservice\Service\Financial\FinancialLedgerService::class, 
     );
 });
 
+$container->set(\PS\Webservice\Service\Financial\FinancialOrderReconciliationService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialOrderReconciliationService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class),
+        $c->get(\PS\Webservice\Repositories\FinancialCommissionSnapshotRepository::class),
+    );
+});
+
 $container->set(\PS\Webservice\Service\Financial\CommissionCalculator::class, function ($c) {
     return new \PS\Webservice\Service\Financial\CommissionCalculator();
 });
