@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use PS\Webservice\Http\Controller\CartController;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\PS\Cart;
 use Illuminate\Support\Collection;
 use PHPUnit\Framework\TestCase;
@@ -10,6 +11,14 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class CartCouponControllerTest extends TestCase
 {
+    private function createRepositoryMock(): PrestashopRepository
+    {
+        return $this->getMockBuilder(PrestashopRepository::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findUserIdFromSub'])
+            ->getMock();
+    }
+
     public function test_get_coupon_detail_returns_404_when_not_found(): void
     {
         $cartService = $this->getMockBuilder(Cart::class)
@@ -22,7 +31,7 @@ final class CartCouponControllerTest extends TestCase
             ->with('UNKNOWN')
             ->willReturn(null);
 
-        $controller = new CartController($cartService);
+        $controller = new CartController($cartService, $this->createRepositoryMock());
 
         $request = $this->createMock(ServerRequestInterface::class);
         $response = $this->createMock(ResponseInterface::class);
@@ -40,7 +49,7 @@ final class CartCouponControllerTest extends TestCase
 
         $cartService->expects($this->never())->method('validateCoupon');
 
-        $controller = new CartController($cartService);
+        $controller = new CartController($cartService, $this->createRepositoryMock());
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn([]);
@@ -64,7 +73,7 @@ final class CartCouponControllerTest extends TestCase
             ->with('SAVE10', 5, 'cust', null)
             ->willReturn(['valid' => true]);
 
-        $controller = new CartController($cartService);
+        $controller = new CartController($cartService, $this->createRepositoryMock());
 
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn(['customer_id' => 'cust']);
