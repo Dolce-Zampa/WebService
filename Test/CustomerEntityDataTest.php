@@ -5,6 +5,7 @@ declare(strict_types=1);
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
+use PS\Webservice\Domain\Models\PS\Configuration;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 
 final class CustomerEntityDataTest extends TestCase
@@ -86,6 +87,48 @@ final class CustomerEntityDataTest extends TestCase
         self::assertSame('222', $order['customer']['phone']);
         self::assertSame(44, $order['customer']['delivery_address']['id_country']);
         self::assertSame(44, $order['customer']['invoice_address']['id_country']);
+    }
+
+    public function testOrderUsesTheConfigurationModelWhenLanguageIsNotProvided(): void
+    {
+        $schema = \Illuminate\Database\Capsule\Manager::schema();
+        if (!$schema->hasTable('configuration')) {
+            $schema->create('configuration', function ($table) {
+                $table->increments('id_configuration');
+                $table->string('name')->unique();
+                $table->string('value');
+            });
+        }
+        Configuration::query()->updateOrCreate(['name' => 'PS_LANG_DEFAULT'], ['value' => '1']);
+
+        $previousApplication = \Illuminate\Support\Facades\Facade::getFacadeApplication();
+        \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+        \Illuminate\Support\Facades\Facade::setFacadeApplication(null);
+
+        try {
+            $order = OrderEntity::create([
+                'id' => 1,
+                'id_carrier' => 2,
+                'id_guest' => 3,
+                'id_customer' => 4,
+                'reference' => 'ORDER1',
+                'id_cart' => 5,
+                'current_state' => 2,
+                'date_add' => '2026-01-01',
+                'total_paid_tax_incl' => 10,
+                'total_paid_tax_excl' => 8,
+                'customer' => [
+                    'email' => 'customer@example.com',
+                    'firstname' => 'Ada',
+                    'lastname' => 'Lovelace',
+                ],
+            ], $this->service)->toArray();
+
+            self::assertSame(1, $order['id_lang']);
+        } finally {
+            \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+            \Illuminate\Support\Facades\Facade::setFacadeApplication($previousApplication);
+        }
     }
 
     public function testAddressWithoutCountryIsRejected(): void

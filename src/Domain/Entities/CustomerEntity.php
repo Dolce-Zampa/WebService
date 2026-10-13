@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
-use Illuminate\Support\Facades\DB;
 use PS\Webservice\Domain\Models\PS\State;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
