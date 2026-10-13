@@ -276,7 +276,15 @@ final class FinancialTransactionRepository
                     ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
                     ->whereIn('status_event.event_type', ['recorded', 'status_changed'])
                     ->where('status_event.status', $filters['status'])
-                    ->whereRaw('status_event.id = (SELECT latest_status_event.id FROM ' . self::EVENTS . ' AS latest_status_event WHERE latest_status_event.financial_transaction_id = financial_transaction.id AND latest_status_event.event_type IN (?, ?) ORDER BY latest_status_event.occurred_at DESC, latest_status_event.id DESC LIMIT 1)', ['recorded', 'status_changed']);
+                    ->whereIn('status_event.id', function (Builder $latestStatusQuery): void {
+                        $latestStatusQuery->from(self::EVENTS . ' as latest_status_event')
+                            ->select('latest_status_event.id')
+                            ->whereColumn('latest_status_event.financial_transaction_id', 'financial_transaction.id')
+                            ->whereIn('latest_status_event.event_type', ['recorded', 'status_changed'])
+                            ->orderByDesc('latest_status_event.occurred_at')
+                            ->orderByDesc('latest_status_event.id')
+                            ->limit(1);
+                    });
             });
         }
 
