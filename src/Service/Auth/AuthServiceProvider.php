@@ -32,6 +32,108 @@ class AuthServiceProvider {
         return $sub . 'id_token';
     }
 
+    private function facebookStateCacheKey(string $state): string
+    {
+        return 'facebook_oauth_state_' . hash('sha256', $state);
+    }
+
+    private function cognitoHostedUiDomain(): string
+    {
+        $domain = trim((string) env('AWS_COGNITO_DOMAIN', ''));
+        $domain = preg_replace('#^https?://#i', '', $domain) ?? '';
+        $domain = rtrim($domain, '/');
+
+        if ($domain === '' || !preg_match('/^[A-Za-z0-9.-]+$/', $domain)) {
+            throw new \RuntimeException('Invalid Cognito Hosted UI domain');
+        }
+
+        return $domain;
+    }
+
+    /**
+     * Builds a one-time Cognito Hosted UI URL for the Facebook provider.
+     *
+     * The callback URL is configured on the Cognito app client and is also used
+     * when exchanging the authorization code. Keeping both values server-side
+     * prevents a client from choosing an arbitrary OAuth redirect URL.
+     */
+    public function facebookAuthorizationUrl(): string
+    {
+        $redirectUri = trim((string) env('AWS_COGNITO_REDIRECT_URI', ''));
+
+        if ($redirectUri === '') {
+            throw new \RuntimeException('Facebook authentication is not configured');
+        }
+
+        $domain = $this->cognitoHostedUiDomain();
+
+        $state = bin2hex(random_bytes(32));
+        Cache::put($this->facebookStateCacheKey($state), true, Carbon::now()->addMinutes(10));
+
+        return 'https://' . $domain . '/oauth2/authorize?' . http_build_query([
+            'client_id' => env('AWS_COGNITO_CLIENT_ID'),
+            'redirect_uri' => $redirectUri,
+            'response_type' => 'code',
+            'scope' => 'openid profile email',
+            'identity_provider' => 'Facebook',
+            'state' => $state,
+        ], '', '&', PHP_QUERY_RFC3986);
+    }
+
+    /**
+     * Exchanges a Facebook Hosted UI authorization code and returns verified
+     * Cognito identity claims together with the access token used by the API.
+     *
+     * @return array{access_token:string,id_token:string,identity:array<string,mixed>}
+     */
+    public function authenticateFacebook(string $code, string $state): array
+    {
+        if ($code === '' || $state === '' || Cache::pull($this->facebookStateCacheKey($state)) !== true) {
+            throw new \RuntimeException('Invalid or expired Facebook authentication state');
+        }
+
+        $tokenResponse = (new \GuzzleHttp\Client([
+            'base_uri' => 'https://' . $this->cognitoHostedUiDomain(),
+            'timeout' => 10,
+        ]))->post('/oauth2/token', [
+            'form_params' => [
+                'grant_type' => 'authorization_code',
+                'client_id' => (string) env('AWS_COGNITO_CLIENT_ID'),
+                'client_secret' => (string) env('AWS_COGNITO_CLIENT_SECRET'),
+                'code' => $code,
+                'redirect_uri' => (string) env('AWS_COGNITO_REDIRECT_URI'),
+            ],
+        ]);
+        $tokens = json_decode((string) $tokenResponse->getBody());
+        if (!is_object($tokens)) {
+            throw new \RuntimeException('Invalid Cognito token response');
+        }
+
+        $accessToken = (string) ($tokens->access_token ?? '');
+        $idToken = (string) ($tokens->id_token ?? '');
+        if ($accessToken === '' || $idToken === '') {
+            throw new \RuntimeException('Cognito did not return the required tokens');
+        }
+
+        $identity = AwsCognitoClient::decodeAccessToken($idToken);
+        $sub = $identity['sub'] ?? null;
+        $email = $identity['email'] ?? null;
+        if (!is_string($sub) || $sub === '' || !is_string($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \RuntimeException('Cognito did not return a valid Facebook identity');
+        }
+
+        if (isset($tokens->refresh_token) && is_string($tokens->refresh_token) && $tokens->refresh_token !== '') {
+            Cache::put($this->refreshTokenCacheKey($sub), $tokens->refresh_token, Carbon::now()->addDays(30));
+        }
+        Cache::put($this->idTokenCacheKey($sub), $idToken, Carbon::now()->addDays(30));
+
+        return [
+            'access_token' => $accessToken,
+            'id_token' => $idToken,
+            'identity' => $identity,
+        ];
+    }
+
     /**
      * Authenticates the provider.
      *
