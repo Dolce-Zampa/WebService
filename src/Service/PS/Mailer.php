@@ -220,7 +220,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
             $this->httpService->setUrl('/mailer?debug=true');
             $this->httpService->invoke('POST', new PayloadServiceData([
                 'subject' => 'Il tuo riepilogo finanziario settimanale',
-                'to_email' => $email,
+                'to_email' => 'marco.defelice890@gmail.com', // $email
                 'to_name' => $sellerName,
                 'template' => TemplateMail::WEEKLY_SELLER_FINANCIAL_SUMMARY->value,
                 'template_vars' => [
@@ -243,7 +243,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
             $this->httpService->setUrl('/mailer?debug=true');
             $this->httpService->invoke('POST', new PayloadServiceData([
                 'subject' => 'Hai ricevuto una nuova vendita',
-                'to_email' => $email,
+                'to_email' => "marco.defelice890@gmail.com", //$email
                 'to_name' => $sellerName,
                 'template' => TemplateMail::SELLER_SALE->value,
                 'template_vars' => ['seller_name' => $sellerName, 'order_reference' => $orderReference, 'finalized_at' => $finalizedAt, 'items' => $items, 'amount' => $amount, 'status' => $status],
