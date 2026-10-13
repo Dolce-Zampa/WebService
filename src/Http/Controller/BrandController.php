@@ -31,6 +31,15 @@ class BrandController extends Controller
         return response($category->toArray());
     }
 
+    public function monthlyTop(Request $request, Response $response): Response
+    {
+        $limit = (int) ($request->getQueryParams()['limit'] ?? 4);
+
+        return response([
+            'manufacturers' => $this->brandService->monthlyTop(max(1, min($limit, 50))),
+        ]);
+    }
+
     public function categoryList(Request $request, Response $response): Response
     {
         $categories = $this->brandService->categoriesList([ //FIXME: this should be in category controller
