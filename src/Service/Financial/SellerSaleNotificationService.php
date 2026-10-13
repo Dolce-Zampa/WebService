@@ -38,7 +38,7 @@ final class SellerSaleNotificationService
                 $this->deliver($sale);
             }
         } catch (\Throwable $e) {
-            Log::warning('Seller sale notification preparation failed', [
+            $this->logWarning('Seller sale notification preparation failed', [
                 'cart_id' => $cartId,
                 'exception' => $e::class,
             ]);
@@ -66,7 +66,7 @@ final class SellerSaleNotificationService
                 $this->deliver($sale);
             }
         } catch (\Throwable $e) {
-            Log::warning('Seller sale notification retry preparation failed', [
+            $this->logWarning('Seller sale notification retry preparation failed', [
                 'order_id' => $orderId,
                 'exception' => $e::class,
             ]);
@@ -192,11 +192,22 @@ final class SellerSaleNotificationService
                 ->where('id_order', $sale['order_id'])
                 ->where('id_manufacturer', $sale['seller_id'])
                 ->update(['status' => 'failed', 'last_error' => $e::class, 'updated_at' => new DateTimeImmutable()]);
-            Log::warning('Seller sale notification delivery failed', [
+            $this->logWarning('Seller sale notification delivery failed', [
                 'order_id' => $sale['order_id'],
                 'seller_id' => $sale['seller_id'],
                 'exception' => $e::class,
             ]);
+        }
+    }
+
+    /** @param array<string, mixed> $context */
+    private function logWarning(string $message, array $context): void
+    {
+        try {
+            Log::warning($message, $context);
+        } catch (\Throwable) {
+            // A notification failure must remain best-effort even when the
+            // application logger has not been initialized yet.
         }
     }
 
