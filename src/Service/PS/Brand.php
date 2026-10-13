@@ -3,10 +3,11 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Service\PS;
 
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
-use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Entities\ReviewEntity;
+use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 
 class Brand extends PrestashopService implements PrestashopServiceInterface
 {
@@ -47,6 +48,59 @@ class Brand extends PrestashopService implements PrestashopServiceInterface
         }
 
         return $reviewEntities ?? [];
-        
+    }
+
+    /**
+     * Return active manufacturers ranked by paid sales in the current calendar month.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function monthlyTop(int $limit): array
+    {
+        $manufacturerIds = Manufacturer::query()
+            ->from('manufacturer as manufacturer')
+            ->join('product as product', 'product.id_manufacturer', '=', 'manufacturer.id_manufacturer')
+            ->join('order_detail as detail', 'detail.product_id', '=', 'product.id_product')
+            ->join('orders as orders', 'orders.id_order', '=', 'detail.id_order')
+            ->join('order_state as state', 'state.id_order_state', '=', 'orders.current_state')
+            ->where('manufacturer.active', 1)
+            ->where('state.paid', 1)
+            ->where('orders.date_add', '>=', Carbon::now()->startOfMonth())
+            ->groupBy('manufacturer.id_manufacturer')
+            ->orderByRaw('SUM(detail.total_price_tax_incl) DESC')
+            ->orderByRaw('SUM(detail.product_quantity) DESC')
+            ->orderBy('manufacturer.id_manufacturer')
+            ->limit($limit)
+            ->pluck('manufacturer.id_manufacturer')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+
+        if ($manufacturerIds === []) {
+            return [];
+        }
+
+        $manufacturers = Manufacturer::query()
+            ->with('details')
+            ->whereIn('id_manufacturer', $manufacturerIds)
+            ->get()
+            ->keyBy('id_manufacturer');
+
+        $rankedManufacturers = [];
+        foreach ($manufacturerIds as $manufacturerId) {
+            $manufacturer = $manufacturers->get($manufacturerId);
+            if ($manufacturer === null) {
+                continue;
+            }
+
+            $rankedManufacturers[] = [
+                'id' => (int) $manufacturer->id_manufacturer,
+                'name' => (string) $manufacturer->name,
+                'slug' => $manufacturer->link_rewrite,
+                'image' => $manufacturer->details?->avatar,
+                'active' => (bool) $manufacturer->active,
+            ];
+        }
+
+        return $rankedManufacturers;
     }
 }
