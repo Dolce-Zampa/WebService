@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
@@ -198,11 +199,13 @@ class OrderController extends CartController
                 'payment_url' => $checkoutUrl
             ], 201);
         } catch (\InvalidArgumentException $e) {
+            Log::critical("Error on create order" . $e->getMessage());
             return response([
                 'order' => $cart->toArray(),
                 'error' => $e->getMessage()
             ], 400);
         } catch (\Exception $e) {
+            Log::critical("Error on create order" . $e->getMessage());
             return response([
                 'order' => $cart->toArray(),
                 'error' => $e->getMessage()
