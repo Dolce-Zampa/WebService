@@ -134,6 +134,7 @@ $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::c
 $financialReconciliationRoute = $app->get('/api/admin/financial/orders/{orderId}/reconciliation', PS\Webservice\Http\Controller\FinancialReconciliationController::class . ':order');
 $financialReconciliationRoute
     ->add(new \PS\Webservice\Http\Middleware\FinancialAuthorizationMiddleware(\PS\Webservice\Service\Financial\FinancialAccessPolicy::SCOPE_MARKETPLACE))
+    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
 /** Financial ledger: authenticated administrators only. */
 $app->get('/api/admin/financial-report', PS\Webservice\Http\Controller\FinancialReportController::class . ':index')
