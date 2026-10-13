@@ -48,6 +48,8 @@ $app->group('/api', function () use ($app) {
     /** Customer api */
     $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');
     $app->post('/api/login', PS\Webservice\Http\Controller\CustomerController::class . ':login');
+    $app->get('/api/auth/facebook', PS\Webservice\Http\Controller\CustomerController::class . ':facebookAuthorizationUrl');
+    $app->post('/api/auth/facebook/callback', PS\Webservice\Http\Controller\CustomerController::class . ':facebookCallback');
     $app->post('/api/logout', PS\Webservice\Http\Controller\CustomerController::class . ':logout');
     $app->post('/api/contact', PS\Webservice\Http\Controller\CustomerController::class . ':contact');
     $app->post('/api/customers', PS\Webservice\Http\Controller\CustomerController::class . ':createCustomer');

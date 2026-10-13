@@ -111,6 +111,11 @@ class CustomerEntity implements ObjectInterface
         if (isset($customer['id_lang'])) {
             $normalized['id_lang'] = (int) $customer['id_lang'];
         }
+        foreach (['sub', 'birthday', 'is_seller', 'id_gender', 'newsletter_date_add'] as $field) {
+            if (array_key_exists($field, $customer)) {
+                $normalized[$field] = $customer[$field];
+            }
+        }
 
         if (is_array($customer['delivery_address'] ?? null)) {
             $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address'], $phone);
