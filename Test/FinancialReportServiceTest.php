@@ -18,7 +18,8 @@ final class FinancialReportServiceTest extends TestCase
     {
         parent::setUp();
         $capsule = new DB();
-        $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+        // Exercise the configured PrestaShop table prefix throughout report queries.
+        $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => 'ps_']);
         $capsule->setAsGlobal();
         $capsule->bootEloquent();
         $schema = $capsule->schema();
