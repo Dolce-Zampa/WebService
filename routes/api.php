@@ -42,6 +42,7 @@ $app->group('/api', function () use ($app) {
     
     /** brands list */
     $app->get('/api/manufacturers', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
+    $app->get('/api/manufacturers/monthly-top', PS\Webservice\Http\Controller\BrandController::class . ':monthlyTop')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('monthly-top-manufacturers', 10080));
     $app->get('/api/manufacturers/{id_manufacturer}', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturer-details'));
     $app->get('/api/manufacturer/{id_manufacturer}/reviews', PS\Webservice\Http\Controller\BrandController::class . ':getManufacturerReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers', 10));
 
