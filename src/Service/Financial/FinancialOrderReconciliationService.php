@@ -160,7 +160,7 @@ final class FinancialOrderReconciliationService
     /** @param list<stdClass> $events @return array<string, mixed> */
     private function timelineItem(stdClass $movement, array $events): array
     {
-        $statusEvents = array_values(array_filter($events, static fn (stdClass $event): bool => in_array($event->event_type ?? null, ['recorded', 'status_changed'], true)));
+        $statusEvents = array_values(array_filter($events, static fn (stdClass $event): bool => in_array($event->event_type ?? null, ['recorded', 'reversal', 'correction', 'status_changed'], true)));
         $currentStatus = $statusEvents === [] ? $movement->status : $statusEvents[array_key_last($statusEvents)]->status;
 
         return [

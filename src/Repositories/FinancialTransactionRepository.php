@@ -24,6 +24,7 @@ final class FinancialTransactionRepository
     // Phinx applies that same prefix while creating the physical tables.
     private const TRANSACTIONS = 'financial_transactions';
     private const EVENTS = 'financial_transaction_events';
+    private const STATUS_EVENT_TYPES = ['recorded', 'reversal', 'correction', 'status_changed'];
 
     public function __construct(private readonly Manager $db)
     {
@@ -128,7 +129,7 @@ final class FinancialTransactionRepository
     {
         return $this->db->table(self::EVENTS)
             ->where('financial_transaction_id', $transactionId)
-            ->whereIn('event_type', ['recorded', 'status_changed'])
+            ->whereIn('event_type', self::STATUS_EVENT_TYPES)
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->lockForUpdate()
@@ -205,7 +206,7 @@ final class FinancialTransactionRepository
 
         $events = $this->db->table(self::EVENTS)
             ->whereIn('financial_transaction_id', $transactionIds)
-            ->whereIn('event_type', ['recorded', 'status_changed'])
+            ->whereIn('event_type', self::STATUS_EVENT_TYPES)
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->get();
@@ -253,7 +254,7 @@ final class FinancialTransactionRepository
                 $statusQuery->from(self::EVENTS . ' as status_event')
                     ->select('status_event.status')
                     ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
-                    ->whereIn('status_event.event_type', ['recorded', 'status_changed'])
+                    ->whereIn('status_event.event_type', self::STATUS_EVENT_TYPES)
                     ->orderByDesc('status_event.occurred_at')
                     ->orderByDesc('status_event.id')
                     ->limit(1);
@@ -274,13 +275,13 @@ final class FinancialTransactionRepository
             $query->whereExists(function (Builder $statusQuery) use ($filters): void {
                 $statusQuery->from(self::EVENTS . ' as status_event')
                     ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
-                    ->whereIn('status_event.event_type', ['recorded', 'status_changed'])
+                    ->whereIn('status_event.event_type', self::STATUS_EVENT_TYPES)
                     ->where('status_event.status', $filters['status'])
                     ->whereIn('status_event.id', function (Builder $latestStatusQuery): void {
                         $latestStatusQuery->from(self::EVENTS . ' as latest_status_event')
                             ->select('latest_status_event.id')
                             ->whereColumn('latest_status_event.financial_transaction_id', 'financial_transaction.id')
-                            ->whereIn('latest_status_event.event_type', ['recorded', 'status_changed'])
+                            ->whereIn('latest_status_event.event_type', self::STATUS_EVENT_TYPES)
                             ->orderByDesc('latest_status_event.occurred_at')
                             ->orderByDesc('latest_status_event.id')
                             ->limit(1);
