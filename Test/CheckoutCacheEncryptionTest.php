@@ -42,24 +42,60 @@ final class CheckoutCacheEncryptionTest extends TestCase
         );
         $cache = $this->createMock(\Illuminate\Cache\Repository::class);
         $cache->method('tags')->willReturn($taggedCache);
+        $previousApplication = Facade::getFacadeApplication();
+        Facade::clearResolvedInstances();
         Facade::setFacadeApplication(['cache' => $cache]);
 
-        $harness = new CheckoutCacheHarness();
-        $sensitiveData = ['customer' => ['email' => 'private@example.com', 'password' => 'checkout-cache-password-sentinel']];
-        $harness->cacheCheckoutData($sensitiveData);
+        try {
+            $harness = new CheckoutCacheHarness();
+            $sensitiveData = ['customer' => ['email' => 'private@example.com', 'password' => 'checkout-cache-password-sentinel']];
+            $harness->cacheCheckoutData($sensitiveData);
 
-        self::assertIsString($stored);
-        self::assertStringStartsWith('encrypted:v1:', $stored);
-        self::assertStringNotContainsString('private@example.com', $stored);
-        self::assertStringNotContainsString('checkout-cache-password-sentinel', $stored);
-        self::assertSame($sensitiveData, $harness->getCachedCheckoutData());
+            self::assertIsString($stored);
+            self::assertStringStartsWith('encrypted:v1:', $stored);
+            self::assertStringNotContainsString('private@example.com', $stored);
+            self::assertStringNotContainsString('checkout-cache-password-sentinel', $stored);
+            self::assertSame($sensitiveData, $harness->getCachedCheckoutData());
+        } finally {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication($previousApplication);
+            if ($previousKey === false) {
+                putenv('APP_KEY');
+                unset($_ENV['APP_KEY']);
+            } else {
+                putenv('APP_KEY=' . $previousKey);
+                $_ENV['APP_KEY'] = $previousKey;
+            }
+        }
+    }
 
-        if ($previousKey === false) {
-            putenv('APP_KEY');
-            unset($_ENV['APP_KEY']);
-        } else {
-            putenv('APP_KEY=' . $previousKey);
-            $_ENV['APP_KEY'] = $previousKey;
+    public function test_checkout_cache_uses_an_injected_repository_without_a_facade_root(): void
+    {
+        $stored = null;
+        $taggedCache = $this->createMock(\Illuminate\Cache\TaggedCache::class);
+        $taggedCache->method('put')->willReturnCallback(
+            static function (string $key, mixed $value) use (&$stored): bool {
+                $stored = $value;
+                return true;
+            }
+        );
+        $cache = $this->createMock(\Illuminate\Cache\Repository::class);
+        $cache->method('tags')->willReturn($taggedCache);
+
+        $previousApplication = Facade::getFacadeApplication();
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication(null);
+
+        try {
+            $harness = new CheckoutCacheHarness();
+            $harness->setCacheRepository($cache);
+            $harness->cacheCheckoutData(['orderSession' => ['cart_id' => 672]]);
+
+            self::assertIsString($stored);
+            self::assertStringStartsWith('encrypted:v1:', $stored);
+        } finally {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication($previousApplication);
         }
     }
 }

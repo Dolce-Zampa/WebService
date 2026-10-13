@@ -42,6 +42,7 @@ require_once __DIR__ . '/../config/logger.php';
 require_once __DIR__ . '/../config/container-di.php';
 
 require_once __DIR__ . '/../config/cache.php';
+$container->set(\Illuminate\Cache\Repository::class, $cache);
 
 // cognito
 require_once __DIR__ . '/../config/AWS/cognito-client.php';

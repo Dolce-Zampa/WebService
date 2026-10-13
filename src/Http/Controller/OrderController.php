@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Cache\Repository;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
@@ -21,10 +22,13 @@ class OrderController extends CartController
 
     protected PaymentGatewayInterface $stripeService;
 
-    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService)
+    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, ?Repository $cacheRepository = null)
     {
         $this->stripeService = $stripeService;
         $this->orderService = $orderService;
+        if ($cacheRepository !== null) {
+            $this->setCacheRepository($cacheRepository);
+        }
     }
 
     public function orderHistory(Request $request, Response $response, array $argv): Response

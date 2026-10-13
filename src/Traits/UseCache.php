@@ -4,19 +4,35 @@ declare(strict_types=1);
 namespace PS\Webservice\Traits;
 
 use Carbon\Carbon;
+use Illuminate\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 
 trait UseCache
 {
 
     protected array $tags = [];
+    private ?Repository $cacheRepository = null;
+
+    /**
+     * Allows Slim controllers and services to use their configured cache store
+     * without depending on Laravel's global facade application.
+     */
+    public function setCacheRepository(Repository $cacheRepository): void
+    {
+        $this->cacheRepository = $cacheRepository;
+    }
+
+    private function cacheRepository(): Repository
+    {
+        return $this->cacheRepository ?? Cache::getFacadeRoot();
+    }
 
     protected function getFromCache(string $key): mixed
     {
         if (env('APP_DISABLE_CACHE', false)) {
             return null;
         }
-        return Cache::tags($this->tags)->get(sha1($key));
+        return $this->cacheRepository()->tags($this->tags)->get(sha1($key));
     }
     // "c275d4f4-2011-7091-eb17-87e208e05738" "57f6dd7f7506f497933045377e718d257a0b9006"
     /**
@@ -34,10 +50,10 @@ trait UseCache
         }
 
         if (empty($ttl)) {
-            Cache::tags($this->tags)->forever($key, $value);
+            $this->cacheRepository()->tags($this->tags)->forever($key, $value);
         } else {
             $expiresAt = Carbon::now()->addMinutes($ttl);
-            Cache::tags($this->tags)->put($key, $value, $expiresAt);
+            $this->cacheRepository()->tags($this->tags)->put($key, $value, $expiresAt);
         }
     }
 
@@ -112,25 +128,25 @@ trait UseCache
 
     protected function flush(): void
     {
-        Cache::flush();
+        $this->cacheRepository()->flush();
     }
 
     protected function flushTag(): void
     {
-        Cache::tags($this->tags)->flush();
+        $this->cacheRepository()->tags($this->tags)->flush();
     }
 
     protected function removeFromCache(string $key): void
     {
         $key = sha1($key);
-        Cache::tags($this->tags)->forget($key);
+        $this->cacheRepository()->tags($this->tags)->forget($key);
     }
 
     protected function existsInCache(string $key): bool
     {
         $key = sha1($key);
 
-        return Cache::tags($this->tags)->has($key);
+        return $this->cacheRepository()->tags($this->tags)->has($key);
     }
 
     protected function getOrSet(callable $function, array $data): void

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Cache\Repository;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use PS\Webservice\Domain\Entities\CustomerEntity;
@@ -36,13 +37,17 @@ class StripeWebhookController extends OrderController
         PaymentGatewayInterface $stripeService,
         MailerInterface $mailer,
         mixed $legacyDependency = null,
-        ?PromotionService $promotionService = null
+        ?PromotionService $promotionService = null,
+        ?Repository $cacheRepository = null
     )
     {
         $this->orderService = $orderService;
         $this->mailjetService = $mailjetService;
         $this->stripeService = $stripeService;
         $this->mailer = $mailer;
+        if ($cacheRepository !== null) {
+            $this->setCacheRepository($cacheRepository);
+        }
         if ($legacyDependency instanceof PromotionService && $promotionService === null) {
             $this->promotionService = $legacyDependency;
         } else {
