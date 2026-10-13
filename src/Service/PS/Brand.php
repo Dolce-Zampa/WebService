@@ -57,7 +57,10 @@ class Brand extends PrestashopService implements PrestashopServiceInterface
      */
     public function monthlyTop(int $limit): array
     {
-        $manufacturerIds = Manufacturer::query()
+        $query = Manufacturer::query();
+        $detailAlias = $query->getQuery()->getConnection()->getTablePrefix() . 'detail';
+
+        $manufacturerIds = $query
             ->from('manufacturer as manufacturer')
             ->join('product as product', 'product.id_manufacturer', '=', 'manufacturer.id_manufacturer')
             ->join('order_detail as detail', 'detail.product_id', '=', 'product.id_product')
@@ -67,8 +70,8 @@ class Brand extends PrestashopService implements PrestashopServiceInterface
             ->where('state.paid', 1)
             ->where('orders.date_add', '>=', Carbon::now()->startOfMonth())
             ->groupBy('manufacturer.id_manufacturer')
-            ->orderByRaw('SUM(detail.total_price_tax_incl) DESC')
-            ->orderByRaw('SUM(detail.product_quantity) DESC')
+            ->orderByRaw("SUM({$detailAlias}.total_price_tax_incl) DESC")
+            ->orderByRaw("SUM({$detailAlias}.product_quantity) DESC")
             ->orderBy('manufacturer.id_manufacturer')
             ->limit($limit)
             ->pluck('manufacturer.id_manufacturer')
