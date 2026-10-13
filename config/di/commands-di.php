@@ -11,6 +11,21 @@ $container->set(\PS\Webservice\Commands\SendReviewRequestMailCommand::class, fun
     );
 });
 
+$container->set(\PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand(
+        $c->get(\PS\Webservice\Service\Financial\WeeklySellerFinancialSummaryService::class),
+        $c->get(\PS\Webservice\Repositories\WeeklySellerSummaryRecipientRepository::class),
+        $c->get(\PS\Webservice\Repositories\WeeklySellerSummaryDeliveryRepository::class),
+        $c->get(\PS\Webservice\Service\MailerInterface::class),
+    );
+});
+
+$container->set(\PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand(
+        $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class, function ($c) {
     return new \PS\Webservice\Commands\ElasticSearch\CreateIndexElk(
         $c->get(\Elastic\Elasticsearch\ClientBuilder::class),

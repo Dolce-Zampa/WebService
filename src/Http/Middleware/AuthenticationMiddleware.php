@@ -36,7 +36,14 @@ class AuthenticationMiddleware implements MiddlewareInterface
             $decodedToken = \PS\Webservice\Facades\AwsCognitoClient::decodeAccessToken($authToken);
             if (isset($decodedToken['sub'])) {
                 $userId = $decodedToken['sub'];
-                $request = $request->withAttribute('user_id', $userId);
+                // Keep verified claims on the request for authorization
+                // middleware. Controllers must never recover an identity from
+                // a route parameter, query string or request body.
+                // Keep verified claims on the request for authorization;
+                // resource identity never comes from client input.
+                $request = $request
+                    ->withAttribute('user_id', $userId)
+                    ->withAttribute('auth_claims', $decodedToken);
             } else {
                 return new \GuzzleHttp\Psr7\Response(401, [], json_encode(['error' => 'Unauthorized: Invalid token']));
             }

@@ -60,21 +60,33 @@ class OpenAIService
                 : '';
 
             $prompt = <<<PROMPT
-Agisci come un esperto di SEO e copywriting per un e-commerce di prodotti per animali domestici. Riceverai il nome attuale del prodotto "{$escaped}" e un contesto aggiuntivo: {$shortDescriptionContext}. Il tuo compito è generare i seguenti contenuti ottimizzati per SEO, in italiano, seguendo queste istruzioni dettagliate:
+Agisci come un esperto di SEO, UX writing e copywriting per un e-commerce di prodotti per animali domestici. 
 
-- Genera un nuovo nome prodotto ottimizzato SEO, conciso e descrittivo, senza la stringa “n.d.”.
-- Crea una descrizione breve del prodotto (minimo 100 caratteri e max 250 caratteri), utilizzando solo HTML in linea (senza tag di blocco esterni, senza CSS, senza tag h1).
-- Scrivi una descrizione completa e approfondita (almeno 600 parole) in HTML: usa solo paragrafi <p> e liste <ul>.
-- Redigi un meta title (max 70 caratteri), pertinente e attrattivo.
-- Crea una meta description (max 160 caratteri, senza HTML).
-- Crea una url SEO-friendly basata sul nuovo nome prodotto, in minuscolo, con parole separate da trattini e senza caratteri speciali.
+Riceverai il nome attuale del prodotto "{$escaped}" e un contesto aggiuntivo: {$shortDescriptionContext}. 
 
-Istruzioni aggiuntive:
+Il tuo compito è generare i seguenti contenuti ottimizzati per SEO, in italiano, seguendo queste istruzioni dettagliate:
 
-- Rispondi esclusivamente con un oggetto JSON valido con le seguenti chiavi: "name", "description_short", "description", "meta_title", "meta_description".
-- Non includere nessun testo o commento esterno, solo la risposta JSON.
-- Pensa passo-passo alle scelte terminologiche, ai benefici centrali per il cliente, all'ottimizzazione delle keywords inerenti il prodotto e l’utilità per l’utente prima di produrre i risultati finali. Ragiona internamente sulle peculiarità del prodotto in base al contesto fornito, sugli intenti di ricerca principali, e sulla chiarezza e sintesi necessarie per l’e-commerce.
-- Mantieni uno stile professionale e coinvolgente, adatto a un negozio online di prodotti per animali domestici.
+REGOLA DI LEGGIBILITÀ FONDAMENTALE (UX & FLESCH SCORE):
+- Usa un linguaggio semplice, chiaro, d'impatto e ad altissima leggibilità.
+- MANTIENI LE FRASI BREVI (massimo 12-15 parole per frase). Usa spesso i punti fermi.
+- Usa ECLUSIVAMENTE la FORMA ATTIVA (es. "Realizzato in nylon" anziché "Viene realizzato tramite l'impiego di nylon").
+- Elimina avverbi e aggettivi riempitivi (es. "estremamente", "particolarmente", "altamente").
+- Evita termini burocratici, tecnici complessi o periodi ipotetici lunghi.
+
+ISTRUZIONI CAMPI:
+1. "name": Genera un nuovo nome prodotto ottimizzato SEO, conciso e descrittivo, senza la stringa “n.d.”.
+2. "description_short": Crea una descrizione breve del prodotto (minimo 100 e max 250 caratteri), usando solo HTML in linea (es. <strong>, <span>; no tag di blocco, no CSS, no h1). Deve spiegare in 1-2 frasi chiare il beneficio principale.
+3. "description": Scrivi una descrizione completa e approfondita (almeno 600 parole) in HTML: usa SOLO paragrafi <p> e liste <ul><li>. 
+   - Suddividi la descrizione in paragrafi molto brevi (massimo 2-3 frasi per paragrafo <p>).
+   - Utilizza elenchi puntati <ul> per spiegare vantaggi, materiali, uso e manutenzione.
+4. "meta_title": Redigi un meta title (max 70 caratteri), pertinente e attrattivo.
+5. "meta_description": Crea una meta description (max 160 caratteri, senza HTML). Deve essere composta da 2 frasi brevissime, trasmettere un beneficio e chiudere con un invito all'azione chiaro (es. "Scopri i dettagli e ordina online.").
+6. "link_rewrite": Crea una url SEO-friendly basata sul nuovo nome prodotto, in minuscolo, con parole separate da trattini e senza caratteri speciali.
+
+ISTRUZIONI OUTPUT:
+- Rispondi ESCLUSIVAMENTE con un oggetto JSON valido con le seguenti chiavi: "name", "description_short", "description", "meta_title", "meta_description", "link_rewrite".
+- Non includere nessun testo o commento esterno, nessun blocco markdown ```json, solo l'oggetto JSON grezzo.
+- Pensa passo-passo alle scelte terminologiche, ai benefici per il cliente e alla chiarezza del testo prima di produrre i risultati finali.
 
 Formato output richiesto: Solo oggetto JSON senza alcun testo aggiuntivo, nel seguente schema:
 {
