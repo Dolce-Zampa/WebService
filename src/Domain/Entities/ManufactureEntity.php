@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
-use Illuminate\Support\Facades\DB;
+use PS\Webservice\Domain\Models\PS\CountryLanguage;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 use PS\Webservice\Domain\Models\PS\Manufacturers\ManufacturerDetail;
 use PS\Webservice\Domain\ObjectInterface;
@@ -56,7 +56,7 @@ class ManufactureEntity extends Entity implements ObjectInterface
 		if (isset($this->data['id_country'])) {
 			$this->data['id_country'] = (int) $this->data['id_country'];
 		} elseif (isset($this->data['country']) && is_string($this->data['country']) && trim($this->data['country']) !== '') {
-			$idCountry = DB::table('country_lang')
+			$idCountry = CountryLanguage::query()
 				->where('name', trim($this->data['country']))
 				->value('id_country');
 			if (is_numeric($idCountry)) {

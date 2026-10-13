@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
-use Illuminate\Support\Facades\DB;
 use PS\Webservice\Domain\Entities\CartRuleEntity;
+use PS\Webservice\Domain\Models\PS\Configuration;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
@@ -74,7 +74,7 @@ class OrderEntity implements ObjectInterface
 			}
 		}
 		if ($idLang === null) {
-			$idLang = DB::table('configuration')->where('name', 'PS_LANG_DEFAULT')->value('value');
+			$idLang = Configuration::valueFor('PS_LANG_DEFAULT');
 		}
 		if (!is_numeric($idLang) || (int) $idLang <= 0) {
 			throw new \InvalidArgumentException('Order language is required and must be a positive integer');
