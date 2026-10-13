@@ -3,9 +3,11 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Http\Controller;
 
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Http\Controller\CartController;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Traits\Order as OrderHelper;
@@ -167,11 +169,13 @@ class OrderController extends CartController
                 'payment_url' => $checkoutUrl
             ], 201);
         } catch (\InvalidArgumentException $e) {
+            Log::critical("Error on create order" . $e->getMessage());
             return response([
                 'order' => $cart->toArray(),
                 'error' => $e->getMessage()
             ], 400);
         } catch (\Exception $e) {
+            Log::critical("Error on create order" . $e->getMessage());
             return response([
                 'order' => $cart->toArray(),
                 'error' => $e->getMessage()
