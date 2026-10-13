@@ -131,6 +131,12 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeDeliveryAddress(array $deliveryAddress, ?string $fallbackPhone = null): array
     {
+        $countryId = isset($deliveryAddress['id_country'])
+            && is_numeric($deliveryAddress['id_country'])
+            && (int) $deliveryAddress['id_country'] > 0
+            ? (int) $deliveryAddress['id_country']
+            : 10;
+
         $normalized = [
             'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
             'firstname' => (string) ($this->data['firstname'] ?? ''),
@@ -138,15 +144,9 @@ class CustomerEntity implements ObjectInterface
             'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
             'city' => (string) ($deliveryAddress['city'] ?? ''),
             'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
-            'id_country' => isset($deliveryAddress['id_country'])
-                && is_numeric($deliveryAddress['id_country'])
-                && (int) $deliveryAddress['id_country'] > 0
-                ? (int) $deliveryAddress['id_country']
-                : 10,
+            'id_country' => $countryId,
             'phone_mobile' => (string) ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? $fallbackPhone ?? ''),
-            'id_state' => isset($deliveryAddress['id_state']) && is_numeric($deliveryAddress['id_state'])
-                ? (int) $deliveryAddress['id_state']
-                : 228,
+            'id_state' => $this->resolveStateId($deliveryAddress, $countryId),
         ];
         foreach (['address2', 'state', 'country'] as $field) {
             if (isset($deliveryAddress[$field]) && is_string($deliveryAddress[$field])) {
@@ -155,6 +155,36 @@ class CustomerEntity implements ObjectInterface
         }
 
         return $normalized;
+    }
+
+    /**
+     * Resolves a province supplied by the checkout without ever falling back
+     * to an unrelated hard-coded state.
+     */
+    private function resolveStateId(array $address, int $countryId): int
+    {
+        if (isset($address['id_state']) && is_numeric($address['id_state']) && (int) $address['id_state'] > 0) {
+            return (int) $address['id_state'];
+        }
+
+        $state = trim((string) ($address['state'] ?? ''));
+        if ($state === '' || $countryId <= 0) {
+            return 0;
+        }
+
+        try {
+            $idState = State::query()
+                ->where('id_country', $countryId)
+                ->where(function ($query) use ($state) {
+                    $query->where('iso_code', strtoupper($state))
+                        ->orWhere('name', $state);
+                })
+                ->value('id_state');
+
+            return is_numeric($idState) && (int) $idState > 0 ? (int) $idState : 0;
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData

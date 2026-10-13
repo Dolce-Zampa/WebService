@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Models\PS\Configuration;
+use PS\Webservice\Domain\Models\PS\State;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 
 final class CustomerEntityDataTest extends TestCase
@@ -129,6 +130,41 @@ final class CustomerEntityDataTest extends TestCase
             \Illuminate\Support\Facades\Facade::clearResolvedInstances();
             \Illuminate\Support\Facades\Facade::setFacadeApplication($previousApplication);
         }
+    }
+
+    public function testCustomerAddressResolvesTheSubmittedProvinceInsteadOfUsingVarese(): void
+    {
+        $schema = \Illuminate\Database\Capsule\Manager::schema();
+        if (!$schema->hasTable('state')) {
+            $schema->create('state', function ($table) {
+                $table->integer('id_state')->primary();
+                $table->integer('id_country');
+                $table->string('name');
+                $table->string('iso_code', 10);
+            });
+        }
+
+        $state = State::query()->find(99999) ?? new State();
+        $state->id_state = 99999;
+        $state->id_country = 10;
+        $state->name = 'Milano';
+        $state->iso_code = 'MI';
+        $state->save();
+
+        $customer = CustomerEntity::create([
+            'email' => 'customer@example.com',
+            'firstname' => 'Ada',
+            'lastname' => 'Lovelace',
+            'delivery_address' => [
+                'address1' => 'Via Roma 1',
+                'city' => 'Milano',
+                'postcode' => '20100',
+                'id_country' => 10,
+                'state' => 'MI',
+            ],
+        ], $this->service)->toArray();
+
+        self::assertSame(99999, $customer['delivery_address']['id_state']);
     }
 
     public function testAddressWithoutCountryIsRejected(): void
