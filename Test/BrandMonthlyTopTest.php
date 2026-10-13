@@ -18,7 +18,7 @@ final class BrandMonthlyTopTest extends TestCase
 
         Carbon::setTestNow('2026-10-13 12:00:00');
         $this->db = new DB();
-        $this->db->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+        $this->db->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => 'fy8ie_']);
         $this->db->setAsGlobal();
         $this->db->bootEloquent();
         $schema = $this->db->schema();
