@@ -207,6 +207,7 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
                 'quantity' => (int) $cartRule->quantity,
                 'reduction_percent' => (float) $cartRule->reduction_percent,
                 'reduction_amount' => (float) $cartRule->reduction_amount,
+                'free_shipping' => (bool) $cartRule->free_shipping,
             ),
         );
     }
