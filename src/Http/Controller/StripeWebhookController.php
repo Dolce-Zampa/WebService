@@ -116,10 +116,23 @@ class StripeWebhookController extends OrderController
                         $this->stripeEventTimestamp($event->created ?? null),
                     );
                 }
-                $this->recordFinancialWebhook($event);
             } catch (\Exception $e) {
                 Log::critical('Stripe webhook: failed to process checkout.session.completed: ' . $e->getMessage());
                 return response(['error' => 'Failed to process event'], 500);
+            }
+
+            try {
+                $this->recordFinancialWebhook($event);
+            } catch (\Throwable $e) {
+                // The order was already confirmed by PrestaShop. Do not make
+                // Stripe retry a successful checkout because reconciliation
+                // data cannot be recorded yet (for example, during a pending
+                // ledger migration); it can be backfilled separately.
+                Log::critical('Stripe webhook: financial ledger recording failed after checkout confirmation.', [
+                    'event_type' => (string) $event->type,
+                    'event_id' => (string) ($event->id ?? ''),
+                    'exception' => $e,
+                ]);
             }
         }
 
