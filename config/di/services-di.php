@@ -64,6 +64,10 @@ $container->set(\PS\Webservice\Service\Financial\FinancialAnalyticsService::clas
     );
 });
 
+$container->set(\PS\Webservice\Service\Financial\EmployeeFinancialAuthService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\EmployeeFinancialAuthService($capsule);
+});
+
 $container->set(\PS\Webservice\Service\Financial\FinancialExpenseService::class, function ($c) use ($capsule) {
     return new \PS\Webservice\Service\Financial\FinancialExpenseService(
         $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class),
