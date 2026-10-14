@@ -58,6 +58,26 @@ $container->set(\PS\Webservice\Service\Financial\FinancialReportService::class, 
     );
 });
 
+$container->set(\PS\Webservice\Service\Financial\FinancialAnalyticsService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialAnalyticsService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class),
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\FinancialExpenseService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\FinancialExpenseService(
+        $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class),
+        $capsule,
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\FinancialOrderBackfillService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\FinancialOrderBackfillService(
+        $capsule,
+        $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class),
+    );
+});
+
 $container->set(\PS\Webservice\Service\Financial\CommissionCalculator::class, function ($c) {
     return new \PS\Webservice\Service\Financial\CommissionCalculator();
 });

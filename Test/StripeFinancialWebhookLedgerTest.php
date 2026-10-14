@@ -29,6 +29,7 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
         $schema->create('financial_transactions', function ($table): void {
             $table->increments('id');
             $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('customer_id')->nullable();
             $table->unsignedBigInteger('artisan_id')->nullable();
             $table->unsignedBigInteger('order_item_id')->nullable();
             $table->string('order_reference', 64)->nullable();
@@ -154,6 +155,26 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
             'cart_id' => 42,
             'stripe_payment_status' => 'paid',
         ], $metadata);
+    }
+
+    public function test_records_an_exact_expanded_stripe_fee_and_internal_customer_id_once(): void
+    {
+        $event = $this->stripeEvent('evt_fee_1', 'payment_intent.succeeded', [
+            'id' => 'pi_fee_1', 'amount' => 1000, 'currency' => 'eur',
+            'metadata' => ['id_customer' => '77'],
+            'balance_transaction' => ['id' => 'txn_fee_1', 'fee' => 129],
+        ]);
+        $controller = $this->controller();
+        $controller->ingest($event);
+        $controller->ingest($event);
+
+        $payment = DB::table('financial_transactions')->where('type', 'payment')->first();
+        $fee = DB::table('financial_transactions')->where('type', 'provider_fee')->first();
+        self::assertSame(2, DB::table('financial_transactions')->count());
+        self::assertSame(77, (int) $payment->customer_id);
+        self::assertSame('-1.29', (string) $fee->amount);
+        self::assertSame('txn_fee_1', $fee->provider_transaction_id);
+        self::assertSame(77, (int) $fee->customer_id);
     }
 
     public function test_partial_and_full_refunds_are_linked_reversals_with_their_own_provider_ids(): void

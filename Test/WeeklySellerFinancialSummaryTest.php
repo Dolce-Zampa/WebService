@@ -26,7 +26,7 @@ final class WeeklySellerFinancialSummaryTest extends TestCase
         $db->bootEloquent();
         $schema = $db->schema();
         $schema->create('financial_transactions', function ($table): void {
-            $table->increments('id'); $table->unsignedBigInteger('order_id')->nullable(); $table->unsignedBigInteger('artisan_id')->nullable(); $table->unsignedBigInteger('order_item_id')->nullable();
+            $table->increments('id'); $table->unsignedBigInteger('order_id')->nullable(); $table->unsignedBigInteger('customer_id')->nullable(); $table->unsignedBigInteger('artisan_id')->nullable(); $table->unsignedBigInteger('order_item_id')->nullable();
             $table->string('order_reference')->nullable(); $table->string('artisan_reference')->nullable(); $table->string('order_item_reference')->nullable();
             $table->string('type'); $table->string('status'); $table->decimal('amount', 20, 6); $table->char('currency', 3);
             $table->string('provider')->nullable(); $table->string('provider_account_id')->nullable(); $table->string('provider_transaction_id')->nullable(); $table->string('provider_event_id')->nullable();

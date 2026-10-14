@@ -63,6 +63,7 @@ final class FinancialReportService
                 'timezone' => $timezone->getName(),
                 'artisan_id' => $filters['artisan_id'] ?? null,
                 'order_id' => $filters['order_id'] ?? null,
+                'customer_id' => $filters['customer_id'] ?? null,
                 'status' => $filters['status'] ?? null,
                 'provider' => $filters['provider'] ?? null,
                 'type' => $filters['type'] ?? null,
@@ -91,7 +92,7 @@ final class FinancialReportService
         if (isset($filters['from'], $filters['to']) && $filters['from'] >= $filters['to']) {
             throw new InvalidArgumentException('The to boundary must be after the from boundary.');
         }
-        foreach (['artisan_id', 'order_id'] as $name) {
+        foreach (['artisan_id', 'order_id', 'customer_id'] as $name) {
             if (array_key_exists($name, $input) && $input[$name] !== '') {
                 $filters[$name] = $this->positiveInteger($input[$name], $name);
             }
@@ -168,6 +169,7 @@ final class FinancialReportService
         return [
             'id' => (int) $row->id,
             'order_id' => $row->order_id === null ? null : (int) $row->order_id,
+            'customer_id' => $row->customer_id === null ? null : (int) $row->customer_id,
             'artisan_id' => $row->artisan_id === null ? null : (int) $row->artisan_id,
             'order_reference' => $row->order_reference,
             'artisan_reference' => $row->artisan_reference,

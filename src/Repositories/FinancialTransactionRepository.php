@@ -238,13 +238,13 @@ final class FinancialTransactionRepository
      * event, otherwise a retried webhook could make an available or reversed
      * movement appear pending again.
      *
-     * @param array{from?: string, to?: string, artisan_id?: int, order_id?: int, status?: string, provider?: string, type?: string} $filters
+     * @param array{from?: string, to?: string, artisan_id?: int, order_id?: int, customer_id?: int, status?: string, provider?: string, type?: string} $filters
      */
     public function financialReportQuery(array $filters): Builder
     {
         $query = $this->db->table(self::TRANSACTIONS . ' as financial_transaction')
             ->select([
-                'financial_transaction.id', 'financial_transaction.order_id', 'financial_transaction.artisan_id',
+                'financial_transaction.id', 'financial_transaction.order_id', 'financial_transaction.customer_id', 'financial_transaction.artisan_id',
                 'financial_transaction.order_reference', 'financial_transaction.artisan_reference',
                 'financial_transaction.type', 'financial_transaction.amount', 'financial_transaction.currency',
                 'financial_transaction.provider', 'financial_transaction.occurred_at',
@@ -266,7 +266,7 @@ final class FinancialTransactionRepository
         if (isset($filters['to'])) {
             $query->where('financial_transaction.occurred_at', '<', $filters['to']);
         }
-        foreach (['artisan_id', 'order_id', 'provider', 'type'] as $filter) {
+        foreach (['artisan_id', 'order_id', 'customer_id', 'provider', 'type'] as $filter) {
             if (isset($filters[$filter])) {
                 $query->where('financial_transaction.' . $filter, $filters[$filter]);
             }

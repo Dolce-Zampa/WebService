@@ -20,6 +20,12 @@ $container->set(\PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand:
     );
 });
 
+$container->set(\PS\Webservice\Commands\BackfillFinancialOrdersCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\BackfillFinancialOrdersCommand(
+        $c->get(\PS\Webservice\Service\Financial\FinancialOrderBackfillService::class),
+    );
+});
+
 $container->set(\PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class, function ($c) {
     return new \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand(
         $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class)

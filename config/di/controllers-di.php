@@ -52,6 +52,18 @@ $container->set(\PS\Webservice\Http\Controller\FinancialReportController::class,
     );
 });
 
+$container->set(\PS\Webservice\Http\Controller\FinancialAnalyticsController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialAnalyticsController(
+        $c->get(\PS\Webservice\Service\Financial\FinancialAnalyticsService::class),
+    );
+});
+
+$container->set(\PS\Webservice\Http\Controller\FinancialExpenseController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialExpenseController(
+        $c->get(\PS\Webservice\Service\Financial\FinancialExpenseService::class),
+    );
+});
+
 $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, function ($c) {
     $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
     $prestashopService = $c->get(\PS\Webservice\Service\PS\PrestashopService::class);

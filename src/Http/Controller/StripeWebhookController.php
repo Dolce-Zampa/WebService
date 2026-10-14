@@ -246,6 +246,7 @@ class StripeWebhookController extends OrderController
                 $eventId,
                 $metadata,
             );
+            $this->recordStripeProviderFee($event, $object, $transactionId);
             return;
         }
 
@@ -257,6 +258,7 @@ class StripeWebhookController extends OrderController
             'currency' => $this->stripeCurrency($object),
             'occurred_at' => $occurredAt,
             'order_id' => $orderId,
+            'customer_id' => $this->financialCustomerId($object),
             'order_reference' => $orderReference,
             'provider' => 'stripe',
             'provider_account_id' => $this->stripeOptionalIdentifier($event->account ?? null),
@@ -266,6 +268,7 @@ class StripeWebhookController extends OrderController
             'source_event_id' => $eventId,
             'metadata' => $metadata,
         ]), $idempotencyKey);
+        $this->recordStripeProviderFee($event, $object, $transactionId);
     }
 
     /**
@@ -337,6 +340,7 @@ class StripeWebhookController extends OrderController
             'currency' => $currency,
             'occurred_at' => $occurredAt,
             'order_id' => $this->positiveInteger($originalPayment->order_id),
+            'customer_id' => $this->positiveInteger($originalPayment->customer_id),
             'artisan_id' => $this->positiveInteger($originalPayment->artisan_id),
             'order_item_id' => $this->positiveInteger($originalPayment->order_item_id),
             'order_reference' => $this->stripeOptionalIdentifier($originalPayment->order_reference),
@@ -422,6 +426,42 @@ class StripeWebhookController extends OrderController
     private function financialTransactionBySession(string $providerSessionId): ?object
     {
         return $this->financialLedger?->findByProviderSession('stripe', $providerSessionId);
+    }
+
+    /** Customer IDs are stored in a dedicated ledger column, never in metadata. */
+    private function financialCustomerId(\Stripe\StripeObject $object): ?int
+    {
+        return $this->positiveInteger($this->stripeMetadata($object->toArray())['id_customer'] ?? null);
+    }
+
+    /**
+     * Stripe sometimes expands balance_transaction on a Charge/PaymentIntent
+     * event. When that exact fee is present, journal it; never estimate a fee
+     * from the gross payment.
+     */
+    private function recordStripeProviderFee(\Stripe\Event $event, \Stripe\StripeObject $object, ?string $transactionId): void
+    {
+        if ($this->financialLedger === null || $transactionId === null) return;
+        $data = $object->toArray();
+        $balance = $data['balance_transaction'] ?? null;
+        if ($balance instanceof \Stripe\StripeObject) $balance = $balance->toArray();
+        if (!is_array($balance) || !isset($balance['fee']) || (!is_int($balance['fee']) && !(is_string($balance['fee']) && ctype_digit($balance['fee'])))) return;
+        $feeMinor = (int) $balance['fee'];
+        if ($feeMinor < 1) return;
+        $payment = $this->financialTransactionByProviderTransaction($transactionId);
+        if ($payment === null) return;
+        $balanceId = $this->stripeOptionalIdentifier($balance['id'] ?? null) ?? $this->stripeIdentifier($event->id ?? null, 'event');
+        $eventId = $this->stripeIdentifier($event->id ?? null, 'event');
+        $this->financialLedger->record(FinancialMovement::fromArray([
+            'type' => 'provider_fee', 'status' => 'available',
+            'amount' => '-' . $this->stripeMinorAmount($feeMinor, (string) $payment->currency),
+            'currency' => (string) $payment->currency, 'occurred_at' => $this->stripeEventTimestamp($event->created ?? null),
+            'order_id' => $this->positiveInteger($payment->order_id), 'customer_id' => $this->positiveInteger($payment->customer_id),
+            'order_reference' => $this->stripeOptionalIdentifier($payment->order_reference), 'provider' => 'stripe',
+            'provider_transaction_id' => $balanceId, 'provider_event_id' => $eventId . ':fee',
+            'source_event_type' => 'stripe.balance_transaction.fee', 'source_event_id' => $balanceId,
+            'metadata' => ['stripe_balance_transaction_id' => $balanceId],
+        ]), 'stripe:fee:' . hash('sha256', $balanceId));
     }
 
     private function stripeSessionId(\Stripe\StripeObject $object, string $eventType): ?string
@@ -525,6 +565,12 @@ class StripeWebhookController extends OrderController
             return (string) $minorUnits;
         }
 
+        return intdiv($minorUnits, 100) . '.' . str_pad((string) ($minorUnits % 100), 2, '0', STR_PAD_LEFT);
+    }
+
+    private function stripeMinorAmount(int $minorUnits, string $currency): string
+    {
+        if (in_array(strtoupper($currency), ['BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'], true)) return (string) $minorUnits;
         return intdiv($minorUnits, 100) . '.' . str_pad((string) ($minorUnits % 100), 2, '0', STR_PAD_LEFT);
     }
 
