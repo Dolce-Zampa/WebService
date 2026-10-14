@@ -18,6 +18,7 @@ class HttpService implements HttpServiceInterface
     private string $api;
     private \GuzzleHttp\Psr7\Response $response;
     private int $httpCode;
+    private string $body = '';
 
     private array $multipartData = [];
 
