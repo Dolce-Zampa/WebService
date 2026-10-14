@@ -133,24 +133,23 @@ $app->group('/api/seller', function() use ($app) {
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
 
-/** Financial operations: verified Cognito financial-admin only. */
-$financialReconciliationRoute = $app->get('/api/admin/financial/orders/{orderId}/reconciliation', PS\Webservice\Http\Controller\FinancialReconciliationController::class . ':order');
-$financialReconciliationRoute
-    ->add(new \PS\Webservice\Http\Middleware\FinancialAuthorizationMiddleware(\PS\Webservice\Service\Financial\FinancialAccessPolicy::SCOPE_MARKETPLACE))
-    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+/** Financial operations: active, authorised PrestaShop Back Office employees only. */
+$financialEmployeeAuthentication = new \PS\Webservice\Http\Middleware\FinancialEmployeeAuthenticationMiddleware(
+    $container->get(\PS\Webservice\Service\Financial\EmployeeFinancialAuthService::class),
+);
+$app->post('/api/admin/auth/login', PS\Webservice\Http\Controller\FinancialEmployeeAuthController::class . ':login');
 
-/** Financial ledger: authenticated administrators only. */
+$app->get('/api/admin/financial/orders/{orderId}/reconciliation', PS\Webservice\Http\Controller\FinancialReconciliationController::class . ':order')
+    ->add($financialEmployeeAuthentication);
+
 $app->get('/api/admin/financial-report', PS\Webservice\Http\Controller\FinancialReportController::class . ':index')
-    ->add(new \PS\Webservice\Http\Middleware\FinancialReportAdminMiddleware())
-    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    ->add($financialEmployeeAuthentication);
 
 $app->get('/api/admin/financial-analytics', PS\Webservice\Http\Controller\FinancialAnalyticsController::class . ':index')
-    ->add(new \PS\Webservice\Http\Middleware\FinancialReportAdminMiddleware())
-    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    ->add($financialEmployeeAuthentication);
 
 $app->post('/api/admin/financial-expenses', PS\Webservice\Http\Controller\FinancialExpenseController::class . ':create')
-    ->add(new \PS\Webservice\Http\Middleware\FinancialReportAdminMiddleware())
-    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    ->add($financialEmployeeAuthentication);
 
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
