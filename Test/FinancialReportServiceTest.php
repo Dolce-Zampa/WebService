@@ -7,12 +7,14 @@ use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Financial\FinancialMovement;
 use PS\Webservice\Repositories\FinancialTransactionRepository;
 use PS\Webservice\Service\Financial\FinancialLedgerService;
+use PS\Webservice\Service\Financial\FinancialAnalyticsService;
 use PS\Webservice\Service\Financial\FinancialReportService;
 
 final class FinancialReportServiceTest extends TestCase
 {
     private FinancialLedgerService $ledger;
     private FinancialReportService $report;
+    private FinancialTransactionRepository $repository;
 
     protected function setUp(): void
     {
@@ -26,6 +28,7 @@ final class FinancialReportServiceTest extends TestCase
         $schema->create('financial_transactions', function ($table): void {
             $table->increments('id');
             $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('customer_id')->nullable();
             $table->unsignedBigInteger('artisan_id')->nullable();
             $table->unsignedBigInteger('order_item_id')->nullable();
             $table->string('order_reference', 64)->nullable();
@@ -61,9 +64,9 @@ final class FinancialReportServiceTest extends TestCase
             $table->dateTime('received_at');
             $table->dateTime('created_at');
         });
-        $repository = new FinancialTransactionRepository($capsule);
-        $this->ledger = new FinancialLedgerService($repository);
-        $this->report = new FinancialReportService($repository);
+        $this->repository = new FinancialTransactionRepository($capsule);
+        $this->ledger = new FinancialLedgerService($this->repository);
+        $this->report = new FinancialReportService($this->repository);
     }
 
     public function test_reports_latest_status_with_exact_decimal_aggregates_and_filters(): void
@@ -106,11 +109,30 @@ final class FinancialReportServiceTest extends TestCase
         }
     }
 
-    private function record(string $type, string $amount, string $occurredAt, int $orderId, int $artisanId, string $provider): int
+    public function test_analytics_groups_exact_costs_and_internal_customer_ids(): void
+    {
+        $this->record('payment', '100.000000', '2026-10-09 08:00:00', 101, 44, 'stripe', 9);
+        $this->record('shipping', '-8.500000', '2026-10-09 09:00:00', 101, 44, 'manual', 9);
+        $this->record('provider_fee', '-3.200000', '2026-10-09 10:00:00', 101, 44, 'stripe', 9);
+        $this->record('payment', '12.000000', '2026-10-09 11:00:00', 102, 44, 'paypal', 10);
+
+        $analytics = new FinancialAnalyticsService($this->repository);
+        $result = $analytics->overview(['from' => '2026-10-09', 'to' => '2026-10-09']);
+
+        self::assertSame('112', $result['summary_by_currency'][0]['by_type']['payment']);
+        self::assertSame('-8.5', $result['summary_by_currency'][0]['by_type']['shipping']);
+        self::assertSame('-3.2', $result['summary_by_currency'][0]['by_type']['provider_fee']);
+        self::assertSame('100.3', $result['summary_by_currency'][0]['net_amount']);
+        self::assertSame(2, $result['customer_count']);
+        self::assertSame(10, $result['top_customers'][0]['customer_id']);
+        self::assertSame('12', $result['top_customers'][0]['net_amount_by_currency'][0]['amount']);
+    }
+
+    private function record(string $type, string $amount, string $occurredAt, int $orderId, int $artisanId, string $provider, ?int $customerId = null): int
     {
         return $this->ledger->record(FinancialMovement::fromArray([
             'type' => $type, 'status' => 'pending', 'amount' => $amount, 'currency' => 'EUR',
-            'occurred_at' => $occurredAt, 'order_id' => $orderId, 'artisan_id' => $artisanId,
+            'occurred_at' => $occurredAt, 'order_id' => $orderId, 'customer_id' => $customerId, 'artisan_id' => $artisanId,
             'provider' => $provider, 'provider_event_id' => $provider . '-' . $type . '-' . $orderId,
             'source_event_type' => 'test.' . $type, 'source_event_id' => 'source-' . $type . '-' . $orderId,
         ]), 'idempotency-' . $provider . '-' . $type . '-' . $orderId)->transactionId;

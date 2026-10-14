@@ -4,7 +4,7 @@ La tabella `${PS_TABLE_PREFIX}financial_transactions` è il registro dei movimen
 
 ## Riferimenti e storico
 
-`order_id`, `artisan_id` e `order_item_id` sono riferimenti tecnici a PrestaShop e sono facoltativi per i movimenti che non hanno un ordine o un artigiano. Non hanno vincoli di chiave esterna intenzionalmente: una modifica o una cancellazione nell'applicazione non deve impedire l'audit del ledger.
+`order_id`, `customer_id`, `artisan_id` e `order_item_id` sono riferimenti tecnici a PrestaShop e sono facoltativi per i movimenti che non hanno un ordine, un cliente o un artigiano. Non hanno vincoli di chiave esterna intenzionalmente: una modifica o una cancellazione nell'applicazione non deve impedire l'audit del ledger. Le viste amministrative espongono per il cliente il solo ID tecnico, non nome, email o indirizzo.
 
 Le colonne `order_reference`, `artisan_reference` e `order_item_reference` devono contenere gli identificativi disponibili al momento della registrazione. Sono snapshot immutabili e permettono di riconciliare lo storico senza leggere lo stato corrente di ordini, prodotti o artigiani.
 
@@ -21,6 +21,7 @@ I tipi ammessi sono:
 | `commission` | Commissione maturata dal marketplace. |
 | `payout` | Accredito all'artigiano o trasferimento in uscita. |
 | `provider_fee` | Costo addebitato dal provider di pagamento. |
+| `shipping` | Costo di spedizione esplicito collegabile facoltativamente a un ordine. |
 | `chargeback` | Storno/disputa addebitata dal provider. |
 | `adjustment` | Rettifica manuale o tecnica, sempre motivata nei metadati. |
 
@@ -55,7 +56,7 @@ Il calcolo usa aritmetica decimale e `rounding_mode = none`: non vengono applica
 
 ## Stripe Checkout
 
-Il webhook Stripe alimenta il ledger a partire dall'evento firmato del provider, non dallo stato corrente dell'ordine. Per ogni movimento vengono conservati l'importo lordo nella valuta del provider, l'eventuale Checkout Session, il PaymentIntent (come `provider_transaction_id`), l'account Stripe e lo snapshot dell'ordine quando è già disponibile. Nei metadati entrano solo riferimenti tecnici non sensibili (`stripe_session_id`, `cart_id` e stato di pagamento): non vengono mai copiati carta, indirizzi, email o il payload completo.
+Il webhook Stripe alimenta il ledger a partire dall'evento firmato del provider, non dallo stato corrente dell'ordine. Per ogni movimento vengono conservati l'importo lordo nella valuta del provider, l'eventuale Checkout Session, il PaymentIntent (come `provider_transaction_id`), l'account Stripe e lo snapshot dell'ordine quando è già disponibile. Se il metadata Stripe contiene `id_customer`, viene trasferito esclusivamente nella colonna tecnica `customer_id`. Nei metadati entrano solo riferimenti tecnici non sensibili (`stripe_session_id`, `cart_id` e stato di pagamento): non vengono mai copiati carta, indirizzi, email o il payload completo.
 
 La mappatura è: webhook Stripe in attesa → `pending`; `payment_failed`/`async_payment_failed` → `failed`; `checkout.session.completed`, `async_payment_succeeded` e `payment_intent.succeeded` → `available`; scadenza della sessione → `cancelled`. In particolare, “completed” non mappa a `paid`: `available` indica un incasso cliente confermato e disponibile, mentre `paid` rimane lo stato di un regolamento successivo, ad esempio un payout. Ogni webhook ha una chiave idempotente derivata dal suo event id; webhook distinti che ripetono lo stesso stato sono comunque eventi append-only del journal.
 
@@ -67,11 +68,28 @@ Il webhook viene rifiutato finché il pagamento d'origine non è presente: una r
 
 Non viene calcolato né inventato alcuno storno di commissione o rettifica payout: per registrarli servono sia un importo esplicito fornito dal provider o da una policy contabile approvata, sia il movimento `commission`/`payout` originario da collegare. Analogamente il Refund Stripe non espone una ripartizione verificabile della spedizione; il pagamento Checkout resta lordo e non viene creata una componente spedizione separata senza un importo provider verificabile, per evitare duplicazioni o allocazioni presunte.
 
+Quando un evento Stripe include un `balance_transaction` espanso con la sua `fee`, il webhook registra anche un movimento negativo `provider_fee`, idempotente sul balance transaction. Non viene applicata alcuna formula stimata: se Stripe non invia il costo esatto, l'amministratore può registrarlo dopo verifica nel portale Stripe.
+
 ## Riconciliazione amministrativa per ordine
 
 `GET /api/admin/financial/orders/{orderId}/reconciliation?page=1&per_page=50` espone una vista esclusivamente amministrativa dell'ordine. Richiede sia un access token Cognito valido sia il gruppo `financial-admin` (oppure un subject incluso in `FINANCIAL_ADMIN_SUBS`); gli identificativi dell'ordine non attribuiscono alcun diritto di lettura.
 
 La risposta contiene gli identificativi disponibili, una timeline paginata dei movimenti e dei relativi eventi di stato, incassi, rimborsi, commissioni calcolate e registrate, spettanze, payout e residui. I payout sono esposti come importi positivi pagati al venditore, pur essendo negativi nel ledger dal punto di vista del marketplace. La spedizione resta `not_recorded` finché non esiste un movimento esplicito: l'eventuale differenza non spiegata viene mostrata senza attribuirla automaticamente a spedizione, sconti o altre voci.
+
+## Analisi, costi e import iniziale
+
+`GET /api/admin/financial-analytics` usa gli stessi filtri temporali, per ordine e per cliente del report e restituisce i totali per valuta e tipo, oltre ai clienti con più ordini e saldo netto. Richiede il gruppo amministrativo finanziario e non restituisce dati personali.
+
+`POST /api/admin/financial-expenses` aggiunge un fatto immutabile negativo di tipo `shipping`, `provider_fee` o `adjustment`. Richiede `amount`, `currency`, `occurred_at` e una `idempotency_key`; `order_id` e `reference` sono facoltativi. Se viene indicato l'ordine, il riferimento e il cliente sono risolti lato server: il client non può associare arbitrariamente il costo a un cliente.
+
+Gli ordini PrestaShop validi già esistenti possono essere portati nel ledger con:
+
+```sh
+php bin/console app:financial:backfill-orders --dry-run
+php bin/console app:financial:backfill-orders
+```
+
+L'import registra il totale effettivamente pagato in `orders.total_paid_tax_incl`, la valuta, l'ID cliente e il riferimento ordine. È idempotente per `id_order`, quindi è sicuro rieseguirlo; non genera costi di spedizione o commissioni provider stimati.
 ## Notifica vendita al venditore
 
 Dopo un checkout firmato e finalizzato, ogni venditore riceve una sola notifica relativa esclusivamente ai propri prodotti. Il journal di consegna è idempotente e i retry non bloccano la finalizzazione dell'ordine.

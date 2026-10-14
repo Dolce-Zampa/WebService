@@ -32,6 +32,7 @@ final class FinancialLedgerServiceTest extends TestCase
         $schema->create('financial_transactions', function ($table): void {
             $table->increments('id');
             $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('customer_id')->nullable();
             $table->unsignedBigInteger('artisan_id')->nullable();
             $table->unsignedBigInteger('order_item_id')->nullable();
             $table->string('order_reference', 64)->nullable();

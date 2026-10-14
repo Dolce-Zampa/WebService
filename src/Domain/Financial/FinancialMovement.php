@@ -18,7 +18,7 @@ use InvalidArgumentException;
 final class FinancialMovement
 {
     public const TYPES = [
-        'payment', 'refund', 'commission', 'payout', 'provider_fee', 'chargeback', 'adjustment',
+        'payment', 'refund', 'commission', 'payout', 'provider_fee', 'shipping', 'chargeback', 'adjustment',
     ];
 
     public const STATUSES = ['pending', 'available', 'paid', 'reversed', 'failed', 'cancelled'];
@@ -31,6 +31,7 @@ final class FinancialMovement
         public readonly string $currency,
         public readonly DateTimeImmutable $occurredAt,
         public readonly ?int $orderId = null,
+        public readonly ?int $customerId = null,
         public readonly ?int $artisanId = null,
         public readonly ?int $orderItemId = null,
         public readonly ?string $orderReference = null,
@@ -87,6 +88,7 @@ final class FinancialMovement
             currency: strtoupper((string) $data['currency']),
             occurredAt: self::date($data['occurred_at']),
             orderId: self::nullableInt($data['order_id'] ?? null),
+            customerId: self::nullableInt($data['customer_id'] ?? null),
             artisanId: self::nullableInt($data['artisan_id'] ?? null),
             orderItemId: self::nullableInt($data['order_item_id'] ?? null),
             orderReference: self::nullableString($data['order_reference'] ?? null),
@@ -109,7 +111,7 @@ final class FinancialMovement
     {
         return new self(
             $this->type, $this->status, $this->amount, $this->currency, $this->occurredAt,
-            $this->orderId, $this->artisanId, $this->orderItemId, $this->orderReference,
+            $this->orderId, $this->customerId, $this->artisanId, $this->orderItemId, $this->orderReference,
             $this->artisanReference, $this->orderItemReference, $this->provider,
             $this->providerAccountId, $this->providerTransactionId, $this->providerEventId,
             $this->sourceEventType, $this->sourceEventId, $transactionId, $this->metadata,
@@ -122,6 +124,7 @@ final class FinancialMovement
     {
         return [
             'order_id' => $this->orderId,
+            'customer_id' => $this->customerId,
             'artisan_id' => $this->artisanId,
             'order_item_id' => $this->orderItemId,
             'order_reference' => $this->orderReference,

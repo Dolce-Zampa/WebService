@@ -144,6 +144,14 @@ $app->get('/api/admin/financial-report', PS\Webservice\Http\Controller\Financial
     ->add(new \PS\Webservice\Http\Middleware\FinancialReportAdminMiddleware())
     ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
+$app->get('/api/admin/financial-analytics', PS\Webservice\Http\Controller\FinancialAnalyticsController::class . ':index')
+    ->add(new \PS\Webservice\Http\Middleware\FinancialReportAdminMiddleware())
+    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+
+$app->post('/api/admin/financial-expenses', PS\Webservice\Http\Controller\FinancialExpenseController::class . ':create')
+    ->add(new \PS\Webservice\Http\Middleware\FinancialReportAdminMiddleware())
+    ->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
 
