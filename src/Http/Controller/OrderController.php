@@ -160,6 +160,11 @@ class OrderController extends CartController
             return response(['error' => 'Customer ID or guest ID is required'], 403);
         }
 
+        $carrierId = filter_var($payload['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($carrierId === false) {
+            return response(['error' => 'A valid carrier ID is required'], 422);
+        }
+
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response([], 404);
@@ -168,6 +173,13 @@ class OrderController extends CartController
         // Create payment session
         try {
             $paymentService = $this->stripeService;
+            // Normalize checkout addresses before calling PrestaShop. The module
+            // accepts the ISO country too, but deployed versions require the
+            // native id_country field when calculating a carrier quote.
+            $newOrder = OrderEntity::create($payload, $this->orderService);
+            $checkout = $newOrder->toArray();
+            $checkout['delivery_address'] = $checkout['customer']['delivery_address'] ?? null;
+            $checkout['invoice_address'] = $checkout['customer']['invoice_address'] ?? null;
             $codes = [];
             if (!empty($payload['coupon_code'])) {
                 $codes[] = trim((string) $payload['coupon_code']);
@@ -178,10 +190,17 @@ class OrderController extends CartController
                 }
                 $codes[] = trim((string) $rule['code']);
             }
-            if ($codes !== [] || !empty($cart->toArray()['cart_rules'])) {
-                $cart = $this->orderService->prepareCouponCart($payload['id_cart'], $customerId, $guestId, (int) $payload['id_carrier'], $codes, $payload);
-            }
-            $newOrder = OrderEntity::create($payload, $this->orderService);
+            // Quote the selected carrier with the checkout address before Stripe is
+            // created. `cart_rules` accepts an empty code for this purpose; a code,
+            // when present, is applied only after the cart has been quoted.
+            $cart = $this->orderService->prepareCouponCart(
+                $payload['id_cart'],
+                $customerId,
+                $guestId,
+                $carrierId,
+                $codes,
+                $checkout
+            );
             $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray());
             if (empty($orderSession->metadata['payment_module'])) {
                 throw new \InvalidArgumentException('A payment module must be selected or configured.');

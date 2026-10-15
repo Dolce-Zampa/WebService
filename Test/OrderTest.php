@@ -16,6 +16,7 @@ final class OrderTest extends TestCase
 {
     private $cache;
     private $taggedCache;
+    private ?string $previousStripeShippingRates = null;
     protected function setUp(): void
     {
         parent::setUp();
@@ -52,8 +53,18 @@ final class OrderTest extends TestCase
         });
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
+        $this->previousStripeShippingRates = $_ENV['STRIPE_SHIPPING_RATE_IDS'] ?? null;
+        $_ENV['STRIPE_SHIPPING_RATE_IDS'] = '{"1":"shr_testCarrier1","15":"shr_testCarrier15"}';
+    }
 
-
+    protected function tearDown(): void
+    {
+        if ($this->previousStripeShippingRates === null) {
+            unset($_ENV['STRIPE_SHIPPING_RATE_IDS']);
+        } else {
+            $_ENV['STRIPE_SHIPPING_RATE_IDS'] = $this->previousStripeShippingRates;
+        }
+        parent::tearDown();
     }
 
     // {"id_cart":"4wW30E1r","customer":{"firstname":"Marco","lastname":"De Felice","email":"marco.defelice@dolcezampa.com","phone":"3319843630"},"invoice_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"delivery_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"id_carrier":15,"payment_method":"stripe","is_guest":true,"cart_rules":[],"id_guest":"r8Ogyz50"}
@@ -121,35 +132,32 @@ final class OrderTest extends TestCase
         $orderServiceMock->method('getCartFromId')->willReturn(
             $cartEntity
         );
-        $orderServiceMock->method('getCarrierDetail')->willReturn(
-            CarrierEntity::create(
-                [
-                    'deleted' => "0",
-                    'is_module' => "1",
-                    'id_tax_rules_group' => 0,
-                    'id_reference' => 15,
-                    'name' => "BRT Corriere",
-                    'active' => "1",
-                    'is_free' => "0",
-                    'url' => "",
-                    'shipping_handling' => "0",
-                    'shipping_external' => "1",
-                    'range_behavior' => "0",
-                    'shipping_method' => 1,
-                    'max_width' => 0,
-                    'max_height' => 0,
-                    'max_depth' => 0,
-                    'max_weight' => "0.000000",
-                    'grade' => 0,
-                    'external_module_name' => "packlink",
-                    'need_range' => "1",
-                    'position' => 2,
-                    'delay' => "2 DAYS",
-                    'price_with_tax' => "6.10"
-                ],
-                $orderServiceMock
-            )
+        $quotedCart = CartEntity::create(
+            json_decode('{' .
+                '"id":204,"id_customer":null,"id_guest":123,"id_currency":1,"id_lang":1,' .
+                '"id_address_delivery":991,"id_address_invoice":992,"id_carrier":15,' .
+                '"secure_key":"d3ad39708e9fb664270e89dcb06d1040",' .
+                '"totals":{"products_tax_incl":38,"shipping_tax_incl":6.1,"grand_total_tax_incl":44.1},' .
+                '"products":[{"id_product":204,"id_image":2647,"id_product_attribute":0,' .
+                '"id_customization":0,"name":"Collana Artigianale Halloween per Cani",' .
+                '"reference":"SKU2026FC2000204","quantity":1,"price_wt":38,"total_wt":38,' .
+                '"customizations":[]}],"cart_rules":[]}', true),
+            $orderServiceMock
         );
+        $orderServiceMock->expects($this->once())
+            ->method('prepareCouponCart')
+            ->willReturnCallback(function ($cartId, $customerId, $guestId, $carrierId, $codes, $checkout) use ($quotedCart) {
+                $this->assertSame(1, $cartId);
+                $this->assertNull($customerId);
+                $this->assertSame(11, $guestId);
+                $this->assertSame(15, $carrierId);
+                $this->assertSame([], $codes);
+                $this->assertSame(10, $checkout['delivery_address']['id_country']);
+                $this->assertSame('IT', $checkout['delivery_address']['country']);
+                $this->assertSame('Marco', $checkout['delivery_address']['firstname']);
+                $this->assertSame('De Felice', $checkout['delivery_address']['lastname']);
+                return $quotedCart;
+            });
         $orderServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
 
         $paymentServiceMock = $this->createMock(\PS\Webservice\Service\Payments\PaymentGatewayInterface::class);
@@ -191,7 +199,6 @@ final class OrderTest extends TestCase
             $this->assertSame('webserviceapi', $toCheck['metadata']['payment_module']);
             $this->assertSame('true', $toCheck['metadata']['create_account']);
             $this->assertSame('true', $toCheck['metadata']['newsletter']);
-
             return 'http://checkout.url';
 
         });
@@ -201,7 +208,8 @@ final class OrderTest extends TestCase
         $body = json_decode((string) $response->getBody(), true);
 
         $this->assertEquals('http://checkout.url', $body['data']['payment_url']);
-        $this->assertEquals($cartEntity->toArray(), $body['data']['order']);
+        $this->assertEquals($quotedCart->toArray(), $body['data']['order']);
+        $this->assertSame(6.1, (float) $body['data']['order']['totals']['shipping_tax_incl']);
 
     }
 
@@ -275,6 +283,7 @@ final class OrderTest extends TestCase
         $metadata->id_carrier = 1;
         $metadata->customer_email = 'john.doe@example.com';
         $session->metadata = $metadata;
+        $session->amount_total = 4410;
 
         $orderServiceMock = $this->createMock(\PS\Webservice\Service\PS\Order::class);
         $cartEntity = CartEntity::create(
@@ -357,7 +366,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('41.32', $orderTotal);
+            $this->assertEquals('44.1', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 
@@ -506,7 +515,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('41.32', $orderTotal);
+            $this->assertEquals('44.1', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 

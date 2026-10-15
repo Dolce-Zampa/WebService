@@ -62,17 +62,33 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
         $cart = $this->getOwnedCart($idCart, $idCustomer, $idGuest);
         if (!empty($payload['checkout'])) {
             if (!empty($payload['delivery_address']) || !empty($payload['invoice_address'])) {
-                $customer = (int) $cart->id_customer > 0
-                    ? MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer)
-                    : MlabFactoryApiHelper::createCustomerFromGuest($cart, $payload);
-                $cart->id_customer = (int) $customer->id;
-                $cart->secure_key = (string) $customer->secure_key;
-                foreach (array('delivery', 'invoice') as $type) {
-                    $field = $type . '_address';
-                    if (!empty($payload[$field]) && is_array($payload[$field])) {
-                        $address = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload[$field]);
-                        $property = 'id_address_' . $type;
-                        $cart->$property = (int) $address->id;
+                if ((int) $cart->id_customer > 0) {
+                    $customer = MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer);
+                    foreach (array('delivery', 'invoice') as $type) {
+                        $field = $type . '_address';
+                        if (!empty($payload[$field]) && is_array($payload[$field])) {
+                            $address = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload[$field]);
+                            $property = 'id_address_' . $type;
+                            $cart->$property = (int) $address->id;
+                        }
+                    }
+                } else {
+                    // The PrestaShop shipping engine reads its zone and delivery
+                    // option from the cart address. Persist an address owned by no
+                    // customer solely for this guest checkout quote; the customer
+                    // itself is still created only after Stripe confirms payment.
+                    foreach (array('delivery', 'invoice') as $type) {
+                        $field = $type . '_address';
+                        if (!empty($payload[$field]) && is_array($payload[$field])) {
+                            $property = 'id_address_' . $type;
+                            $address = $this->ensureGuestCheckoutAddress(
+                                $cart,
+                                $property,
+                                $payload[$field],
+                                $payload
+                            );
+                            $cart->$property = (int) $address->id;
+                        }
                     }
                 }
             }
@@ -81,7 +97,9 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
                 throw new MlabFactoryApiException('Carrier is required for checkout.', 422);
             }
             $cart->id_carrier = $carrierId;
-            $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
+            if ((int) $cart->id_address_delivery > 0) {
+                $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
+            }
             if (!$cart->update()) {
                 throw new MlabFactoryApiException('Unable to update checkout cart.', 500);
             }
@@ -120,6 +138,37 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
             'coupon' => $coupon,
             'cart' => MlabFactoryApiHelper::serializeCart($cart),
         );
+    }
+
+    /**
+     * Stores or refreshes a checkout-only address for a guest cart.
+     *
+     * The address has id_customer = 0, so it is not a customer registration.
+     * Reusing the address already attached to the cart also makes retries
+     * idempotent rather than creating an address for every Stripe attempt.
+     */
+    protected function ensureGuestCheckoutAddress(Cart $cart, $property, array $data, array $payload)
+    {
+        $addressId = (int) $cart->$property;
+        if ($addressId > 0) {
+            $address = new Address($addressId);
+            if (!Validate::isLoadedObject($address) || (int) $address->id_customer !== 0) {
+                throw new MlabFactoryApiException(
+                    'Guest checkout address is invalid.',
+                    422,
+                    array('id_address' => $addressId)
+                );
+            }
+            $data['id_address'] = $addressId;
+        }
+
+        // ensureAddressForCustomer already normalizes country ISO codes to
+        // id_country. This in-memory Customer object is never persisted.
+        $guestOwner = new Customer();
+        $guestOwner->firstname = trim((string) MlabFactoryApiHelper::getValue($payload, 'firstname', 'Guest'));
+        $guestOwner->lastname = trim((string) MlabFactoryApiHelper::getValue($payload, 'lastname', 'Customer'));
+
+        return MlabFactoryApiHelper::ensureAddressForCustomer($guestOwner, $data);
     }
 
     protected function listCartRules($couponCode)
@@ -207,6 +256,7 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
                 'quantity' => (int) $cartRule->quantity,
                 'reduction_percent' => (float) $cartRule->reduction_percent,
                 'reduction_amount' => (float) $cartRule->reduction_amount,
+                'free_shipping' => (bool) $cartRule->free_shipping,
             ),
         );
     }

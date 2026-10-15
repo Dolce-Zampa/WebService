@@ -26,7 +26,9 @@ final class CouponCheckoutControllerTest extends TestCase
             'totals' => ['shipping_tax_incl' => 6, 'grand_total_tax_incl' => 96]];
         $cart = CartEntity::create($data, $service);
         $service->method('getCartFromId')->willReturn($cart);
-        $service->expects($this->once())->method('prepareCouponCart')->with(10, 5, null, 2, ['SAVE10'])->willReturn($cart);
+        $service->expects($this->once())->method('prepareCouponCart')
+            ->with(10, 5, null, 2, ['SAVE10'], $this->isType('array'))
+            ->willReturn($cart);
         $service->expects($this->never())->method('getCarrierDetail');
         $service->expects($this->once())->method('createCouponCode')->willReturnCallback(function (Discount $discount) {
             $this->assertSame(10.0, $discount->amount_off);

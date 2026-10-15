@@ -36,12 +36,16 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         }
 
         if (!empty($payload['delivery_address']) && is_array($payload['delivery_address'])) {
-            $deliveryAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['delivery_address']);
+            $deliveryAddress = $isGuest
+                ? $this->claimGuestCheckoutAddress($cart, 'id_address_delivery', $customer, $payload['delivery_address'])
+                : MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['delivery_address']);
             $cart->id_address_delivery = (int) $deliveryAddress->id;
         }
 
         if (!empty($payload['invoice_address']) && is_array($payload['invoice_address'])) {
-            $invoiceAddress = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['invoice_address']);
+            $invoiceAddress = $isGuest
+                ? $this->claimGuestCheckoutAddress($cart, 'id_address_invoice', $customer, $payload['invoice_address'])
+                : MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload['invoice_address']);
             $cart->id_address_invoice = (int) $invoiceAddress->id;
         }
 
@@ -149,6 +153,32 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             'cart' => MlabFactoryApiHelper::serializeCart($cart),
             'guest_registered' => $isGuest,
         );
+    }
+
+    /**
+     * Transfers a guest quote address to the customer created after payment.
+     * The cart itself is the ownership boundary: only its currently attached
+     * ownerless address can be claimed.
+     */
+    protected function claimGuestCheckoutAddress(Cart $cart, $property, Customer $customer, array $data)
+    {
+        $addressId = (int) $cart->$property;
+        if ($addressId <= 0) {
+            return MlabFactoryApiHelper::ensureAddressForCustomer($customer, $data);
+        }
+
+        $address = new Address($addressId);
+        if (!Validate::isLoadedObject($address) || (int) $address->id_customer !== 0) {
+            return MlabFactoryApiHelper::ensureAddressForCustomer($customer, $data);
+        }
+
+        $address->id_customer = (int) $customer->id;
+        if (!$address->update()) {
+            throw new MlabFactoryApiException('Unable to claim guest checkout address.', 500);
+        }
+
+        $data['id_address'] = $addressId;
+        return MlabFactoryApiHelper::ensureAddressForCustomer($customer, $data);
     }
 
     private function addCustomCartRule(Cart $cart, float $amountPaid)
