@@ -262,6 +262,20 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return CartEntity::create($data['data']['cart'], $this);
     }
 
+    /**
+     * Persists the checkout carrier and returns the resulting server-calculated cart.
+     *
+     * The returned totals must be used for payment: a cart retrieved before this step
+     * can still contain the shipping amount for a previously selected carrier.
+     *
+     * @param array<int, string> $codes
+     * @param array<string, mixed> $checkout
+     */
+    public function prepareCheckoutCart($cartId, $customerId, $guestId, int $carrierId, array $codes = [], array $checkout = []): CartEntity
+    {
+        return $this->prepareCouponCart($cartId, $customerId, $guestId, $carrierId, $codes, $checkout);
+    }
+
     public function validateCoupon(string $code, string $cartId, ?string $customerId = null, ?string $guestId = null): array|false
     {
         $query = [

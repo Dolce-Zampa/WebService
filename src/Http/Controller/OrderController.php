@@ -177,9 +177,17 @@ class OrderController extends CartController
                 }
                 $codes[] = trim((string) $rule['code']);
             }
-            if ($codes !== [] || !empty($cart->toArray()['cart_rules'])) {
-                $cart = $this->orderService->prepareCouponCart($payload['id_cart'], $customerId, $guestId, (int) $payload['id_carrier'], $codes, $payload);
-            }
+            // Recalculate the cart only after persisting the selected carrier. The cart
+            // fetched above can still contain shipping for the carrier selected earlier
+            // in the storefront, while the checkout payload contains the current one.
+            $cart = $this->orderService->prepareCheckoutCart(
+                $payload['id_cart'],
+                $customerId,
+                $guestId,
+                (int) $payload['id_carrier'],
+                $codes,
+                $payload
+            );
             $newOrder = OrderEntity::create($payload, $this->orderService);
             $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray());
             if (empty($orderSession->metadata['payment_module'])) {

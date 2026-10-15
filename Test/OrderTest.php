@@ -122,6 +122,7 @@ final class OrderTest extends TestCase
         $orderServiceMock->method('getCartFromId')->willReturn(
             $cartEntity
         );
+        $orderServiceMock->method('prepareCheckoutCart')->willReturn($cartEntity);
         $orderServiceMock->method('getCarrierDetail')->willReturn(
             CarrierEntity::create(
                 [

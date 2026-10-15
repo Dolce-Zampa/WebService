@@ -19,14 +19,16 @@ final class CouponCheckoutControllerTest extends TestCase
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication(['cache' => $cache]);
         $service = $this->getMockBuilder(Order::class)->disableOriginalConstructor()
-            ->onlyMethods(['getCartFromId', 'prepareCouponCart', 'createCouponCode', 'getCarrierDetail'])->getMock();
+            ->onlyMethods(['getCartFromId', 'prepareCheckoutCart', 'createCouponCode', 'getCarrierDetail'])->getMock();
         $data = ['id' => 10, 'currency_iso' => 'EUR', 'products' => [
             ['id_product' => 1, 'name' => 'Product', 'price_wt' => 100, 'quantity' => 1]],
             'cart_rules' => [['code' => 'SAVE10']],
             'totals' => ['shipping_tax_incl' => 6, 'grand_total_tax_incl' => 96]];
         $cart = CartEntity::create($data, $service);
         $service->method('getCartFromId')->willReturn($cart);
-        $service->expects($this->once())->method('prepareCouponCart')->with(10, 5, null, 2, ['SAVE10'])->willReturn($cart);
+        $service->expects($this->once())->method('prepareCheckoutCart')
+            ->with(10, 5, null, 2, ['SAVE10'], $this->isType('array'))
+            ->willReturn($cart);
         $service->expects($this->never())->method('getCarrierDetail');
         $service->expects($this->once())->method('createCouponCode')->willReturnCallback(function (Discount $discount) {
             $this->assertSame(10.0, $discount->amount_off);
