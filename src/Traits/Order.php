@@ -4,7 +4,6 @@ declare(strict_types=1);
 namespace PS\Webservice\Traits;
 
 use PS\Webservice\Domain\Entities\CartRuleEntity;
-use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Object\OrderSession;
@@ -53,12 +52,7 @@ trait Order
                 $freeShipping ? $this->withoutShipping($serverCart) : $serverCart
             );
         } elseif (!$freeShipping) {
-            // A guest's PrestaShop cart has no delivery address until payment is
-            // confirmed, so its shipping total can belong to a previous carrier.
-            // The price is configured server-side for the selected carrier.
-            $this->orderSession->addCarrierShipping(
-                CarrierEntity::create(['id' => $payload->id_carrier], $this->orderService)
-            );
+            $this->orderSession->addCartShipping($serverCart);
         }
         $this->tags(['order-session'])->setEncryptedToCache($payload->id_cart, $orderSession->toCacheData(), 36 * 60);
 

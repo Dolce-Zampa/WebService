@@ -17,7 +17,6 @@ final class OrderTest extends TestCase
     private $cache;
     private $taggedCache;
     private ?string $previousStripeShippingRates = null;
-    private ?string $previousCarrierShippingPrices = null;
     protected function setUp(): void
     {
         parent::setUp();
@@ -56,8 +55,6 @@ final class OrderTest extends TestCase
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
         $this->previousStripeShippingRates = $_ENV['STRIPE_SHIPPING_RATE_IDS'] ?? null;
         $_ENV['STRIPE_SHIPPING_RATE_IDS'] = '{"1":"shr_testCarrier1","15":"shr_testCarrier15"}';
-        $this->previousCarrierShippingPrices = $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] ?? null;
-        $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = '{"1":6.10,"15":6.10}';
     }
 
     protected function tearDown(): void
@@ -67,12 +64,6 @@ final class OrderTest extends TestCase
         } else {
             $_ENV['STRIPE_SHIPPING_RATE_IDS'] = $this->previousStripeShippingRates;
         }
-        if ($this->previousCarrierShippingPrices === null) {
-            unset($_ENV['STRIPE_CARRIER_SHIPPING_PRICES']);
-        } else {
-            $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = $this->previousCarrierShippingPrices;
-        }
-
         parent::tearDown();
     }
 
@@ -141,35 +132,6 @@ final class OrderTest extends TestCase
         $orderServiceMock->method('getCartFromId')->willReturn(
             $cartEntity
         );
-        $orderServiceMock->method('getCarrierDetail')->willReturn(
-            CarrierEntity::create(
-                [
-                    'deleted' => "0",
-                    'is_module' => "1",
-                    'id_tax_rules_group' => 0,
-                    'id_reference' => 15,
-                    'name' => "BRT Corriere",
-                    'active' => "1",
-                    'is_free' => "0",
-                    'url' => "",
-                    'shipping_handling' => "0",
-                    'shipping_external' => "1",
-                    'range_behavior' => "0",
-                    'shipping_method' => 1,
-                    'max_width' => 0,
-                    'max_height' => 0,
-                    'max_depth' => 0,
-                    'max_weight' => "0.000000",
-                    'grade' => 0,
-                    'external_module_name' => "packlink",
-                    'need_range' => "1",
-                    'position' => 2,
-                    'delay' => "2 DAYS",
-                    'price_with_tax' => "6.10"
-                ],
-                $orderServiceMock
-            )
-        );
         $orderServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
 
         $paymentServiceMock = $this->createMock(\PS\Webservice\Service\Payments\PaymentGatewayInterface::class);
@@ -211,13 +173,6 @@ final class OrderTest extends TestCase
             $this->assertSame('webserviceapi', $toCheck['metadata']['payment_module']);
             $this->assertSame('true', $toCheck['metadata']['create_account']);
             $this->assertSame('true', $toCheck['metadata']['newsletter']);
-            $shippingLines = array_values(array_filter(
-                $toCheck['line_items'],
-                static fn (array $line): bool => !isset($line['price_data']['product_data']['metadata']['id_product'])
-            ));
-            $this->assertCount(1, $shippingLines);
-            $this->assertSame(610, $shippingLines[0]['price_data']['unit_amount']);
-
             return 'http://checkout.url';
 
         });
