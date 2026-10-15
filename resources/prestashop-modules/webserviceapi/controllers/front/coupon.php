@@ -61,18 +61,34 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
         $idGuest = (int) MlabFactoryApiHelper::getValue($payload, 'id_guest', 0);
         $cart = $this->getOwnedCart($idCart, $idCustomer, $idGuest);
         if (!empty($payload['checkout'])) {
-            // Do not turn a guest into a customer while preparing a Stripe session.
-            // Guest registration and address persistence happen only after Stripe
-            // confirms the payment in the order endpoint.
-            if ((int) $cart->id_customer > 0
-                && (!empty($payload['delivery_address']) || !empty($payload['invoice_address']))) {
-                $customer = MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer);
-                foreach (array('delivery', 'invoice') as $type) {
-                    $field = $type . '_address';
-                    if (!empty($payload[$field]) && is_array($payload[$field])) {
-                        $address = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload[$field]);
-                        $property = 'id_address_' . $type;
-                        $cart->$property = (int) $address->id;
+            if (!empty($payload['delivery_address']) || !empty($payload['invoice_address'])) {
+                if ((int) $cart->id_customer > 0) {
+                    $customer = MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer);
+                    foreach (array('delivery', 'invoice') as $type) {
+                        $field = $type . '_address';
+                        if (!empty($payload[$field]) && is_array($payload[$field])) {
+                            $address = MlabFactoryApiHelper::ensureAddressForCustomer($customer, $payload[$field]);
+                            $property = 'id_address_' . $type;
+                            $cart->$property = (int) $address->id;
+                        }
+                    }
+                } else {
+                    // The PrestaShop shipping engine reads its zone and delivery
+                    // option from the cart address. Persist an address owned by no
+                    // customer solely for this guest checkout quote; the customer
+                    // itself is still created only after Stripe confirms payment.
+                    foreach (array('delivery', 'invoice') as $type) {
+                        $field = $type . '_address';
+                        if (!empty($payload[$field]) && is_array($payload[$field])) {
+                            $property = 'id_address_' . $type;
+                            $address = $this->ensureGuestCheckoutAddress(
+                                $cart,
+                                $property,
+                                $payload[$field],
+                                $payload
+                            );
+                            $cart->$property = (int) $address->id;
+                        }
                     }
                 }
             }
@@ -122,6 +138,37 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
             'coupon' => $coupon,
             'cart' => MlabFactoryApiHelper::serializeCart($cart),
         );
+    }
+
+    /**
+     * Stores or refreshes a checkout-only address for a guest cart.
+     *
+     * The address has id_customer = 0, so it is not a customer registration.
+     * Reusing the address already attached to the cart also makes retries
+     * idempotent rather than creating an address for every Stripe attempt.
+     */
+    protected function ensureGuestCheckoutAddress(Cart $cart, $property, array $data, array $payload)
+    {
+        $addressId = (int) $cart->$property;
+        if ($addressId > 0) {
+            $address = new Address($addressId);
+            if (!Validate::isLoadedObject($address) || (int) $address->id_customer !== 0) {
+                throw new MlabFactoryApiException(
+                    'Guest checkout address is invalid.',
+                    422,
+                    array('id_address' => $addressId)
+                );
+            }
+            $data['id_address'] = $addressId;
+        }
+
+        // ensureAddressForCustomer already normalizes country ISO codes to
+        // id_country. This in-memory Customer object is never persisted.
+        $guestOwner = new Customer();
+        $guestOwner->firstname = trim((string) MlabFactoryApiHelper::getValue($payload, 'firstname', 'Guest'));
+        $guestOwner->lastname = trim((string) MlabFactoryApiHelper::getValue($payload, 'lastname', 'Customer'));
+
+        return MlabFactoryApiHelper::ensureAddressForCustomer($guestOwner, $data);
     }
 
     protected function listCartRules($couponCode)

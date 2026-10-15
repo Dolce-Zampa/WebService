@@ -132,6 +132,32 @@ final class OrderTest extends TestCase
         $orderServiceMock->method('getCartFromId')->willReturn(
             $cartEntity
         );
+        $quotedCart = CartEntity::create(
+            json_decode('{' .
+                '"id":204,"id_customer":null,"id_guest":123,"id_currency":1,"id_lang":1,' .
+                '"id_address_delivery":991,"id_address_invoice":992,"id_carrier":15,' .
+                '"secure_key":"d3ad39708e9fb664270e89dcb06d1040",' .
+                '"totals":{"products_tax_incl":38,"shipping_tax_incl":6.1,"grand_total_tax_incl":44.1},' .
+                '"products":[{"id_product":204,"id_image":2647,"id_product_attribute":0,' .
+                '"id_customization":0,"name":"Collana Artigianale Halloween per Cani",' .
+                '"reference":"SKU2026FC2000204","quantity":1,"price_wt":38,"total_wt":38,' .
+                '"customizations":[]}],"cart_rules":[]}', true),
+            $orderServiceMock
+        );
+        $orderServiceMock->expects($this->once())
+            ->method('prepareCouponCart')
+            ->willReturnCallback(function ($cartId, $customerId, $guestId, $carrierId, $codes, $checkout) use ($quotedCart) {
+                $this->assertSame(1, $cartId);
+                $this->assertNull($customerId);
+                $this->assertSame(11, $guestId);
+                $this->assertSame(15, $carrierId);
+                $this->assertSame([], $codes);
+                $this->assertSame(10, $checkout['delivery_address']['id_country']);
+                $this->assertSame('IT', $checkout['delivery_address']['country']);
+                $this->assertSame('Marco', $checkout['delivery_address']['firstname']);
+                $this->assertSame('De Felice', $checkout['delivery_address']['lastname']);
+                return $quotedCart;
+            });
         $orderServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
 
         $paymentServiceMock = $this->createMock(\PS\Webservice\Service\Payments\PaymentGatewayInterface::class);
@@ -182,7 +208,8 @@ final class OrderTest extends TestCase
         $body = json_decode((string) $response->getBody(), true);
 
         $this->assertEquals('http://checkout.url', $body['data']['payment_url']);
-        $this->assertEquals($cartEntity->toArray(), $body['data']['order']);
+        $this->assertEquals($quotedCart->toArray(), $body['data']['order']);
+        $this->assertSame(6.1, (float) $body['data']['order']['totals']['shipping_tax_incl']);
 
     }
 
