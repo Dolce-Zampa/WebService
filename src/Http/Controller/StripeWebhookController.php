@@ -949,7 +949,11 @@ class StripeWebhookController extends OrderController
         $paymentUrl = $this->stripeService->createPaymentSession($order);
 
         // send email to customer with payment link and line items
-        $this->mailer->sendRecoveryCartExpired($order->getCustomer()->email, $paymentUrl, $this->getProducts(), (string) $order->total(), $order->getCustomer()->firstname);
+        $amountTotal = $session->amount_total ?? null;
+        $recoveryTotal = is_numeric($amountTotal) && (float) $amountTotal >= 0
+            ? (float) $amountTotal / 100
+            : $order->total();
+        $this->mailer->sendRecoveryCartExpired($order->getCustomer()->email, $paymentUrl, $this->getProducts(), (string) $recoveryTotal, $order->getCustomer()->firstname);
 
         Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
     }

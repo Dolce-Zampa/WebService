@@ -16,6 +16,8 @@ final class OrderTest extends TestCase
 {
     private $cache;
     private $taggedCache;
+    private ?string $previousStripeShippingRates = null;
+    private ?string $previousCarrierShippingPrices = null;
     protected function setUp(): void
     {
         parent::setUp();
@@ -52,8 +54,26 @@ final class OrderTest extends TestCase
         });
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
         \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
+        $this->previousStripeShippingRates = $_ENV['STRIPE_SHIPPING_RATE_IDS'] ?? null;
+        $_ENV['STRIPE_SHIPPING_RATE_IDS'] = '{"1":"shr_testCarrier1","15":"shr_testCarrier15"}';
+        $this->previousCarrierShippingPrices = $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] ?? null;
+        $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = '{"1":6.10,"15":6.10}';
+    }
 
+    protected function tearDown(): void
+    {
+        if ($this->previousStripeShippingRates === null) {
+            unset($_ENV['STRIPE_SHIPPING_RATE_IDS']);
+        } else {
+            $_ENV['STRIPE_SHIPPING_RATE_IDS'] = $this->previousStripeShippingRates;
+        }
+        if ($this->previousCarrierShippingPrices === null) {
+            unset($_ENV['STRIPE_CARRIER_SHIPPING_PRICES']);
+        } else {
+            $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = $this->previousCarrierShippingPrices;
+        }
 
+        parent::tearDown();
     }
 
     // {"id_cart":"4wW30E1r","customer":{"firstname":"Marco","lastname":"De Felice","email":"marco.defelice@dolcezampa.com","phone":"3319843630"},"invoice_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"delivery_address":{"address1":"Via Monte Rosa, 13","city":"Somma Lombardo","state":"VA","postcode":"21019","country":"IT"},"id_carrier":15,"payment_method":"stripe","is_guest":true,"cart_rules":[],"id_guest":"r8Ogyz50"}
@@ -191,6 +211,12 @@ final class OrderTest extends TestCase
             $this->assertSame('webserviceapi', $toCheck['metadata']['payment_module']);
             $this->assertSame('true', $toCheck['metadata']['create_account']);
             $this->assertSame('true', $toCheck['metadata']['newsletter']);
+            $shippingLines = array_values(array_filter(
+                $toCheck['line_items'],
+                static fn (array $line): bool => !isset($line['price_data']['product_data']['metadata']['id_product'])
+            ));
+            $this->assertCount(1, $shippingLines);
+            $this->assertSame(610, $shippingLines[0]['price_data']['unit_amount']);
 
             return 'http://checkout.url';
 
@@ -275,6 +301,7 @@ final class OrderTest extends TestCase
         $metadata->id_carrier = 1;
         $metadata->customer_email = 'john.doe@example.com';
         $session->metadata = $metadata;
+        $session->amount_total = 4410;
 
         $orderServiceMock = $this->createMock(\PS\Webservice\Service\PS\Order::class);
         $cartEntity = CartEntity::create(
@@ -357,7 +384,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('41.32', $orderTotal);
+            $this->assertEquals('44.1', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 
@@ -506,7 +533,7 @@ final class OrderTest extends TestCase
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);
-            $this->assertEquals('41.32', $orderTotal);
+            $this->assertEquals('44.1', $orderTotal);
             $this->assertEquals('John', $customerFirstName);
         });
 
