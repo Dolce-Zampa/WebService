@@ -862,10 +862,15 @@ class StripeWebhookController extends OrderController
      */
     public function handleCheckoutSessionExpired(\Stripe\StripeObject $session): void
     {
-        $metadata = $session->metadata;
-        $cartId = isset($metadata->cart_id) ? (int) $metadata->cart_id : 0;
-        $carrierId = isset($metadata->id_carrier) ? (int) $metadata->id_carrier : null;
-        $recoveryAttempt = isset($metadata->recovery_attempt) ? filter_var($metadata->recovery_attempt, FILTER_VALIDATE_BOOLEAN) : false;
+        // The verified Stripe event is the source of truth for the checkout.
+        // Cache entries are JSON-serialized and their metadata is therefore an
+        // array; never replace the Stripe metadata with that cache payload.
+        $stripeMetadata = $this->stripeMetadata($session->toArray());
+        $cartId = isset($stripeMetadata['cart_id']) ? (int) $stripeMetadata['cart_id'] : 0;
+        $carrierId = isset($stripeMetadata['id_carrier']) ? (int) $stripeMetadata['id_carrier'] : null;
+        $recoveryAttempt = isset($stripeMetadata['recovery_attempt'])
+            ? filter_var($stripeMetadata['recovery_attempt'], FILTER_VALIDATE_BOOLEAN)
+            : false;
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for expired session ' . $session->id);
@@ -880,18 +885,24 @@ class StripeWebhookController extends OrderController
 
         if (is_array($cachedSession)) {
             if (isset($cachedSession['metadata']) && !isset($cachedSession['cart_id'])) {
-                $metadata = $cachedSession['metadata'];
+                $cachedMetadata = $cachedSession['metadata'];
+                if ($cachedMetadata instanceof \Stripe\StripeObject) {
+                    $cachedMetadata = $cachedMetadata->toArray();
+                }
+                if (!is_array($cachedMetadata)) {
+                    $cachedMetadata = [];
+                }
                 $cachedSession = [
-                    'cart_id' => $metadata['cart_id'] ?? $cartId,
-                    'id_customer' => $metadata['id_customer'] ?? null,
-                    'id_guest' => $metadata['id_guest'] ?? null,
-                    'id_carrier' => $metadata['id_carrier'] ?? $carrierId,
-                    'recovery_attempt' => $metadata['recovery_attempt'] ?? false,
+                    'cart_id' => $cachedMetadata['cart_id'] ?? $cartId,
+                    'id_customer' => $cachedMetadata['id_customer'] ?? null,
+                    'id_guest' => $cachedMetadata['id_guest'] ?? null,
+                    'id_carrier' => $cachedMetadata['id_carrier'] ?? $carrierId,
+                    'recovery_attempt' => $cachedMetadata['recovery_attempt'] ?? false,
                     'customer' => $cachedSession['customer'] ?? null,
                 ];
             }
             $customerData = $cachedSession['customer'] ?? [
-                'email' => $metadata->customer_email ?? null,
+                'email' => $stripeMetadata['customer_email'] ?? null,
                 'firstname' => null,
                 'lastname' => null,
                 'phone' => null,
@@ -930,7 +941,7 @@ class StripeWebhookController extends OrderController
             return;
         }
 
-        $orderToCreate = $metadata->toArray();
+        $orderToCreate = $stripeMetadata;
         $orderToCreate['customer'] = $customerDetails->toArray();
         $orderToCreate['id_cart'] = $cartId;
         $orderToCreate['id_carrier'] = $carrierId;
