@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
+use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Http\Controller\OrderController;
@@ -18,6 +19,7 @@ final class OrderSecurityTest extends TestCase
     private $cache;
     private $taggedCache;
     private ?string $previousStripeShippingRates = null;
+    private ?string $previousCarrierShippingPrices = null;
 
     protected function setUp(): void
     {
@@ -42,6 +44,8 @@ final class OrderSecurityTest extends TestCase
         ]);
         $this->previousStripeShippingRates = $_ENV['STRIPE_SHIPPING_RATE_IDS'] ?? null;
         $_ENV['STRIPE_SHIPPING_RATE_IDS'] = '{"2":"shr_testCarrier2"}';
+        $this->previousCarrierShippingPrices = $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] ?? null;
+        $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = '{"2":6.10}';
         
         // create table webserviceapi_configurator
         \Illuminate\Database\Capsule\Manager::schema()->dropIfExists('webserviceapi_configurator');
@@ -59,6 +63,11 @@ final class OrderSecurityTest extends TestCase
             unset($_ENV['STRIPE_SHIPPING_RATE_IDS']);
         } else {
             $_ENV['STRIPE_SHIPPING_RATE_IDS'] = $this->previousStripeShippingRates;
+        }
+        if ($this->previousCarrierShippingPrices === null) {
+            unset($_ENV['STRIPE_CARRIER_SHIPPING_PRICES']);
+        } else {
+            $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = $this->previousCarrierShippingPrices;
         }
 
         parent::tearDown();
@@ -436,8 +445,8 @@ final class OrderSecurityTest extends TestCase
                 }
                 $shippingLines = array_values(array_filter($session->getLineItems(),
                     static fn (array $line): bool => !isset($line['price_data']['product_data']['metadata']['id_product'])));
-                $this->assertCount(0, $shippingLines);
-                $this->assertSame([['shipping_rate' => 'shr_testCarrier2']], $session->shipping_options);
+                $this->assertCount(1, $shippingLines);
+                $this->assertSame(610, $shippingLines[0]['price_data']['unit_amount']);
                 return 'https://example.com/checkout';
             });
         $controller = $this->createOrderController($serviceMock, $stripe);

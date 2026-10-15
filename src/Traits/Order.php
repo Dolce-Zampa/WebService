@@ -53,9 +53,10 @@ trait Order
                 $freeShipping ? $this->withoutShipping($serverCart) : $serverCart
             );
         } elseif (!$freeShipping) {
-            // Stripe owns the shipping amount for the selected carrier. This avoids
-            // using a cart total calculated before a guest has a delivery address.
-            $this->orderSession->addCarrier(
+            // A guest's PrestaShop cart has no delivery address until payment is
+            // confirmed, so its shipping total can belong to a previous carrier.
+            // The price is configured server-side for the selected carrier.
+            $this->orderSession->addCarrierShipping(
                 CarrierEntity::create(['id' => $payload->id_carrier], $this->orderService)
             );
         }
