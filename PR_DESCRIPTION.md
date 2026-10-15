@@ -1,13 +1,5 @@
 # Pull Request: feat(prestashop): override PrestaShopLogger per log su BetterStack
 
-> ⚠️ Nota: in questo ambiente non è configurato alcun remote Git né un token GitHub
-> (`gh auth status` = non autenticato), quindi il push del branch e l'apertura
-> automatica della PR non sono stati possibili. Il branch **`feat/ps-log-override-betterstack`**
-> è stato creato e committato localmente (commit `02722a1`, 3 file, +612 righe).
-> Di seguito il testo pronto per la PR.
-
----
-
 ## Descrizione
 
 Aggiunge un **override di `PrestaShopLogger`** per il negozio PrestaShop usato dal
