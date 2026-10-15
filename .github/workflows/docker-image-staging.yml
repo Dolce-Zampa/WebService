@@ -31,22 +31,22 @@ jobs:
       run: |
         docker push ghcr.io/dolce-zampa/webservice:${{ github.ref_name }}
 
-  deploy:
-    runs-on: ubuntu-latest
-    environment: staging
-    needs: build
-    permissions:
-      contents: read
-      packages: write
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   environment: staging
+  #   needs: build
+  #   permissions:
+  #     contents: read
+  #     packages: write
 
-    steps:
-      - name: Deploy to Docker Swarm 
-        uses: appleboy/ssh-action@v1.2.0 
-        with: 
-          host: ${{ secrets.SWARM_HOST }} 
-          username: ${{ secrets.SWARM_USER }} 
-          key: ${{ secrets.SWARM_SSH_KEY }} 
-          script: |
-            export WEBSERVICE_STAGING_TAG=${{ github.ref_name }}
-            docker service update --image ghcr.io/dolce-zampa/webservice:${WEBSERVICE_STAGING_TAG} dolcezampa_webservice
+  #   steps:
+  #     - name: Deploy to Docker Swarm 
+  #       uses: appleboy/ssh-action@v1.2.0 
+  #       with: 
+  #         host: ${{ secrets.SWARM_HOST }} 
+  #         username: ${{ secrets.SWARM_USER }} 
+  #         key: ${{ secrets.SWARM_SSH_KEY }} 
+  #         script: |
+  #           export WEBSERVICE_STAGING_TAG=${{ github.ref_name }}
+  #           docker service update --image ghcr.io/dolce-zampa/webservice:${WEBSERVICE_STAGING_TAG} dolcezampa_webservice
 

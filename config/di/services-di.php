@@ -39,6 +39,73 @@ $container->set(\PS\Webservice\Service\Promotions\PromotionService::class, funct
     );
 });
 
+$container->set(\PS\Webservice\Service\Financial\FinancialLedgerService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialLedgerService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class)
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\FinancialOrderReconciliationService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialOrderReconciliationService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class),
+        $c->get(\PS\Webservice\Repositories\FinancialCommissionSnapshotRepository::class),
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\FinancialReportService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialReportService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class)
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\FinancialAnalyticsService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\FinancialAnalyticsService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class),
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\EmployeeFinancialAuthService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\EmployeeFinancialAuthService($capsule);
+});
+
+$container->set(\PS\Webservice\Service\Financial\FinancialExpenseService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\FinancialExpenseService(
+        $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class),
+        $capsule,
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\FinancialOrderBackfillService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\FinancialOrderBackfillService(
+        $capsule,
+        $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class),
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\CommissionCalculator::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\CommissionCalculator();
+});
+
+$container->set(\PS\Webservice\Service\Financial\CommissionSnapshotService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\CommissionSnapshotService(
+        $c->get(\PS\Webservice\Service\Financial\CommissionCalculator::class),
+        $c->get(\PS\Webservice\Repositories\FinancialCommissionSnapshotRepository::class),
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\WeeklySellerFinancialSummaryService::class, function ($c) {
+    return new \PS\Webservice\Service\Financial\WeeklySellerFinancialSummaryService(
+        $c->get(\PS\Webservice\Repositories\FinancialTransactionRepository::class),
+    );
+});
+
+$container->set(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Financial\SellerSaleNotificationService(
+        $capsule,
+        $c->get(\PS\Webservice\Service\MailerInterface::class),
+    );
+});
+
 $container->set(\PS\Webservice\Service\PS\Image::class, function ($c) {
     $httpService = $c->get(\PS\Webservice\Service\HttpService::class);
     return new \PS\Webservice\Service\PS\Image($httpService);

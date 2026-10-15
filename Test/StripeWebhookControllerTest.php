@@ -14,6 +14,8 @@ use Psr\Http\Message\StreamInterface;
 
 final class StripeWebhookControllerTest extends TestCase
 {
+    private \Psr\Log\LoggerInterface $logger;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -36,11 +38,14 @@ final class StripeWebhookControllerTest extends TestCase
             ->with($this->anything())
             ->willReturn($taggedCache);
 
+        $this->logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+
         \Illuminate\Support\Facades\Facade::setFacadeApplication([
             'cache' => $cache,
-            'log' => $this->createMock(\Psr\Log\LoggerInterface::class),
+            'log' => $this->logger,
             'queue-service' => $this->createMock(\PS\Webservice\Service\RedisQueue::class)  
         ]);
+        \Illuminate\Support\Facades\Facade::clearResolvedInstance('log');
 
         $this->cache = $cache;
         $this->taggedCache = $taggedCache;
@@ -72,7 +77,11 @@ final class StripeWebhookControllerTest extends TestCase
     }
 
     /** Build a controller with a stubbed Stripe event so constructEvent is bypassed. */
-    private function buildControllerWithEvent(\Stripe\Event $event, ?Order $orderService = null): StripeWebhookController
+    private function buildControllerWithEvent(
+        \Stripe\Event $event,
+        ?Order $orderService = null,
+        ?\Throwable $ledgerFailure = null,
+    ): StripeWebhookController
     {
         $service = $orderService ?? $this->createMock(Order::class);
         $mailjet = $this->createMock(MailjetService::class);
@@ -80,8 +89,9 @@ final class StripeWebhookControllerTest extends TestCase
         $mailer = $this->createMock(MailerInterface::class);
         $orderRepo = $this->createMock(OrderRepository::class);
 
-        return new class($service, $mailjet, $stripe, $mailer, $orderRepo, $event) extends StripeWebhookController {
+        return new class($service, $mailjet, $stripe, $mailer, $orderRepo, $event, $ledgerFailure) extends StripeWebhookController {
             private \Stripe\Event $stubbedEvent;
+            private ?\Throwable $ledgerFailure;
 
             public function __construct(
                 Order $orderService,
@@ -89,10 +99,12 @@ final class StripeWebhookControllerTest extends TestCase
                 PaymentGatewayInterface $stripeService,
                 MailerInterface $mailer,
                 OrderRepository $orderRepository,
-                \Stripe\Event $event
+                \Stripe\Event $event,
+                ?\Throwable $ledgerFailure,
             ) {
                 parent::__construct($orderService, $mailjetService, $stripeService, $mailer, $orderRepository);
                 $this->stubbedEvent = $event;
+                $this->ledgerFailure = $ledgerFailure;
             }
 
             protected function getFromCache(string $key): mixed
@@ -113,6 +125,13 @@ final class StripeWebhookControllerTest extends TestCase
             protected function constructStripeEvent(string $payload, string $sigHeader, string $secret): \Stripe\Event
             {
                 return $this->stubbedEvent;
+            }
+
+            protected function recordFinancialWebhook(\Stripe\Event $event): void
+            {
+                if ($this->ledgerFailure !== null) {
+                    throw $this->ledgerFailure;
+                }
             }
         };
     }
@@ -321,6 +340,57 @@ final class StripeWebhookControllerTest extends TestCase
         $request = $this->buildRequest('{}', 'sig');
 
         $result = $controller->handleWebhook($request, $this->createMock(ResponseInterface::class), []);
+
+        $this->assertSame(200, $result->getStatusCode());
+    }
+
+    public function test_logs_ledger_failure_without_retrying_a_confirmed_checkout(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
+        putenv('MAILJET_CLIENTI_LIST_ID');
+        unset($_ENV['MAILJET_CLIENTI_LIST_ID'], $_SERVER['MAILJET_CLIENTI_LIST_ID']);
+
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->once())->method('confirmSessionOrder');
+
+        $ledgerFailure = new \RuntimeException('Financial ledger migration is not available.');
+        $this->logger
+            ->expects($this->once())
+            ->method('critical')
+            ->with(
+                'Stripe webhook: financial ledger recording failed after checkout confirmation.',
+                $this->callback(static function (array $context) use ($ledgerFailure): bool {
+                    return $context['event_type'] === 'checkout.session.completed'
+                        && $context['event_id'] === 'evt_ledger_failure'
+                        && $context['exception'] === $ledgerFailure;
+                }),
+            );
+
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_ledger_failure',
+            'amount_total' => 5000,
+            'currency' => 'eur',
+            'metadata' => [
+                'cart_id' => '42',
+                'id_customer' => '7',
+                'id_carrier' => '3',
+                'customer_email' => 'john.doe@example.com',
+                'customer' => json_encode(['email' => 'john.doe@example.com', 'firstname' => 'Mario', 'lastname' => 'Rossi']),
+            ],
+        ]);
+
+        $event = \Stripe\Event::constructFrom([
+            'id' => 'evt_ledger_failure',
+            'type' => 'checkout.session.completed',
+            'data' => ['object' => $session->toArray()],
+        ]);
+
+        $controller = $this->buildControllerWithEvent($event, $orderService, $ledgerFailure);
+        $result = $controller->handleWebhook(
+            $this->buildRequest('{}', 'sig'),
+            $this->createMock(ResponseInterface::class),
+            [],
+        );
 
         $this->assertSame(200, $result->getStatusCode());
     }

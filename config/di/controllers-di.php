@@ -33,6 +33,36 @@ $container->set(\PS\Webservice\Http\Controller\OrderController::class, function 
     return new \PS\Webservice\Http\Controller\OrderController($orderService,$payment);
 });
 
+$container->set(\PS\Webservice\Http\Controller\FinancialReconciliationController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialReconciliationController(
+        $c->get(\PS\Webservice\Service\Financial\FinancialOrderReconciliationService::class),
+    );
+});
+
+$container->set(\PS\Webservice\Http\Controller\FinancialReportController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialReportController(
+        $c->get(\PS\Webservice\Service\Financial\FinancialReportService::class)
+    );
+});
+
+$container->set(\PS\Webservice\Http\Controller\FinancialAnalyticsController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialAnalyticsController(
+        $c->get(\PS\Webservice\Service\Financial\FinancialAnalyticsService::class),
+    );
+});
+
+$container->set(\PS\Webservice\Http\Controller\FinancialExpenseController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialExpenseController(
+        $c->get(\PS\Webservice\Service\Financial\FinancialExpenseService::class),
+    );
+});
+
+$container->set(\PS\Webservice\Http\Controller\FinancialEmployeeAuthController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\FinancialEmployeeAuthController(
+        $c->get(\PS\Webservice\Service\Financial\EmployeeFinancialAuthService::class),
+    );
+});
+
 $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, function ($c) {
     $authService = $c->get(\PS\Webservice\Service\Auth\AuthService::class);
     $prestashopService = $c->get(\PS\Webservice\Service\PS\PrestashopService::class);
@@ -56,7 +86,9 @@ $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, f
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
     $mailer = $c->get(\PS\Webservice\Service\PS\Mailer::class);
     $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
-    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService,$mailjet,$payment,$mailer, null, $promotionService);
+    $financialLedger = $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class);
+    $sellerSaleNotifications = $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class);
+    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger, $sellerSaleNotifications);
 });
 
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {

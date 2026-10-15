@@ -42,12 +42,15 @@ $app->group('/api', function () use ($app) {
     
     /** brands list */
     $app->get('/api/manufacturers', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers'));
+    $app->get('/api/manufacturers/monthly-top', PS\Webservice\Http\Controller\BrandController::class . ':monthlyTop')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('monthly-top-manufacturers', 10080));
     $app->get('/api/manufacturers/{id_manufacturer}', PS\Webservice\Http\Controller\BrandController::class . ':brandList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturer-details'));
     $app->get('/api/manufacturer/{id_manufacturer}/reviews', PS\Webservice\Http\Controller\BrandController::class . ':getManufacturerReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers', 10));
 
     /** Customer api */
     $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');
     $app->post('/api/login', PS\Webservice\Http\Controller\CustomerController::class . ':login');
+    $app->get('/api/auth/facebook', PS\Webservice\Http\Controller\CustomerController::class . ':facebookAuthorizationUrl');
+    $app->post('/api/auth/facebook/callback', PS\Webservice\Http\Controller\CustomerController::class . ':facebookCallback');
     $app->post('/api/logout', PS\Webservice\Http\Controller\CustomerController::class . ':logout');
     $app->post('/api/contact', PS\Webservice\Http\Controller\CustomerController::class . ':contact');
     $app->post('/api/customers', PS\Webservice\Http\Controller\CustomerController::class . ':createCustomer');
@@ -129,6 +132,24 @@ $app->group('/api/seller', function() use ($app) {
 })->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
+
+/** Financial operations: active, authorised PrestaShop Back Office employees only. */
+$financialEmployeeAuthentication = new \PS\Webservice\Http\Middleware\FinancialEmployeeAuthenticationMiddleware(
+    $container->get(\PS\Webservice\Service\Financial\EmployeeFinancialAuthService::class),
+);
+$app->post('/api/admin/auth/login', PS\Webservice\Http\Controller\FinancialEmployeeAuthController::class . ':login');
+
+$app->get('/api/admin/financial/orders/{orderId}/reconciliation', PS\Webservice\Http\Controller\FinancialReconciliationController::class . ':order')
+    ->add($financialEmployeeAuthentication);
+
+$app->get('/api/admin/financial-report', PS\Webservice\Http\Controller\FinancialReportController::class . ':index')
+    ->add($financialEmployeeAuthentication);
+
+$app->get('/api/admin/financial-analytics', PS\Webservice\Http\Controller\FinancialAnalyticsController::class . ':index')
+    ->add($financialEmployeeAuthentication);
+
+$app->post('/api/admin/financial-expenses', PS\Webservice\Http\Controller\FinancialExpenseController::class . ':create')
+    ->add($financialEmployeeAuthentication);
 
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
