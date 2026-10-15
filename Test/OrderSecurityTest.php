@@ -2,7 +2,6 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
-use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Http\Controller\OrderController;
@@ -19,7 +18,6 @@ final class OrderSecurityTest extends TestCase
     private $cache;
     private $taggedCache;
     private ?string $previousStripeShippingRates = null;
-    private ?string $previousCarrierShippingPrices = null;
 
     protected function setUp(): void
     {
@@ -44,8 +42,6 @@ final class OrderSecurityTest extends TestCase
         ]);
         $this->previousStripeShippingRates = $_ENV['STRIPE_SHIPPING_RATE_IDS'] ?? null;
         $_ENV['STRIPE_SHIPPING_RATE_IDS'] = '{"2":"shr_testCarrier2"}';
-        $this->previousCarrierShippingPrices = $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] ?? null;
-        $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = '{"2":6.10}';
         
         // create table webserviceapi_configurator
         \Illuminate\Database\Capsule\Manager::schema()->dropIfExists('webserviceapi_configurator');
@@ -64,12 +60,6 @@ final class OrderSecurityTest extends TestCase
         } else {
             $_ENV['STRIPE_SHIPPING_RATE_IDS'] = $this->previousStripeShippingRates;
         }
-        if ($this->previousCarrierShippingPrices === null) {
-            unset($_ENV['STRIPE_CARRIER_SHIPPING_PRICES']);
-        } else {
-            $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] = $this->previousCarrierShippingPrices;
-        }
-
         parent::tearDown();
     }
 
@@ -368,7 +358,6 @@ final class OrderSecurityTest extends TestCase
     public static function serverCartShippingCases(): array
     {
         return [
-            'selected carrier replaces stale cart shipping' => ['30.00', '38.99', 2, 6.10],
             'free shipping from cart' => ['119.99', '29.90', 2, 0.0],
             'cart shipping price' => ['30.00', '38.99', 2, 4.55],
             'different cart shipping price' => ['30.00', '39.00', 2, 3.32],
@@ -392,7 +381,7 @@ final class OrderSecurityTest extends TestCase
 
         $serviceMock = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getCartFromId', 'getProductPriceById', 'getProductById'])
+            ->onlyMethods(['getCartFromId', 'getProductPriceById', 'getProductById', 'prepareCouponCart'])
             ->getMock();
 
         $cartServiceStub = $this->getMockBuilder(Cart::class)
@@ -408,18 +397,11 @@ final class OrderSecurityTest extends TestCase
             ],
             'totals' => ['shipping_tax_incl' => $expectedShipping],
         ], $cartServiceStub);
-        $staleCartEntity = CartEntity::create([
-            'id' => 10,
-            'id_carrier' => 1,
-            'products' => $cartEntity->toArray()['products'],
-            // Simulates the price left on the cart by the previously selected carrier.
-            'totals' => ['shipping_tax_incl' => 3.52],
-        ], $cartServiceStub);
-
         $serviceMock->expects($this->once())
             ->method('getCartFromId')
             ->with('10', '5', null)
-            ->willReturn($staleCartEntity);
+            ->willReturn($cartEntity);
+        $serviceMock->expects($this->never())->method('prepareCouponCart');
 
         // The catalog's base price must not replace the selected variant's server cart price.
         $serviceMock->expects($this->never())->method('getProductPriceById');
@@ -428,7 +410,7 @@ final class OrderSecurityTest extends TestCase
         $stripe = $this->createMock(PaymentGatewayInterface::class);
         $stripe->expects($this->once())
             ->method('createPaymentSession')
-            ->willReturnCallback(function (\PS\Webservice\Domain\Object\OrderSession $session) use ($firstPrice, $secondPrice, $firstQuantity): string {
+            ->willReturnCallback(function (\PS\Webservice\Domain\Object\OrderSession $session) use ($firstPrice, $secondPrice, $firstQuantity, $expectedShipping): string {
                 $lines = array_values(array_filter($session->getLineItems(),
                     static fn (array $line): bool => isset($line['price_data']['product_data']['metadata']['id_product'])));
                 $this->assertCount(2, $lines);
@@ -445,8 +427,12 @@ final class OrderSecurityTest extends TestCase
                 }
                 $shippingLines = array_values(array_filter($session->getLineItems(),
                     static fn (array $line): bool => !isset($line['price_data']['product_data']['metadata']['id_product'])));
-                $this->assertCount(1, $shippingLines);
-                $this->assertSame(610, $shippingLines[0]['price_data']['unit_amount']);
+                if ($expectedShipping > 0) {
+                    $this->assertCount(1, $shippingLines);
+                    $this->assertSame((int) round($expectedShipping * 100), $shippingLines[0]['price_data']['unit_amount']);
+                } else {
+                    $this->assertCount(0, $shippingLines);
+                }
                 return 'https://example.com/checkout';
             });
         $controller = $this->createOrderController($serviceMock, $stripe);
@@ -484,6 +470,8 @@ final class OrderSecurityTest extends TestCase
         $this->assertSame(201, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
         $this->assertSame('https://example.com/checkout', $body['data']['payment_url']);
+        $this->assertSame(2, $body['data']['order']['id_carrier']);
+        $this->assertSame($expectedShipping, (float) $body['data']['order']['totals']['shipping_tax_incl']);
     }
 
     // -------------------------------------------------------- initiatePayment ownership

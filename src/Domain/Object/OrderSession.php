@@ -281,31 +281,6 @@ class OrderSession implements ObjectInterface
         $this->data['shipping_options'] = [['shipping_rate' => $rateId]];
     }
 
-    /** Adds the server-configured checkout price for the selected carrier. */
-    public function addCarrierShipping(CarrierEntity $carrier): void
-    {
-        $carrierId = $carrier->get('id');
-        if (!is_numeric($carrierId) || (int) $carrierId <= 0 ||
-            (int) ($this->data['metadata']['id_carrier'] ?? 0) !== (int) $carrierId) {
-            throw new \InvalidArgumentException('The checkout shipping carrier must match the selected carrier.');
-        }
-
-        $configuredPrices = $_ENV['STRIPE_CARRIER_SHIPPING_PRICES'] ?? getenv('STRIPE_CARRIER_SHIPPING_PRICES') ?: '';
-        $prices = json_decode((string) $configuredPrices, true);
-        if (!is_array($prices)) {
-            throw new \InvalidArgumentException('STRIPE_CARRIER_SHIPPING_PRICES must be a JSON object mapping carrier IDs to shipping prices.');
-        }
-
-        $price = $prices[(string) (int) $carrierId] ?? null;
-        if (!is_numeric($price) || !is_finite((float) $price) || (float) $price < 0) {
-            throw new \InvalidArgumentException('No valid shipping price is configured for carrier ' . (int) $carrierId . '.');
-        }
-
-        if ((float) $price > 0) {
-            $this->addCarrierLineItem('Shipping', 1, (float) $price, 'carrier');
-        }
-    }
-
     public function generatePayload(): PayloadServiceData
     {
         return new PayloadServiceData($this->data, ['id_cart' => 'cart', 'id_customer' => 'customer', 'id_guest' => 'guest']);
