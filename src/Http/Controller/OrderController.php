@@ -160,6 +160,11 @@ class OrderController extends CartController
             return response(['error' => 'Customer ID or guest ID is required'], 403);
         }
 
+        $carrierId = filter_var($payload['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($carrierId === false) {
+            return response(['error' => 'A valid carrier ID is required'], 422);
+        }
+
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response([], 404);
@@ -178,17 +183,16 @@ class OrderController extends CartController
                 }
                 $codes[] = trim((string) $rule['code']);
             }
-            // Recalculate the cart only after persisting the selected carrier. The cart
-            // fetched above can still contain shipping for the carrier selected earlier
-            // in the storefront, while the checkout payload contains the current one.
-            $cart = $this->orderService->prepareCheckoutCart(
-                $payload['id_cart'],
-                $customerId,
-                $guestId,
-                (int) $payload['id_carrier'],
-                $codes,
-                $payload
-            );
+            if ($codes !== [] || !empty($cart->toArray()['cart_rules'])) {
+                $cart = $this->orderService->prepareCouponCart(
+                    $payload['id_cart'],
+                    $customerId,
+                    $guestId,
+                    $carrierId,
+                    $codes,
+                    $payload
+                );
+            }
             $newOrder = OrderEntity::create($payload, $this->orderService);
             $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray());
             if (empty($orderSession->metadata['payment_module'])) {

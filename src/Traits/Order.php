@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Traits;
 
 use PS\Webservice\Domain\Entities\CartRuleEntity;
+use PS\Webservice\Domain\Entities\CarrierEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Object\OrderSession;
@@ -52,7 +53,11 @@ trait Order
                 $freeShipping ? $this->withoutShipping($serverCart) : $serverCart
             );
         } elseif (!$freeShipping) {
-            $this->orderSession->addCartShipping($serverCart);
+            // Stripe owns the shipping amount for the selected carrier. This avoids
+            // using a cart total calculated before a guest has a delivery address.
+            $this->orderSession->addCarrier(
+                CarrierEntity::create(['id' => $payload->id_carrier], $this->orderService)
+            );
         }
         $this->tags(['order-session'])->setEncryptedToCache($payload->id_cart, $orderSession->toCacheData(), 36 * 60);
 

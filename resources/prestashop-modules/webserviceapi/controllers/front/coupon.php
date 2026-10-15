@@ -61,12 +61,12 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
         $idGuest = (int) MlabFactoryApiHelper::getValue($payload, 'id_guest', 0);
         $cart = $this->getOwnedCart($idCart, $idCustomer, $idGuest);
         if (!empty($payload['checkout'])) {
-            if (!empty($payload['delivery_address']) || !empty($payload['invoice_address'])) {
-                $customer = (int) $cart->id_customer > 0
-                    ? MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer)
-                    : MlabFactoryApiHelper::createCustomerFromGuest($cart, $payload);
-                $cart->id_customer = (int) $customer->id;
-                $cart->secure_key = (string) $customer->secure_key;
+            // Do not turn a guest into a customer while preparing a Stripe session.
+            // Guest registration and address persistence happen only after Stripe
+            // confirms the payment in the order endpoint.
+            if ((int) $cart->id_customer > 0
+                && (!empty($payload['delivery_address']) || !empty($payload['invoice_address']))) {
+                $customer = MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer);
                 foreach (array('delivery', 'invoice') as $type) {
                     $field = $type . '_address';
                     if (!empty($payload[$field]) && is_array($payload[$field])) {
@@ -81,7 +81,9 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
                 throw new MlabFactoryApiException('Carrier is required for checkout.', 422);
             }
             $cart->id_carrier = $carrierId;
-            $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
+            if ((int) $cart->id_address_delivery > 0) {
+                $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
+            }
             if (!$cart->update()) {
                 throw new MlabFactoryApiException('Unable to update checkout cart.', 500);
             }
