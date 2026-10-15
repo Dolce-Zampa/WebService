@@ -14,7 +14,8 @@ class Customer extends PsTable
         'id_customer',
         'firstname',
         'lastname',
-        'email'
+        'email',
+        'last_login',
     ];
     
 

@@ -170,6 +170,10 @@ class CustomerController extends Controller
                 $customerId = $this->createCustomerFromFacebookIdentity($identity);
             }
 
+            \PS\Webservice\Domain\Models\PS\Customer::where('id_customer', $customerId)->update([
+                'last_login' => \Carbon\Carbon::now(),
+            ]);
+
             $account = $this->customerService->getAccount($customerId)->toArray();
             if (($account['success'] ?? false) === false || !isset($account['data']['customer'])) {
                 Log::error('Customer PrestaShop account retrieval failed after Facebook login', [
