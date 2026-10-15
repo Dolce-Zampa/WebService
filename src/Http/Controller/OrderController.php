@@ -10,6 +10,7 @@ use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Http\Controller\CartController;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Traits\Order as OrderHelper;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -20,19 +21,29 @@ class OrderController extends CartController
     use UseCache, OrderHelper;
     private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
     private Order $orderService;
+    private ?PrestashopRepository $customerRepository;
 
     protected PaymentGatewayInterface $stripeService;
 
-    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService)
+    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, ?PrestashopRepository $customerRepository = null)
     {
         $this->stripeService = $stripeService;
         $this->orderService = $orderService;
+        $this->customerRepository = $customerRepository;
     }
 
     public function orderHistory(Request $request, Response $response, array $argv): Response
     {
-        $customerId = $argv['customerId'];
-        $orders = $this->orderService->getOrderListFromUserId($customerId);
+        $customerId = (int) ($argv['customerId'] ?? 0);
+        $authenticatedCustomerId = $this->authenticatedCustomerId($request);
+        if ($authenticatedCustomerId === null) {
+            return response(['message' => 'Unauthorized'], 401);
+        }
+        if ($customerId <= 0 || $authenticatedCustomerId !== $customerId) {
+            return response(['message' => 'Order history not found'], 404);
+        }
+
+        $orders = $this->orderService->getOrderListFromUserId((string) $customerId);
 
         if (is_null($orders)) {
             return response([], 404);
@@ -44,6 +55,11 @@ class OrderController extends CartController
 
     public function getOrder(Request $request, Response $response, array $argv): Response
     {
+        $authenticatedCustomerId = $this->authenticatedCustomerId($request);
+        if ($authenticatedCustomerId === null) {
+            return response(['message' => 'Unauthorized'], 401);
+        }
+
         $orderId = $argv['orderId'];
         $cartList = $this->orderService->orderDetails($orderId);
 
@@ -51,8 +67,23 @@ class OrderController extends CartController
             return response([], 404);
         }
 
+        $order = $cartList->toArray();
+        if ((int) ($order['id_customer'] ?? 0) !== $authenticatedCustomerId) {
+            return response(['message' => 'Order not found'], 404);
+        }
+
         return response($cartList);
 
+    }
+
+    private function authenticatedCustomerId(Request $request): ?int
+    {
+        $sub = $request->getAttribute('user_id');
+        if (!is_string($sub) || $sub === '' || $this->customerRepository === null) {
+            return null;
+        }
+
+        return $this->customerRepository->findUserIdFromSub($sub);
     }
 
     public function confirmOrder(Request $request, Response $response, array $argv): Response

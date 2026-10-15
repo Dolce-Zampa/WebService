@@ -30,7 +30,8 @@ $container->set(\PS\Webservice\Http\Controller\CustomerController::class, functi
 $container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
-    return new \PS\Webservice\Http\Controller\OrderController($orderService,$payment);
+    $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
+    return new \PS\Webservice\Http\Controller\OrderController($orderService, $payment, $repository);
 });
 
 $container->set(\PS\Webservice\Http\Controller\FinancialReconciliationController::class, function ($c) {

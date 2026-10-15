@@ -63,8 +63,8 @@ $app->group('/api', function () use ($app) {
     $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
     /** Order api */
-    $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder');
-    $app->get('/api/order/history/{customerId}', PS\Webservice\Http\Controller\OrderController::class . ':orderHistory');
+    $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->get('/api/order/history/{customerId}', PS\Webservice\Http\Controller\OrderController::class . ':orderHistory')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
     $app->post('/api/order', PS\Webservice\Http\Controller\OrderController::class . ':createOrder');
     $app->post('/api/order/confirm', PS\Webservice\Http\Controller\OrderController::class . ':confirmOrder');
 

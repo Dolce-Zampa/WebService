@@ -271,6 +271,10 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
+        }
+
         $serviceResponse = $this->customerService->getAccount($customerId);
         try {
             $getAccountFromCognito = $this->authService->check($request);
@@ -289,6 +293,10 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
+        }
+
         $payload = $this->requireArrayPayload($request->getParsedBody());
         $serviceResponse = $this->customerService->updateAccount($customerId, $payload);
         return $this->buildServiceResponse($serviceResponse);
@@ -299,6 +307,10 @@ class CustomerController extends Controller
         $customerId = (int) ($argv['customerId'] ?? 0);
         if ($customerId <= 0) {
             throw new \InvalidArgumentException('Invalid customer id', 400);
+        }
+
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
         }
 
         $serviceResponse = $this->customerService->getAddresses($customerId);
@@ -319,6 +331,7 @@ class CustomerController extends Controller
         }
 
         return response([
+            'addresses' => $addresses,
             'delivery_address' => $deliveryAddress,
             'invoice_address' => $invoiceAddress,
         ]);
@@ -350,7 +363,17 @@ class CustomerController extends Controller
             }
         }
 
-        return null;
+        $aliases = $type === 'delivery'
+            ? ['consegna', 'spedizione', 'delivery', 'shipping']
+            : ['fatturazione', 'fattura', 'invoice', 'billing'];
+        foreach ($addresses as $address) {
+            $alias = strtolower(trim((string) ($address['alias'] ?? '')));
+            if (in_array($alias, $aliases, true)) {
+                return $address;
+            }
+        }
+
+        return $addresses[0] ?? null;
     }
 
     public function updateAddresses(Request $request, Response $response, array $argv): Response
@@ -360,9 +383,44 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
+        }
+
         $payload = $this->requireArrayPayload($request->getParsedBody());
         $serviceResponse = $this->customerService->updateAddresses($customerId, $payload);
-        return $this->buildServiceResponse($serviceResponse);
+        if ($serviceResponse->failed()) {
+            return $this->buildServiceResponse($serviceResponse);
+        }
+
+        $data = $serviceResponse->toArray()['data'] ?? [];
+        $addresses = is_array($data['addresses'] ?? null) ? $data['addresses'] : [];
+
+        return response([
+            'message' => $data['message'] ?? 'Customer addresses updated successfully.',
+            'delivery_address' => $addresses['delivery'] ?? $addresses['delivery_address'] ?? null,
+            'invoice_address' => $addresses['invoice'] ?? $addresses['invoice_address'] ?? null,
+        ]);
+    }
+
+    private function authorizeCustomer(Request $request, int $requestedCustomerId): ?Response
+    {
+        $sub = $request->getAttribute('user_id');
+        if (!is_string($sub) || $sub === '') {
+            return response(['message' => 'Unauthorized'], 401);
+        }
+
+        $authenticatedCustomerId = $this->prestashopRepository->findUserIdFromSub($sub);
+        if ($authenticatedCustomerId === null) {
+            return response(['message' => 'Unauthorized'], 401);
+        }
+
+        if ($authenticatedCustomerId !== $requestedCustomerId) {
+            // Do not reveal whether an arbitrary customer ID exists.
+            return response(['message' => 'Account not found'], 404);
+        }
+
+        return null;
     }
 
     public function logout(Request $request, Response $response, array $argv): Response

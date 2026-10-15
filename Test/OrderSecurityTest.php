@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Http\Controller\OrderController;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\PS\Cart;
 use PS\Webservice\Service\PS\Order;
@@ -51,10 +52,90 @@ final class OrderSecurityTest extends TestCase
         });
     }
 
-    private function createOrderController(Order $orderService, ?PaymentGatewayInterface $stripeService = null): OrderController
+    private function createOrderController(
+        Order $orderService,
+        ?PaymentGatewayInterface $stripeService = null,
+        ?PrestashopRepository $customerRepository = null
+    ): OrderController
     {
         $stripe = $stripeService ?? $this->createMock(PaymentGatewayInterface::class);
-        return new OrderController($orderService, $stripe);
+        return new OrderController($orderService, $stripe, $customerRepository);
+    }
+
+    // -------------------------------------------------------- order read ownership
+
+    public function test_order_history_does_not_allow_another_customers_history(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderListFromUserId'])
+            ->getMock();
+        $orderService->expects($this->never())->method('getOrderListFromUserId');
+
+        $customerRepository = $this->createMock(PrestashopRepository::class);
+        $customerRepository->expects($this->once())
+            ->method('findUserIdFromSub')
+            ->with('cognito-subject')
+            ->willReturn(5);
+
+        $controller = $this->createOrderController($orderService, null, $customerRepository);
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('cognito-subject');
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->orderHistory($request, $response, ['customerId' => 6]);
+
+        $this->assertSame(404, $result->getStatusCode());
+    }
+
+    public function test_order_history_uses_the_authenticated_customers_id(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderListFromUserId'])
+            ->getMock();
+        $orderService->expects($this->once())
+            ->method('getOrderListFromUserId')
+            ->with('5')
+            ->willReturn([]);
+
+        $customerRepository = $this->createMock(PrestashopRepository::class);
+        $customerRepository->method('findUserIdFromSub')->with('cognito-subject')->willReturn(5);
+
+        $controller = $this->createOrderController($orderService, null, $customerRepository);
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('cognito-subject');
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->orderHistory($request, $response, ['customerId' => '5']);
+
+        $this->assertSame(200, $result->getStatusCode());
+    }
+
+    public function test_order_detail_does_not_allow_another_customers_order(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['orderDetails'])
+            ->getMock();
+        $order = $this->createMock(OrderEntity::class);
+        $order->method('toArray')->willReturn(['id' => 100, 'id_customer' => 6]);
+        $orderService->expects($this->once())
+            ->method('orderDetails')
+            ->with('100')
+            ->willReturn($order);
+
+        $customerRepository = $this->createMock(PrestashopRepository::class);
+        $customerRepository->method('findUserIdFromSub')->with('cognito-subject')->willReturn(5);
+
+        $controller = $this->createOrderController($orderService, null, $customerRepository);
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('cognito-subject');
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->getOrder($request, $response, ['orderId' => '100']);
+
+        $this->assertSame(404, $result->getStatusCode());
     }
 
     // -------------------------------------------------------- confirmOrder polling

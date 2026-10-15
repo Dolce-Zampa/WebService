@@ -9,5 +9,3 @@ parameters:
             identifier: staticMethod.notFound
         -
             identifier: class.notFound
-        -
-            identifier: property.notFound
