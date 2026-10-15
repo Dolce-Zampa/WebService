@@ -17,6 +17,7 @@ final class OrderSecurityTest extends TestCase
 {
     private $cache;
     private $taggedCache;
+    private ?string $previousStripeShippingRates = null;
 
     protected function setUp(): void
     {
@@ -39,6 +40,8 @@ final class OrderSecurityTest extends TestCase
             'log' => $this->createMock(\Psr\Log\LoggerInterface::class),
             'queue-service' => $this->createMock(\PS\Webservice\Service\RedisQueue::class)
         ]);
+        $this->previousStripeShippingRates = $_ENV['STRIPE_SHIPPING_RATE_IDS'] ?? null;
+        $_ENV['STRIPE_SHIPPING_RATE_IDS'] = '{"2":"shr_testCarrier2"}';
         
         // create table webserviceapi_configurator
         \Illuminate\Database\Capsule\Manager::schema()->dropIfExists('webserviceapi_configurator');
@@ -48,6 +51,17 @@ final class OrderSecurityTest extends TestCase
             $table->integer('active');
             $table->integer('id_shop');
         });
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->previousStripeShippingRates === null) {
+            unset($_ENV['STRIPE_SHIPPING_RATE_IDS']);
+        } else {
+            $_ENV['STRIPE_SHIPPING_RATE_IDS'] = $this->previousStripeShippingRates;
+        }
+
+        parent::tearDown();
     }
 
     private function createRepositoryMock(int $customerId = 5): PrestashopRepository
@@ -301,7 +315,6 @@ final class OrderSecurityTest extends TestCase
             ->disableOriginalConstructor()
             ->onlyMethods(['getCartFromId'])
             ->getMock();
-
         $orderService->expects($this->never())->method('getCartFromId');
 
         $controller = $this->createOrderController($orderService);
@@ -321,6 +334,25 @@ final class OrderSecurityTest extends TestCase
         $this->assertSame(401, $result->getStatusCode());
     }
 
+    public function test_create_order_rejects_a_missing_carrier_before_creating_checkout(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId'])
+            ->getMock();
+        $orderService->expects($this->never())->method('getCartFromId');
+
+        $controller = $this->createOrderController($orderService);
+        $request = $this->createAuthenticatedRequest(['id_cart' => 10]);
+
+        $result = $controller->createOrder($request, $this->createMock(ResponseInterface::class), []);
+
+        $this->assertSame(422, $result->getStatusCode());
+        $this->assertSame(
+            'A valid carrier ID is required',
+            json_decode((string) $result->getBody(), true)['data']['error']
+        );
+    }
 
     // -------------------------------------------------------- server-side prices
 
@@ -351,7 +383,7 @@ final class OrderSecurityTest extends TestCase
 
         $serviceMock = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getCartFromId', 'prepareCheckoutCart', 'getProductPriceById', 'getProductById'])
+            ->onlyMethods(['getCartFromId', 'getProductPriceById', 'getProductById'])
             ->getMock();
 
         $cartServiceStub = $this->getMockBuilder(Cart::class)
@@ -380,11 +412,6 @@ final class OrderSecurityTest extends TestCase
             ->with('10', '5', null)
             ->willReturn($staleCartEntity);
 
-        $serviceMock->expects($this->once())
-            ->method('prepareCheckoutCart')
-            ->with('10', '5', null, 2, [], $this->isType('array'))
-            ->willReturn($cartEntity);
-
         // The catalog's base price must not replace the selected variant's server cart price.
         $serviceMock->expects($this->never())->method('getProductPriceById');
         $serviceMock->expects($this->never())->method('getProductById');
@@ -392,7 +419,7 @@ final class OrderSecurityTest extends TestCase
         $stripe = $this->createMock(PaymentGatewayInterface::class);
         $stripe->expects($this->once())
             ->method('createPaymentSession')
-            ->willReturnCallback(function (\PS\Webservice\Domain\Object\OrderSession $session) use ($firstPrice, $secondPrice, $firstQuantity, $expectedShipping): string {
+            ->willReturnCallback(function (\PS\Webservice\Domain\Object\OrderSession $session) use ($firstPrice, $secondPrice, $firstQuantity): string {
                 $lines = array_values(array_filter($session->getLineItems(),
                     static fn (array $line): bool => isset($line['price_data']['product_data']['metadata']['id_product'])));
                 $this->assertCount(2, $lines);
@@ -409,11 +436,8 @@ final class OrderSecurityTest extends TestCase
                 }
                 $shippingLines = array_values(array_filter($session->getLineItems(),
                     static fn (array $line): bool => !isset($line['price_data']['product_data']['metadata']['id_product'])));
-                $this->assertCount($expectedShipping > 0 ? 1 : 0, $shippingLines);
-                if ($expectedShipping > 0) {
-                    $this->assertSame((int) round($expectedShipping * 100), $shippingLines[0]['price_data']['unit_amount']);
-                    $this->assertSame(1, $shippingLines[0]['quantity']);
-                }
+                $this->assertCount(0, $shippingLines);
+                $this->assertSame([['shipping_rate' => 'shr_testCarrier2']], $session->shipping_options);
                 return 'https://example.com/checkout';
             });
         $controller = $this->createOrderController($serviceMock, $stripe);
