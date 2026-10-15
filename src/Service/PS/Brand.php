@@ -6,6 +6,7 @@ namespace PS\Webservice\Service\PS;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use PS\Webservice\Domain\Entities\ManufactureEntity;
 use PS\Webservice\Domain\Entities\ReviewEntity;
 use PS\Webservice\Domain\Models\PS\Manufacturers\Manufacturer;
 

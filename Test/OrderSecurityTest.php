@@ -401,7 +401,10 @@ final class OrderSecurityTest extends TestCase
             ->method('getCartFromId')
             ->with('10', '5', null)
             ->willReturn($cartEntity);
-        $serviceMock->expects($this->never())->method('prepareCouponCart');
+        $serviceMock->expects($this->once())
+            ->method('prepareCouponCart')
+            ->with(10, '5', null, 2, [], $this->isType('array'))
+            ->willReturn($cartEntity);
 
         // The catalog's base price must not replace the selected variant's server cart price.
         $serviceMock->expects($this->never())->method('getProductPriceById');
