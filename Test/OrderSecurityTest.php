@@ -340,6 +340,7 @@ final class OrderSecurityTest extends TestCase
     public static function serverCartShippingCases(): array
     {
         return [
+            'selected carrier replaces stale cart shipping' => ['30.00', '38.99', 2, 6.10],
             'free shipping from cart' => ['119.99', '29.90', 2, 0.0],
             'cart shipping price' => ['30.00', '38.99', 2, 4.55],
             'different cart shipping price' => ['30.00', '39.00', 2, 3.32],
@@ -363,7 +364,7 @@ final class OrderSecurityTest extends TestCase
 
         $serviceMock = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['getCartFromId', 'getProductPriceById', 'getProductById'])
+            ->onlyMethods(['getCartFromId', 'prepareCheckoutCart', 'getProductPriceById', 'getProductById'])
             ->getMock();
 
         $cartServiceStub = $this->getMockBuilder(Cart::class)
@@ -372,16 +373,29 @@ final class OrderSecurityTest extends TestCase
 
         $cartEntity = CartEntity::create([
             'id' => 10,
+            'id_carrier' => 2,
             'products' => [
                 ['id_product' => 7, 'id_product_attribute' => 665, 'quantity' => $firstQuantity, 'name' => 'Croquette', 'attributes' => 'Formato: 12 kg', 'reference' => 'CROQ-12', 'price_wt' => $firstPrice],
                 ['id_product' => 7, 'id_product_attribute' => 666, 'quantity' => 1, 'name' => 'Croquette', 'attributes' => 'Formato: 3 kg', 'reference' => 'CROQ-3', 'price_wt' => $secondPrice],
             ],
             'totals' => ['shipping_tax_incl' => $expectedShipping],
         ], $cartServiceStub);
+        $staleCartEntity = CartEntity::create([
+            'id' => 10,
+            'id_carrier' => 1,
+            'products' => $cartEntity->toArray()['products'],
+            // Simulates the price left on the cart by the previously selected carrier.
+            'totals' => ['shipping_tax_incl' => 3.52],
+        ], $cartServiceStub);
 
         $serviceMock->expects($this->once())
             ->method('getCartFromId')
             ->with('10', '5', null)
+            ->willReturn($staleCartEntity);
+
+        $serviceMock->expects($this->once())
+            ->method('prepareCheckoutCart')
+            ->with('10', '5', null, 2, [], $this->isType('array'))
             ->willReturn($cartEntity);
 
         // The catalog's base price must not replace the selected variant's server cart price.
