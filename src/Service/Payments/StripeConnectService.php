@@ -146,7 +146,7 @@ final class StripeConnectService
 
     public function enabled(): bool
     {
-        return filter_var(env('STRIPE_CONNECT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        return StripeConnectModule::enabled();
     }
 
     /** @return object */

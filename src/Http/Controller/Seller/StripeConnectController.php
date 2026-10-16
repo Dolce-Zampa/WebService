@@ -19,6 +19,7 @@ final class StripeConnectController
     public function onboarding(Request $request, Response $response, array $args): Response
     {
         try {
+            $this->assertModuleEnabled();
             $seller = $this->authenticatedSeller($request);
             $payload = $request->getParsedBody();
             $payload = is_array($payload) ? $payload : [];
@@ -40,6 +41,7 @@ final class StripeConnectController
     public function status(Request $request, Response $response, array $args): Response
     {
         try {
+            $this->assertModuleEnabled();
             $seller = $this->authenticatedSeller($request);
             return response($this->connect->status((int) $seller->getAttribute('id_manufacturer')));
         } catch (\RuntimeException $exception) {
@@ -58,5 +60,12 @@ final class StripeConnectController
             throw new \RuntimeException('Seller not found.');
         }
         return $seller;
+    }
+
+    private function assertModuleEnabled(): void
+    {
+        if (!$this->connect->enabled()) {
+            throw new \RuntimeException('Stripe Connect payment module is disabled.');
+        }
     }
 }
