@@ -81,6 +81,12 @@ $container->set(\PS\Webservice\Http\Controller\Seller\SellerController::class, f
     return new \PS\Webservice\Http\Controller\Seller\SellerController($authService, $prestashopService,$mailer, $repository, $product, $mailjet, $promotionService);
 });
 
+$container->set(\PS\Webservice\Http\Controller\Seller\StripeConnectController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\Seller\StripeConnectController(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class),
+    );
+});
+
 // CORREZIONE: $currierService → $carrierService
 $container->set(\PS\Webservice\Http\Controller\CarrierController::class, function ($c) {
     $carrierService = $c->get(\PS\Webservice\Service\PS\Carrier::class);
@@ -95,7 +101,8 @@ $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, f
     $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
     $financialLedger = $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class);
     $sellerSaleNotifications = $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class);
-    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger, $sellerSaleNotifications);
+    $stripeConnect = $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class);
+    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger, $sellerSaleNotifications, $stripeConnect);
 });
 
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {
