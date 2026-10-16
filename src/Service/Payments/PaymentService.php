@@ -24,7 +24,7 @@ class PaymentService implements PaymentGatewayInterface
         }
 
         try {
-            if (filter_var(env('STRIPE_CONNECT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)) {
+            if (StripeConnectModule::enabled()) {
                 $cartId = (string) ($orderSession->metadata['cart_id'] ?? '');
                 if (!ctype_digit($cartId) || (int) $cartId < 1) {
                     throw new \RuntimeException('Cannot create a Stripe Connect payment without a cart ID.');
