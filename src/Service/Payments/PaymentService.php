@@ -24,6 +24,13 @@ class PaymentService implements PaymentGatewayInterface
         }
 
         try {
+            if (StripeConnectModule::enabled()) {
+                $cartId = (string) ($orderSession->metadata['cart_id'] ?? '');
+                if (!ctype_digit($cartId) || (int) $cartId < 1) {
+                    throw new \RuntimeException('Cannot create a Stripe Connect payment without a cart ID.');
+                }
+                $orderSession->enableStripeConnect('dz_cart_' . $cartId);
+            }
             $checkout_session = \Stripe\Checkout\Session::create(
                 $orderSession->toArray()
             );

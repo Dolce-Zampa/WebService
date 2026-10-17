@@ -17,6 +17,7 @@ use PS\Webservice\Service\Financial\FinancialLedgerService;
 use PS\Webservice\Service\Financial\SellerSaleNotificationService;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
+use PS\Webservice\Service\Payments\StripeConnectService;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Traits\Order as OrderTrait;
@@ -35,6 +36,7 @@ class StripeWebhookController extends OrderController
     private ?PromotionService $promotionService = null;
     private ?FinancialLedgerService $financialLedger;
     private ?SellerSaleNotificationService $sellerSaleNotifications;
+    private ?StripeConnectService $stripeConnect;
 
     private MailerInterface $mailer;
 
@@ -47,6 +49,7 @@ class StripeWebhookController extends OrderController
         ?PromotionService $promotionService = null,
         ?FinancialLedgerService $financialLedger = null,
         ?SellerSaleNotificationService $sellerSaleNotifications = null,
+        ?StripeConnectService $stripeConnect = null,
     )
     {
         $this->orderService = $orderService;
@@ -60,6 +63,7 @@ class StripeWebhookController extends OrderController
         }
         $this->financialLedger = $financialLedger;
         $this->sellerSaleNotifications = $sellerSaleNotifications;
+        $this->stripeConnect = $stripeConnect;
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -134,6 +138,31 @@ class StripeWebhookController extends OrderController
                     'exception' => $e,
                 ]);
             }
+            try {
+                $this->createStripeConnectTransfers($event->data->object, $event);
+            } catch (\Throwable $e) {
+                Log::critical('Stripe webhook: failed to create Stripe Connect transfers after checkout confirmation.', [
+                    'event_type' => (string) $event->type,
+                    'event_id' => (string) ($event->id ?? ''),
+                    'exception' => $e,
+                ]);
+                return response(['error' => 'Failed to allocate seller transfers'], 500);
+            }
+        }
+
+        if ($event->type === 'checkout.session.async_payment_succeeded') {
+            try {
+                $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                if ($cartId !== null && $this->sellerSaleNotifications !== null) {
+                    $this->sellerSaleNotifications->notifyFinalizedSalesForCart($cartId, $this->stripeEventTimestamp($event->created ?? null));
+                }
+                $this->recordFinancialWebhook($event);
+                $this->createStripeConnectTransfers($event->data->object, $event);
+            } catch (\Throwable $e) {
+                Log::critical('Stripe webhook: failed to process asynchronous payment success.', ['event_id' => (string) ($event->id ?? ''), 'exception' => $e]);
+                return response(['error' => 'Failed to process asynchronous payment'], 500);
+            }
+            return response(['received' => true], 200);
         }
 
         if( $event->type === 'checkout.session.expired') {
@@ -647,6 +676,32 @@ class StripeWebhookController extends OrderController
         }
 
         return (int) $value;
+    }
+
+    private function createStripeConnectTransfers(\Stripe\StripeObject $session, \Stripe\Event $event): void
+    {
+        if ($this->stripeConnect === null || !$this->stripeConnect->enabled()) {
+            return;
+        }
+        $data = $session->toArray();
+        if (($data['payment_status'] ?? null) !== 'paid') {
+            return;
+        }
+        $metadata = $this->stripeMetadata($data);
+        if (($metadata['stripe_connect'] ?? null) !== 'true') {
+            return;
+        }
+        $cartId = $this->positiveInteger($metadata['cart_id'] ?? null);
+        $paymentIntentId = $this->stripeTransactionId($session, 'checkout.session.completed', null);
+        if ($cartId === null || $paymentIntentId === null) {
+            throw new \RuntimeException('Stripe Connect checkout is missing its cart or payment intent.');
+        }
+        [$orderId] = $this->financialOrderReference($session);
+        if ($orderId === null) {
+            throw new \RuntimeException('Stripe Connect checkout order is not available yet.');
+        }
+        $transferGroup = $this->stripeOptionalIdentifier($metadata['transfer_group'] ?? null) ?? 'dz_cart_' . $cartId;
+        $this->stripeConnect->createTransfersForOrder($orderId, $paymentIntentId, $transferGroup, $this->stripeEventTimestamp($event->created ?? null));
     }
 
     /**

@@ -317,6 +317,17 @@ class OrderSession implements ObjectInterface
         return $this->customer;
     }
 
+    /** Marks this platform Checkout payment as a Connect separate-charge flow. */
+    public function enableStripeConnect(string $transferGroup): void
+    {
+        if (!preg_match('/^[A-Za-z0-9_-]{1,191}$/', $transferGroup)) {
+            throw new \InvalidArgumentException('Invalid Stripe transfer group.');
+        }
+        $this->data['metadata']['stripe_connect'] = 'true';
+        $this->data['metadata']['transfer_group'] = $transferGroup;
+        $this->data['payment_intent_data'] = ['transfer_group' => $transferGroup];
+    }
+
     public function toCacheData(): array
     {
         return [

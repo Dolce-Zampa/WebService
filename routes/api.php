@@ -128,6 +128,9 @@ $app->group('/api/seller', function() use ($app) {
     $app->get('/api/seller/promotions/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':promotableProducts');
     $app->post('/api/seller/promotions', PS\Webservice\Http\Controller\Seller\SellerController::class . ':createPromotion');
     $app->post('/api/seller/promotions/{promotionId}/checkout', PS\Webservice\Http\Controller\Seller\SellerController::class . ':createPromotionCheckoutSession');
+    $app->post('/api/seller/stripe-connect/accounts', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':createAccount');
+    $app->post('/api/seller/stripe-connect/onboarding', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':onboarding');
+    $app->get('/api/seller/stripe-connect/status', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':status');
 
 })->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
