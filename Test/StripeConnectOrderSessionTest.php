@@ -25,6 +25,7 @@ final class StripeConnectOrderSessionTest extends TestCase
         self::assertSame('dz_cart_77', $payload['metadata']['transfer_group']);
         self::assertSame(['transfer_group' => 'dz_cart_77'], $payload['payment_intent_data']);
         self::assertArrayNotHasKey('seller_id', $payload['metadata']);
+        self::assertArrayNotHasKey('manufacturer_id', $payload['metadata']);
     }
 
     public function test_rejects_an_invalid_transfer_group(): void

@@ -40,14 +40,14 @@ final class StripeConnectService
         $this->assertAbsoluteUrl($returnUrl, 'return URL');
         $this->assertAbsoluteUrl($refreshUrl, 'refresh URL');
 
-        $stored = $this->db->table(self::ACCOUNTS)->where('seller_id', $sellerId)->first();
+        $stored = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
         if ($stored === null) {
             $account = $this->stripe->accounts->create([
                 'type' => 'express',
                 'country' => strtoupper((string) env('STRIPE_CONNECT_COUNTRY', 'IT')),
                 'email' => $email,
                 'capabilities' => ['transfers' => ['requested' => true]],
-                'metadata' => ['seller_id' => (string) $sellerId],
+                'metadata' => ['manufacturer_id' => (string) $sellerId],
             ], ['idempotency_key' => 'connect:account:seller:' . $sellerId]);
             $stored = $this->syncAccount($sellerId, $account);
         } else {
@@ -73,7 +73,7 @@ final class StripeConnectService
     public function status(int $sellerId): array
     {
         $this->assertSeller($sellerId);
-        $stored = $this->db->table(self::ACCOUNTS)->where('seller_id', $sellerId)->first();
+        $stored = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
         if ($stored === null) {
             return ['connected' => false, 'ready_for_transfers' => false];
         }
@@ -107,8 +107,8 @@ final class StripeConnectService
         }
 
         foreach ($this->sellerAllocations($orderId) as $allocation) {
-            $account = $this->readyAccount((int) $allocation['seller_id']);
-            $idempotencyKey = 'connect:transfer:' . hash('sha256', $paymentIntentId . ':' . $allocation['seller_id']);
+            $account = $this->readyAccount((int) $allocation['manufacturer_id']);
+            $idempotencyKey = 'connect:transfer:' . hash('sha256', $paymentIntentId . ':' . $allocation['manufacturer_id']);
             $existing = $this->db->table(self::TRANSFERS)->where('idempotency_key', $idempotencyKey)->first();
             if ($existing !== null && $existing->status === 'paid') {
                 continue;
@@ -122,13 +122,13 @@ final class StripeConnectService
                 'transfer_group' => $transferGroup,
                 'metadata' => [
                     'order_id' => (string) $orderId,
-                    'seller_id' => (string) $allocation['seller_id'],
+                    'manufacturer_id' => (string) $allocation['manufacturer_id'],
                 ],
             ], ['idempotency_key' => $idempotencyKey]);
 
             $this->storeTransfer([
                 'order_id' => $orderId,
-                'seller_id' => $allocation['seller_id'],
+                'manufacturer_id' => $allocation['manufacturer_id'],
                 'stripe_account_id' => $account->stripe_account_id,
                 'stripe_payment_intent_id' => $paymentIntentId,
                 'stripe_charge_id' => $chargeId,
@@ -152,7 +152,7 @@ final class StripeConnectService
     /** @return object */
     private function readyAccount(int $sellerId): object
     {
-        $stored = $this->db->table(self::ACCOUNTS)->where('seller_id', $sellerId)->first();
+        $stored = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
         if ($stored === null) {
             throw new \RuntimeException('Seller has no Stripe Connect account.');
         }
@@ -163,14 +163,14 @@ final class StripeConnectService
         return $account;
     }
 
-    /** @return list<array{seller_id:int,amount:int}> */
+    /** @return list<array{manufacturer_id:int,amount:int}> */
     private function sellerAllocations(int $orderId): array
     {
         $lines = $this->db->table('order_detail as detail')
             ->join('product as product', 'product.id_product', '=', 'detail.product_id')
             ->join('manufacturer_details as seller_detail', 'seller_detail.id_manufacturer', '=', 'product.id_manufacturer')
             ->where('detail.id_order', $orderId)
-            ->select(['product.id_manufacturer as seller_id', 'detail.total_price_tax_incl', 'seller_detail.commission'])
+            ->select(['product.id_manufacturer as manufacturer_id', 'detail.total_price_tax_incl', 'seller_detail.commission'])
             ->get();
         if ($lines->isEmpty()) {
             throw new \RuntimeException('No seller order lines available for Stripe Connect transfer.');
@@ -178,7 +178,7 @@ final class StripeConnectService
 
         $amounts = [];
         foreach ($lines as $line) {
-            $sellerId = (int) $line->seller_id;
+            $sellerId = (int) $line->manufacturer_id;
             $grossCents = $this->decimalToCents((string) $line->total_price_tax_incl);
             $commissionRate = $this->commissionRate((string) ($line->commission ?? '20.00'));
             $netCents = intdiv($grossCents * (10000 - $commissionRate), 10000);
@@ -189,7 +189,7 @@ final class StripeConnectService
         }
 
         return array_map(
-            static fn (int $sellerId, int $amount): array => ['seller_id' => $sellerId, 'amount' => $amount],
+            static fn (int $sellerId, int $amount): array => ['manufacturer_id' => $sellerId, 'amount' => $amount],
             array_keys($amounts),
             array_values($amounts),
         );
@@ -213,15 +213,15 @@ final class StripeConnectService
             'last_synced_at' => gmdate('Y-m-d H:i:s'),
             'updated_at' => gmdate('Y-m-d H:i:s'),
         ];
-        $existing = $this->db->table(self::ACCOUNTS)->where('seller_id', $sellerId)->first();
+        $existing = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
         if ($existing === null) {
-            $values['seller_id'] = $sellerId;
+            $values['manufacturer_id'] = $sellerId;
             $values['created_at'] = gmdate('Y-m-d H:i:s');
             $this->db->table(self::ACCOUNTS)->insert($values);
         } else {
-            $this->db->table(self::ACCOUNTS)->where('seller_id', $sellerId)->update($values);
+            $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->update($values);
         }
-        return $this->db->table(self::ACCOUNTS)->where('seller_id', $sellerId)->first();
+        return $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
     }
 
     /** @param array<string, mixed> $values */
@@ -243,7 +243,7 @@ final class StripeConnectService
         }
     }
 
-    /** @param array{seller_id:int,amount:int} $allocation */
+    /** @param array{manufacturer_id:int,amount:int} $allocation */
     private function recordPayout(int $orderId, array $allocation, object $account, \Stripe\StripeObject $transfer, string $paymentIntentId, DateTimeImmutable $occurredAt, string $currency): void
     {
         if ($this->ledger === null) return;
@@ -251,7 +251,7 @@ final class StripeConnectService
         $this->ledger->record(FinancialMovement::fromArray([
             'type' => 'payout', 'status' => 'paid', 'amount' => '-' . $this->centsToDecimal($allocation['amount']),
             'currency' => $currency, 'occurred_at' => $occurredAt, 'order_id' => $orderId,
-            'artisan_id' => $allocation['seller_id'], 'provider' => 'stripe',
+            'artisan_id' => $allocation['manufacturer_id'], 'provider' => 'stripe',
             'provider_account_id' => (string) $account->stripe_account_id,
             'provider_transaction_id' => $transferId, 'provider_event_id' => $transferId,
             'source_event_type' => 'stripe.transfer.created', 'source_event_id' => $transferId,
