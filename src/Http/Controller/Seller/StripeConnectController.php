@@ -38,6 +38,23 @@ final class StripeConnectController
         }
     }
 
+    public function createAccount(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $this->assertModuleEnabled();
+            $seller = $this->authenticatedSeller($request);
+            $result = $this->connect->createAccount(
+                (int) $seller->getAttribute('id_manufacturer'),
+                (string) $seller->getAttribute('email'),
+            );
+            return response($result, $result['created'] ? 201 : 200);
+        } catch (\InvalidArgumentException $exception) {
+            return response(['error' => $exception->getMessage()], 422);
+        } catch (\RuntimeException $exception) {
+            return response(['error' => $exception->getMessage()], 409);
+        }
+    }
+
     public function status(Request $request, Response $response, array $args): Response
     {
         try {

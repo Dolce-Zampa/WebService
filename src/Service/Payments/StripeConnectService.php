@@ -39,21 +39,7 @@ final class StripeConnectService
         $this->assertSeller($sellerId);
         $this->assertAbsoluteUrl($returnUrl, 'return URL');
         $this->assertAbsoluteUrl($refreshUrl, 'refresh URL');
-
-        $stored = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
-        if ($stored === null) {
-            $account = $this->stripe->accounts->create([
-                'type' => 'express',
-                'country' => strtoupper((string) env('STRIPE_CONNECT_COUNTRY', 'IT')),
-                'email' => $email,
-                'capabilities' => ['transfers' => ['requested' => true]],
-                'metadata' => ['manufacturer_id' => (string) $sellerId],
-            ], ['idempotency_key' => 'connect:account:seller:' . $sellerId]);
-            $stored = $this->syncAccount($sellerId, $account);
-        } else {
-            $account = $this->stripe->accounts->retrieve((string) $stored->stripe_account_id, []);
-            $stored = $this->syncAccount($sellerId, $account);
-        }
+        [$stored] = $this->ensureAccount($sellerId, $email);
 
         $link = $this->stripe->accountLinks->create([
             'account' => (string) $stored->stripe_account_id,
@@ -67,6 +53,23 @@ final class StripeConnectService
             'expires_at' => (int) $link->expires_at,
             'account' => $this->publicAccount($stored),
         ];
+    }
+
+    /**
+     * Creates the Express connected account only. The caller can subsequently
+     * request an onboarding link, which stays single-use and is never exposed
+     * through this creation endpoint.
+     *
+     * @return array{created: bool, account: array<string, mixed>}
+     */
+    public function createAccount(int $sellerId, string $email): array
+    {
+        $this->assertSeller($sellerId);
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw new \InvalidArgumentException('A valid seller email is required for Stripe Connect.');
+        }
+        [$stored, $created] = $this->ensureAccount($sellerId, $email);
+        return ['created' => $created, 'account' => $this->publicAccount($stored)];
     }
 
     /** @return array<string, mixed> */
@@ -147,6 +150,32 @@ final class StripeConnectService
     public function enabled(): bool
     {
         return StripeConnectModule::enabled();
+    }
+
+    /** @return array{0: object, 1: bool} */
+    private function ensureAccount(int $sellerId, string $email): array
+    {
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw new \InvalidArgumentException('A valid seller email is required for Stripe Connect.');
+        }
+        $stored = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
+        if ($stored !== null) {
+            $account = $this->stripe->accounts->retrieve((string) $stored->stripe_account_id, []);
+            return [$this->syncAccount($sellerId, $account), false];
+        }
+
+        // Express is the only supported account type. The country and seller
+        // identity originate from server configuration and PrestaShop, never
+        // from the request payload.
+        $account = $this->stripe->accounts->create([
+            'type' => 'express',
+            'country' => strtoupper((string) env('STRIPE_CONNECT_COUNTRY', 'IT')),
+            'email' => $email,
+            'capabilities' => ['transfers' => ['requested' => true]],
+            'metadata' => ['manufacturer_id' => (string) $sellerId],
+        ], ['idempotency_key' => 'connect:account:manufacturer:' . $sellerId]);
+
+        return [$this->syncAccount($sellerId, $account), true];
     }
 
     /** @return object */
