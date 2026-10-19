@@ -165,6 +165,32 @@ class StripeWebhookController extends OrderController
             return response(['received' => true], 200);
         }
 
+        if ($event->type === 'account.updated') {
+            try {
+                if ($this->stripeConnect !== null && $this->stripeConnect->enabled()) {
+                    $account = $event->data->object;
+                    if (!$account instanceof \Stripe\StripeObject) {
+                        throw new \RuntimeException('Invalid Stripe Connect account update.');
+                    }
+                    $this->stripeConnect->handleAccountUpdated(
+                        $account,
+                        $this->stripeEventTimestamp($event->created ?? null),
+                    );
+                }
+            } catch (\Throwable $e) {
+                // Returning 500 here asks Stripe to redeliver the verified
+                // account event. A payment is never rolled back: allocations
+                // have already been stored as pending by checkout handling.
+                Log::critical('Stripe webhook: failed to reconcile Stripe Connect account update.', [
+                    'event_id' => (string) ($event->id ?? ''),
+                    'exception' => $e,
+                ]);
+                return response(['error' => 'Failed to reconcile seller transfers'], 500);
+            }
+
+            return response(['received' => true], 200);
+        }
+
         if( $event->type === 'checkout.session.expired') {
             try {
                 $this->handleCheckoutSessionExpired($event->data->object);

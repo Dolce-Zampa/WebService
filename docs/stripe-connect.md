@@ -53,3 +53,23 @@ it only to the authenticated seller and do not send it by email.
 Refreshes the account state from Stripe. A redirect to `return_url` does not
 by itself mean onboarding is complete: use `ready_for_transfers` before
 allowing a seller to receive transfers.
+
+## Ordini pagati prima dell'onboarding
+
+Un ordine pagato non viene annullato né fatto ritentare perché l'artigiano non
+ha ancora completato Stripe Connect. Per ogni quota venditore il WebService
+salva invece un trasferimento con stato `pending`, anche quando non esiste
+ancora un `stripe_account_id`.
+
+Quando Stripe invia `account.updated` per un account collegato e il servizio
+verifica `details_submitted`, `payouts_enabled` e `transfers_enabled`, i
+trasferimenti pendenti vengono eseguiti usando la stessa chiave di idempotenza.
+Il recupero è anche eseguito ogni 15 minuti dallo scheduler:
+
+```bash
+php bin/console app:stripe-connect:retry-pending-transfers --limit=100
+```
+
+Configurare l'endpoint webhook `/api/webhooks/stripe/checkout` anche per
+l'evento Stripe `account.updated`; il job pianificato resta la protezione
+aggiuntiva contro eventi in ritardo o mancati.

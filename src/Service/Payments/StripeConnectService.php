@@ -7,6 +7,7 @@ namespace PS\Webservice\Service\Payments;
 use DateTimeImmutable;
 use Illuminate\Database\Capsule\Manager;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Financial\FinancialMovement;
 use PS\Webservice\Service\Financial\FinancialLedgerService;
 
@@ -19,6 +20,7 @@ final class StripeConnectService
 {
     private const ACCOUNTS = 'stripe_connect_accounts';
     private const TRANSFERS = 'stripe_connect_transfers';
+    private const DEFAULT_RETRY_BATCH_SIZE = 100;
     private readonly \Stripe\StripeClient $stripe;
 
     public function __construct(
@@ -82,7 +84,70 @@ final class StripeConnectService
         }
 
         $account = $this->stripe->accounts->retrieve((string) $stored->stripe_account_id, []);
-        return $this->publicAccount($this->syncAccount($sellerId, $account));
+        $stored = $this->syncAccount($sellerId, $account);
+        if ($this->isReadyForTransfers($stored)) {
+            // The seller returning from Express onboarding is a reliable
+            // fallback if an account.updated event was temporarily missed.
+            $this->retryPendingTransfersForSeller($sellerId, $stored, $this->now());
+        }
+
+        return $this->publicAccount($stored);
+    }
+
+    /**
+     * Handles a verified Stripe account.updated event. Unknown accounts are
+     * ignored: only accounts already associated with a manufacturer can make
+     * transfers in this platform.
+     */
+    public function handleAccountUpdated(\Stripe\StripeObject $account, DateTimeImmutable $occurredAt): int
+    {
+        if (!$this->enabled()) {
+            return 0;
+        }
+
+        $accountId = $this->stripeId($account->id ?? null, 'account');
+        $stored = $this->db->table(self::ACCOUNTS)->where('stripe_account_id', $accountId)->first();
+        if ($stored === null) {
+            return 0;
+        }
+
+        $sellerId = (int) $stored->manufacturer_id;
+        $stored = $this->syncAccount($sellerId, $account);
+        if (!$this->isReadyForTransfers($stored)) {
+            return 0;
+        }
+
+        return $this->retryPendingTransfersForSeller($sellerId, $stored, $occurredAt);
+    }
+
+    /**
+     * Scheduler fallback for pending transfers. It is deliberately bounded so
+     * a single run cannot monopolize the worker when an account is offline.
+     */
+    public function retryPendingTransfers(int $limit = self::DEFAULT_RETRY_BATCH_SIZE): int
+    {
+        if (!$this->enabled()) {
+            return 0;
+        }
+        if ($limit < 1) {
+            throw new \InvalidArgumentException('Retry limit must be positive.');
+        }
+
+        $pending = $this->db->table(self::TRANSFERS)
+            ->where('status', 'pending')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+        $settled = 0;
+        foreach ($pending->groupBy('manufacturer_id') as $sellerId => $sellerTransfers) {
+            $account = $this->readyAccount((int) $sellerId);
+            if ($account === null) {
+                continue;
+            }
+            $settled += $this->retryPendingTransferRows($sellerTransfers->all(), $account, $this->now());
+        }
+
+        return $settled;
     }
 
     /**
@@ -110,40 +175,36 @@ final class StripeConnectService
         }
 
         foreach ($this->sellerAllocations($orderId) as $allocation) {
-            $account = $this->readyAccount((int) $allocation['manufacturer_id']);
+            $sellerId = (int) $allocation['manufacturer_id'];
             $idempotencyKey = 'connect:transfer:' . hash('sha256', $paymentIntentId . ':' . $allocation['manufacturer_id']);
             $existing = $this->db->table(self::TRANSFERS)->where('idempotency_key', $idempotencyKey)->first();
             if ($existing !== null && $existing->status === 'paid') {
                 continue;
             }
 
-            $transfer = $this->stripe->transfers->create([
-                'amount' => $allocation['amount'],
-                'currency' => strtolower($currency),
-                'destination' => $account->stripe_account_id,
-                'source_transaction' => $chargeId,
-                'transfer_group' => $transferGroup,
-                'metadata' => [
-                    'order_id' => (string) $orderId,
-                    'manufacturer_id' => (string) $allocation['manufacturer_id'],
-                ],
-            ], ['idempotency_key' => $idempotencyKey]);
-
+            $storedAccount = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
             $this->storeTransfer([
                 'order_id' => $orderId,
-                'manufacturer_id' => $allocation['manufacturer_id'],
-                'stripe_account_id' => $account->stripe_account_id,
+                'manufacturer_id' => $sellerId,
+                // A seller can be paid before starting Connect onboarding.
+                // Keep the allocation durable and link it once an account is
+                // available, instead of failing an otherwise valid order.
+                'stripe_account_id' => $storedAccount?->stripe_account_id,
                 'stripe_payment_intent_id' => $paymentIntentId,
                 'stripe_charge_id' => $chargeId,
-                'stripe_transfer_id' => $this->stripeId($transfer->id ?? null, 'transfer'),
+                'stripe_transfer_id' => null,
                 'transfer_group' => $transferGroup,
                 'idempotency_key' => $idempotencyKey,
                 'amount' => $allocation['amount'],
                 'currency' => $currency,
-                'status' => 'paid',
-                'failure_code' => null,
+                'status' => 'pending',
+                'failure_code' => 'seller_account_not_ready',
             ]);
-            $this->recordPayout($orderId, $allocation, $account, $transfer, $paymentIntentId, $occurredAt, $currency);
+
+            $account = $this->readyAccount($sellerId);
+            if ($account !== null) {
+                $this->retryPendingTransfersForSeller($sellerId, $account, $occurredAt);
+            }
         }
     }
 
@@ -178,18 +239,15 @@ final class StripeConnectService
         return [$this->syncAccount($sellerId, $account), true];
     }
 
-    /** @return object */
-    private function readyAccount(int $sellerId): object
+    /** @return object|null */
+    private function readyAccount(int $sellerId): ?object
     {
         $stored = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
         if ($stored === null) {
-            throw new \RuntimeException('Seller has no Stripe Connect account.');
+            return null;
         }
         $account = $this->syncAccount($sellerId, $this->stripe->accounts->retrieve((string) $stored->stripe_account_id, []));
-        if (!$account->details_submitted || !$account->payouts_enabled || !$account->transfers_enabled) {
-            throw new \RuntimeException('Seller Stripe Connect account is not ready for transfers.');
-        }
-        return $account;
+        return $this->isReadyForTransfers($account) ? $account : null;
     }
 
     /** @return list<array{manufacturer_id:int,amount:int}> */
@@ -265,11 +323,139 @@ final class StripeConnectService
             $this->db->table(self::TRANSFERS)->where('idempotency_key', $values['idempotency_key'])->update([
                 'stripe_transfer_id' => $values['stripe_transfer_id'],
                 'stripe_charge_id' => $values['stripe_charge_id'],
+                'stripe_account_id' => $values['stripe_account_id'],
                 'status' => $values['status'],
-                'failure_code' => null,
+                'failure_code' => $values['failure_code'],
                 'updated_at' => $now,
             ]);
         }
+    }
+
+    /**
+     * @param list<object> $pendingTransfers
+     */
+    private function retryPendingTransferRows(array $pendingTransfers, object $account, DateTimeImmutable $occurredAt): int
+    {
+        $settled = 0;
+        foreach ($pendingTransfers as $pending) {
+            try {
+                $this->transferPending($pending, $account, $occurredAt);
+                ++$settled;
+            } catch (\Throwable $exception) {
+                $failureCode = $this->failureCode($exception);
+                $this->markTransferPending($pending, (string) $account->stripe_account_id, $failureCode);
+                Log::warning('Stripe Connect transfer left pending for a later retry.', [
+                    'manufacturer_id' => (int) $pending->manufacturer_id,
+                    'order_id' => (int) $pending->order_id,
+                    'failure_code' => $failureCode,
+                ]);
+            }
+        }
+
+        return $settled;
+    }
+
+    private function retryPendingTransfersForSeller(int $sellerId, object $account, DateTimeImmutable $occurredAt): int
+    {
+        if (!$this->isReadyForTransfers($account)) {
+            return 0;
+        }
+
+        $pending = $this->db->table(self::TRANSFERS)
+            ->where('manufacturer_id', $sellerId)
+            ->where('status', 'pending')
+            ->orderBy('id')
+            ->limit(self::DEFAULT_RETRY_BATCH_SIZE)
+            ->get()
+            ->all();
+
+        return $this->retryPendingTransferRows($pending, $account, $occurredAt);
+    }
+
+    private function transferPending(object $pending, object $account, DateTimeImmutable $occurredAt): void
+    {
+        $orderId = (int) $pending->order_id;
+        $sellerId = (int) $pending->manufacturer_id;
+        $amount = (int) $pending->amount;
+        $currency = strtoupper((string) $pending->currency);
+        $paymentIntentId = $this->stripeId($pending->stripe_payment_intent_id ?? null, 'payment intent');
+        $chargeId = $this->stripeId($pending->stripe_charge_id ?? null, 'charge');
+        $accountId = $this->stripeId($account->stripe_account_id ?? null, 'account');
+        $idempotencyKey = (string) ($pending->idempotency_key ?? '');
+
+        if ($orderId < 1 || $sellerId < 1 || $amount < 1 || !preg_match('/^[A-Z]{3}$/', $currency) || $idempotencyKey === '' || strlen($idempotencyKey) > 191) {
+            throw new \RuntimeException('Pending Stripe Connect transfer is invalid.');
+        }
+
+        $transfer = $this->stripe->transfers->create([
+            'amount' => $amount,
+            'currency' => strtolower($currency),
+            'destination' => $accountId,
+            'source_transaction' => $chargeId,
+            'transfer_group' => (string) $pending->transfer_group,
+            'metadata' => [
+                'order_id' => (string) $orderId,
+                'manufacturer_id' => (string) $sellerId,
+            ],
+        ], ['idempotency_key' => $idempotencyKey]);
+
+        $this->storeTransfer([
+            'order_id' => $orderId,
+            'manufacturer_id' => $sellerId,
+            'stripe_account_id' => $accountId,
+            'stripe_payment_intent_id' => $paymentIntentId,
+            'stripe_charge_id' => $chargeId,
+            'stripe_transfer_id' => $this->stripeId($transfer->id ?? null, 'transfer'),
+            'transfer_group' => (string) $pending->transfer_group,
+            'idempotency_key' => $idempotencyKey,
+            'amount' => $amount,
+            'currency' => $currency,
+            'status' => 'paid',
+            'failure_code' => null,
+        ]);
+        $this->recordPayout(
+            $orderId,
+            ['manufacturer_id' => $sellerId, 'amount' => $amount],
+            $account,
+            $transfer,
+            $paymentIntentId,
+            $occurredAt,
+            $currency,
+        );
+    }
+
+    private function markTransferPending(object $pending, string $accountId, string $failureCode): void
+    {
+        $this->db->table(self::TRANSFERS)
+            ->where('idempotency_key', (string) $pending->idempotency_key)
+            ->update([
+                'stripe_account_id' => $accountId,
+                'status' => 'pending',
+                'failure_code' => $failureCode,
+                'updated_at' => gmdate('Y-m-d H:i:s'),
+            ]);
+    }
+
+    private function isReadyForTransfers(object $account): bool
+    {
+        return (bool) $account->details_submitted
+            && (bool) $account->payouts_enabled
+            && (bool) $account->transfers_enabled;
+    }
+
+    private function failureCode(\Throwable $exception): string
+    {
+        $stripeCode = $exception instanceof \Stripe\Exception\ApiErrorException ? $exception->getStripeCode() : null;
+        if (is_string($stripeCode) && preg_match('/^[A-Za-z0-9_-]+$/', $stripeCode)) {
+            return substr('stripe_' . $stripeCode, 0, 100);
+        }
+
+        return 'transfer_retry_required';
+    }
+
+    private function now(): DateTimeImmutable
+    {
+        return new DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
 
     /** @param array{manufacturer_id:int,amount:int} $allocation */
