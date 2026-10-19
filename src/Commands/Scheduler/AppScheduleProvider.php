@@ -28,6 +28,10 @@ final class AppScheduleProvider implements ScheduleProviderInterface
                 RecurringMessage::cron('10 * * * *', new GenerateSitemap())
             )
             ->add(
+                // Reconciliation fallback for delayed or redelivered Connect events.
+                RecurringMessage::cron('*/15 * * * *', new RetryPendingStripeConnectTransfersMessage())
+            )
+            ->add(
                 // Monday morning: reports always describe the preceding local calendar week.
                 RecurringMessage::cron('0 8 * * 1', new SendWeeklySellerFinancialSummaryMessage(), $financialTimezone)
             );

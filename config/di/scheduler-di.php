@@ -22,3 +22,9 @@ $container->set(\PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSumma
         $c->get(\PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\Scheduler\RetryPendingStripeConnectTransfersMessageHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\RetryPendingStripeConnectTransfersMessageHandler(
+        $c->get(\PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class)
+    );
+});

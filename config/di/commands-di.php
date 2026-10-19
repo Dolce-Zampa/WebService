@@ -32,6 +32,12 @@ $container->set(\PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::cla
     );
 });
 
+$container->set(\PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class, function ($c) {
     return new \PS\Webservice\Commands\ElasticSearch\CreateIndexElk(
         $c->get(\Elastic\Elasticsearch\ClientBuilder::class),

@@ -15,7 +15,13 @@ final class StripeConnectModule
 {
     public static function enabled(): bool
     {
-        return strtolower((string) env('STRIPE_PAYMENT_FLOW', 'standard')) === 'connect'
-            && filter_var(env('STRIPE_CONNECT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+        // Prefer the process environment array so the value injected by the
+        // deployment (and the isolated test process) is authoritative even
+        // after Dotenv has initialized its immutable repository.
+        $flow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? env('STRIPE_PAYMENT_FLOW', 'standard');
+        $enabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? env('STRIPE_CONNECT_ENABLED', false);
+
+        return strtolower((string) $flow) === 'connect'
+            && filter_var($enabled, FILTER_VALIDATE_BOOLEAN);
     }
 }
