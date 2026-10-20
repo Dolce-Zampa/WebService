@@ -31,7 +31,9 @@ final class StripeConnectServiceTest extends TestCase
 
         $accounts = new class {
             public int $createCalls = 0;
+            public int $loginLinkCalls = 0;
             public array $createParams = [];
+            public ?string $loginLinkAccountId = null;
 
             public function create(array $params, array $options): \Stripe\Account
             {
@@ -43,6 +45,15 @@ final class StripeConnectServiceTest extends TestCase
             public function retrieve(string $id, array $params): \Stripe\Account
             {
                 return $this->account();
+            }
+
+            public function createLoginLink(string $accountId, array $params): \Stripe\LoginLink
+            {
+                ++$this->loginLinkCalls;
+                $this->loginLinkAccountId = $accountId;
+                return \Stripe\LoginLink::constructFrom([
+                    'url' => 'https://connect.stripe.com/express/acct_manufacturer_7/login-token',
+                ]);
             }
 
             private function account(): \Stripe\Account
@@ -81,6 +92,12 @@ final class StripeConnectServiceTest extends TestCase
         self::assertSame('express', $accounts->createParams['type']);
         self::assertSame(['transfers' => ['requested' => true]], $accounts->createParams['capabilities']);
         self::assertSame('7', $accounts->createParams['metadata']['manufacturer_id']);
+
+        self::assertSame([
+            'dashboard_url' => 'https://connect.stripe.com/express/acct_manufacturer_7/login-token',
+        ], $service->createDashboardLoginLink(7));
+        self::assertSame(1, $accounts->loginLinkCalls);
+        self::assertSame('acct_manufacturer_7', $accounts->loginLinkAccountId);
     }
 
     public function test_keeps_an_unregistered_seller_payout_pending_then_transfers_it_when_connect_becomes_ready(): void
@@ -97,7 +114,11 @@ final class StripeConnectServiceTest extends TestCase
             $this->createTransferTables($db);
             $db->table('manufacturer_details')->insert(['id_manufacturer' => 7, 'commission' => '20.00']);
             $db->table('product')->insert(['id_product' => 10, 'id_manufacturer' => 7]);
-            $db->table('order_detail')->insert(['id_order' => 42, 'product_id' => 10, 'total_price_tax_incl' => '12.50']);
+            // The product line may be changed by PrestaShop's internal cart
+            // reconciliation rule. Payout must instead start from what the
+            // buyer actually paid (€66.10), less shipping (€6.10).
+            $db->table('orders')->insert(['id_order' => 42, 'total_shipping_tax_incl' => '6.10']);
+            $db->table('order_detail')->insert(['id_order' => 42, 'product_id' => 10, 'total_price_tax_incl' => '45.00']);
 
             $accounts = new class {
                 public bool $ready = false;
@@ -132,16 +153,20 @@ final class StripeConnectServiceTest extends TestCase
                     return \Stripe\PaymentIntent::constructFrom([
                         'id' => $id,
                         'currency' => 'eur',
+                        'amount_received' => 6610,
                         'latest_charge' => 'ch_order_42',
                     ]);
                 }
             };
             $transfers = new class {
                 public int $createCalls = 0;
+                /** @var array<string, mixed> */
+                public array $lastParams = [];
 
                 public function create(array $params, array $options): \Stripe\Transfer
                 {
                     ++$this->createCalls;
+                    $this->lastParams = $params;
                     return \Stripe\Transfer::constructFrom(['id' => 'tr_pending_42']);
                 }
             };
@@ -169,6 +194,7 @@ final class StripeConnectServiceTest extends TestCase
             self::assertSame('pending', $pending->status);
             self::assertNull($pending->stripe_account_id);
             self::assertSame('seller_account_not_ready', $pending->failure_code);
+            self::assertSame(4800, $pending->amount);
             self::assertSame(0, $transfers->createCalls);
 
             $service->createAccount(7, 'seller@example.test');
@@ -181,6 +207,7 @@ final class StripeConnectServiceTest extends TestCase
             self::assertSame('tr_pending_42', $settled->stripe_transfer_id);
             self::assertNull($settled->failure_code);
             self::assertSame(1, $transfers->createCalls);
+            self::assertSame(4800, $transfers->lastParams['amount']);
 
             self::assertSame(0, $service->handleAccountUpdated($accounts->account(), new DateTimeImmutable('2026-10-19 10:06:00 UTC')));
             self::assertSame(1, $transfers->createCalls);
@@ -192,7 +219,7 @@ final class StripeConnectServiceTest extends TestCase
 
     private function createTransferTables(Manager $db): void
     {
-        foreach (['order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
+        foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
             $db->schema()->dropIfExists($table);
         }
         $db->schema()->create('stripe_connect_accounts', function ($table): void {
@@ -239,6 +266,10 @@ final class StripeConnectServiceTest extends TestCase
             $table->unsignedBigInteger('id_order');
             $table->unsignedInteger('product_id');
             $table->decimal('total_price_tax_incl', 20, 6);
+        });
+        $db->schema()->create('orders', function ($table): void {
+            $table->unsignedBigInteger('id_order')->primary();
+            $table->decimal('total_shipping_tax_incl', 20, 6);
         });
     }
 

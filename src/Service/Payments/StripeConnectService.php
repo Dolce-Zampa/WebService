@@ -21,6 +21,8 @@ final class StripeConnectService
     private const ACCOUNTS = 'stripe_connect_accounts';
     private const TRANSFERS = 'stripe_connect_transfers';
     private const DEFAULT_RETRY_BATCH_SIZE = 100;
+    private const DEFAULT_COMMISSION_RATE = '20.00';
+    private const MINIMUM_COMMISSION_EUR = '1.00';
     private readonly \Stripe\StripeClient $stripe;
 
     public function __construct(
@@ -72,6 +74,36 @@ final class StripeConnectService
         }
         [$stored, $created] = $this->ensureAccount($sellerId, $email);
         return ['created' => $created, 'account' => $this->publicAccount($stored)];
+    }
+
+    /**
+     * Creates a single-use Express Dashboard link for the seller's own
+     * connected account. The account id is always read from our mapping,
+     * never accepted from the client.
+     *
+     * @return array{dashboard_url: string}
+     */
+    public function createDashboardLoginLink(int $sellerId): array
+    {
+        $this->assertSeller($sellerId);
+        $stored = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
+
+        if ($stored === null) {
+            throw new \RuntimeException('Stripe Connect account not found.');
+        }
+
+        if ((string) $stored->account_type !== 'express') {
+            throw new \RuntimeException('Stripe Connect account cannot access the Express Dashboard.');
+        }
+
+        $link = $this->stripe->accounts->createLoginLink((string) $stored->stripe_account_id, []);
+        $url = (string) ($link->url ?? '');
+
+        if (filter_var($url, FILTER_VALIDATE_URL) === false || !str_starts_with($url, 'https://connect.stripe.com/')) {
+            throw new \RuntimeException('Stripe returned an invalid Express Dashboard link.');
+        }
+
+        return ['dashboard_url' => $url];
     }
 
     /** @return array<string, mixed> */
@@ -173,8 +205,9 @@ final class StripeConnectService
         if (!preg_match('/^[A-Z]{3}$/', $currency)) {
             throw new \RuntimeException('Stripe payment intent has no valid currency.');
         }
+        $paidCents = $this->paidAmountCents($paymentIntent);
 
-        foreach ($this->sellerAllocations($orderId) as $allocation) {
+        foreach ($this->sellerAllocations($orderId, $paidCents) as $allocation) {
             $sellerId = (int) $allocation['manufacturer_id'];
             $idempotencyKey = 'connect:transfer:' . hash('sha256', $paymentIntentId . ':' . $allocation['manufacturer_id']);
             $existing = $this->db->table(self::TRANSFERS)->where('idempotency_key', $idempotencyKey)->first();
@@ -250,9 +283,22 @@ final class StripeConnectService
         return $this->isReadyForTransfers($account) ? $account : null;
     }
 
-    /** @return list<array{manufacturer_id:int,amount:int}> */
-    private function sellerAllocations(int $orderId): array
+    /**
+     * Splits the amount actually paid to Stripe, after removing shipping,
+     * among sellers in proportion to their order lines. This deliberately
+     * makes the payout independent from a technical PrestaShop cart rule
+     * that may have been created only to reconcile its total with Checkout.
+     *
+     * @return list<array{manufacturer_id:int,amount:int}>
+     */
+    private function sellerAllocations(int $orderId, int $paidCents): array
     {
+        $shippingCents = $this->shippingCentsForOrder($orderId);
+        $productCents = $paidCents - $shippingCents;
+        if ($productCents < 0) {
+            throw new \RuntimeException('Stripe payment total is less than order shipping.');
+        }
+
         $lines = $this->db->table('order_detail as detail')
             ->join('product as product', 'product.id_product', '=', 'detail.product_id')
             ->join('manufacturer_details as seller_detail', 'seller_detail.id_manufacturer', '=', 'product.id_manufacturer')
@@ -263,23 +309,54 @@ final class StripeConnectService
             throw new \RuntimeException('No seller order lines available for Stripe Connect transfer.');
         }
 
-        $amounts = [];
+        /** @var array<int, array{gross:int,commission:int}> $sellers */
+        $sellers = [];
         foreach ($lines as $line) {
             $sellerId = (int) $line->manufacturer_id;
             $grossCents = $this->decimalToCents((string) $line->total_price_tax_incl);
             $commissionRate = $this->commissionRate((string) ($line->commission ?? '20.00'));
-            $netCents = intdiv($grossCents * (10000 - $commissionRate), 10000);
-            if ($sellerId < 1 || $netCents < 0) {
+            if ($sellerId < 1 || $grossCents < 0) {
                 throw new \RuntimeException('Invalid seller transfer allocation.');
             }
-            $amounts[$sellerId] = ($amounts[$sellerId] ?? 0) + $netCents;
+            if (!isset($sellers[$sellerId])) {
+                $sellers[$sellerId] = ['gross' => 0, 'commission' => $commissionRate];
+            }
+            if ($sellers[$sellerId]['commission'] !== $commissionRate) {
+                throw new \RuntimeException('Seller commission is inconsistent within the order.');
+            }
+            $sellers[$sellerId]['gross'] += $grossCents;
         }
 
-        return array_map(
-            static fn (int $sellerId, int $amount): array => ['manufacturer_id' => $sellerId, 'amount' => $amount],
-            array_keys($amounts),
-            array_values($amounts),
-        );
+        $grossTotal = array_sum(array_column($sellers, 'gross'));
+        if ($grossTotal < 1 && $productCents > 0) {
+            throw new \RuntimeException('Order seller lines have no allocable product value.');
+        }
+
+        // Allocate whole cents deterministically. The final seller receives
+        // the residual so the seller bases always add up to the actual paid
+        // product amount rather than to a rounded approximation of it.
+        ksort($sellers, SORT_NUMERIC);
+        $remainingProductCents = $productCents;
+        $remainingGrossCents = $grossTotal;
+        $allocations = [];
+        foreach ($sellers as $sellerId => $seller) {
+            $sellerProductCents = $remainingGrossCents === 0
+                ? 0
+                : intdiv($remainingProductCents * $seller['gross'], $remainingGrossCents);
+            $remainingProductCents -= $sellerProductCents;
+            $remainingGrossCents -= $seller['gross'];
+            $commissionCents = intdiv($sellerProductCents * $seller['commission'], 10000);
+            $commissionCents = min(
+                $sellerProductCents,
+                max($this->minimumCommissionCents(), $commissionCents),
+            );
+            $allocations[] = [
+                'manufacturer_id' => $sellerId,
+                'amount' => $sellerProductCents - $commissionCents,
+            ];
+        }
+
+        return $allocations;
     }
 
     /** @return object */
@@ -490,6 +567,31 @@ final class StripeConnectService
         ];
     }
 
+    private function paidAmountCents(\Stripe\StripeObject $paymentIntent): int
+    {
+        $data = $paymentIntent->toArray();
+        foreach (['amount_received', 'amount'] as $field) {
+            $value = $data[$field] ?? null;
+            if (filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) !== false) {
+                return (int) $value;
+            }
+        }
+
+        throw new \RuntimeException('Stripe payment intent has no valid paid amount.');
+    }
+
+    private function shippingCentsForOrder(int $orderId): int
+    {
+        $shipping = $this->db->table('orders')
+            ->where('id_order', $orderId)
+            ->value('total_shipping_tax_incl');
+        if ($shipping === null) {
+            throw new \RuntimeException('Order shipping total is not available for Stripe Connect transfer.');
+        }
+
+        return $this->decimalToCents((string) $shipping);
+    }
+
     private function decimalToCents(string $amount): int
     {
         if (!preg_match('/^\d+(?:\.\d{1,6})?$/', $amount)) throw new \RuntimeException('Invalid order amount for transfer.');
@@ -498,10 +600,27 @@ final class StripeConnectService
 
     private function commissionRate(string $rate): int
     {
-        if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $rate)) return 2000;
+        // The legacy manufacturer_details column was introduced with a 0.00
+        // default. Treat that old unset value as the platform's 20% default.
+        if ($rate === '' || !preg_match('/^\d+(?:\.\d{1,2})?$/', $rate) || bccomp($rate, '0', 2) === 0) {
+            $rate = (string) env('STRIPE_CONNECT_DEFAULT_COMMISSION_RATE', self::DEFAULT_COMMISSION_RATE);
+        }
+        if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $rate)) {
+            throw new \RuntimeException('Invalid default seller commission rate.');
+        }
         $basisPoints = (int) bcmul($rate, '100', 0);
         if ($basisPoints < 0 || $basisPoints > 10000) throw new \RuntimeException('Invalid seller commission rate.');
         return $basisPoints;
+    }
+
+    private function minimumCommissionCents(): int
+    {
+        $minimum = (string) env('STRIPE_CONNECT_MINIMUM_COMMISSION_EUR', self::MINIMUM_COMMISSION_EUR);
+        if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $minimum)) {
+            throw new \RuntimeException('Invalid minimum seller commission.');
+        }
+
+        return $this->decimalToCents($minimum);
     }
 
     private function centsToDecimal(int $amount): string { return intdiv($amount, 100) . '.' . str_pad((string) ($amount % 100), 2, '0', STR_PAD_LEFT); }

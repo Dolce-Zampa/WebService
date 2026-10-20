@@ -55,6 +55,19 @@ final class StripeConnectController
         }
     }
 
+    public function loginLink(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $this->assertModuleEnabled();
+            $seller = $this->authenticatedSeller($request);
+            return response($this->connect->createDashboardLoginLink((int) $seller->getAttribute('id_manufacturer')));
+        } catch (\InvalidArgumentException $exception) {
+            return response(['error' => $exception->getMessage()], 422);
+        } catch (\RuntimeException $exception) {
+            return response(['error' => $exception->getMessage()], 409);
+        }
+    }
+
     public function status(Request $request, Response $response, array $args): Response
     {
         try {
