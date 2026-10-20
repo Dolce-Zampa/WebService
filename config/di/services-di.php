@@ -181,6 +181,13 @@ $container->set(\PS\Webservice\Service\Payments\PaymentService::class, function 
     return $payment;
 });
 
+$container->set(\PS\Webservice\Service\Payments\StripeConnectService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Payments\StripeConnectService(
+        $capsule,
+        $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class),
+    );
+});
+
 
 $container->set(\PS\Webservice\Service\OpenAIService::class, function ($c) {
     return new \PS\Webservice\Service\OpenAIService(

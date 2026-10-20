@@ -12,6 +12,7 @@ return [
     \PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class,
     \PS\Webservice\Commands\BackfillFinancialOrdersCommand::class,
     \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class,
+    \PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class,
     \PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class,
     \PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class,
     \PS\Webservice\Commands\ElasticSearch\IndexProduct::class,
