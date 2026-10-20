@@ -1,0 +1,15 @@
+{shop_name} - Nuova vendita ricevuta
+
+Ciao {seller_name},
+
+Hai ricevuto una nuova vendita. Il pagamento dell'ordine è stato confermato.
+
+Riferimento ordine: {order_reference}
+Data conferma: {finalized_at}
+
+Prodotti venduti:
+{items_text}
+
+Totale prodotti: {amount}
+
+Puoi consultare e gestire l'ordine dalla tua area riservata.
