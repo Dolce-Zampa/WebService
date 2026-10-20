@@ -54,6 +54,36 @@ Refreshes the account state from Stripe. A redirect to `return_url` does not
 by itself mean onboarding is complete: use `ready_for_transfers` before
 allowing a seller to receive transfers.
 
+## Commissione marketplace
+
+Per ogni ordine e venditore, il WebService trattiene la commissione applicando
+la percentuale configurata sul venditore, con default del 20% e minimo di 1 €.
+Il valore legacy `0.00` nella colonna PrestaShop `manufacturer_details.commission`
+viene interpretato come non configurato e quindi usa il default della
+piattaforma. La commissione non include le spese di spedizione. I valori di
+default si possono sovrascrivere con `STRIPE_CONNECT_DEFAULT_COMMISSION_RATE` e
+`STRIPE_CONNECT_MINIMUM_COMMISSION_EUR`.
+
+## Open the Express Dashboard
+
+`POST /api/seller/stripe-connect/login-link`
+
+Creates a single-use Stripe Express Dashboard URL for the authenticated seller.
+The WebService resolves the connected account from its own manufacturer mapping;
+the client never sends an account id. Call this only after `ready_for_transfers`
+is `true`, then redirect the seller to the returned `dashboard_url`. Sellers can
+request an Instant Payout there when Stripe marks their account and available
+balance eligible. This is an on-demand payout; Stripe's standard payout schedule
+remains in effect for funds they do not request instantly.
+
+## Metodi di pagamento
+
+Checkout usa la configurazione metodi di pagamento dell'account piattaforma
+DolceZampa. I metodi vengono selezionati e gestiti nel Dashboard Stripe da
+DolceZampa; non vengono scelti dal venditore. Il flusso Connect attuale usa
+separate charges and transfers, quindi i metodi di pagamento configurati per
+gli account connessi non controllano questo Checkout.
+
 ## Ordini pagati prima dell'onboarding
 
 Un ordine pagato non viene annullato né fatto ritentare perché l'artigiano non
