@@ -265,7 +265,14 @@ final class StripeConnectService
             'type' => 'express',
             'country' => strtoupper((string) env('STRIPE_CONNECT_COUNTRY', 'IT')),
             'email' => $email,
-            'capabilities' => ['transfers' => ['requested' => true]],
+            // Card payments is requested with transfers for live Connect
+            // eligibility. Checkout remains a platform charge and sellers only
+            // receive transfers unless a future flow explicitly uses their
+            // account to create a charge.
+            'capabilities' => [
+                'card_payments' => ['requested' => true],
+                'transfers' => ['requested' => true],
+            ],
             'metadata' => ['manufacturer_id' => (string) $sellerId],
         ], ['idempotency_key' => 'connect:account:manufacturer:' . $sellerId]);
 
