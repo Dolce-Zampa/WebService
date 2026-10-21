@@ -90,7 +90,10 @@ final class StripeConnectServiceTest extends TestCase
         self::assertFalse($second['created']);
         self::assertSame(1, $accounts->createCalls);
         self::assertSame('express', $accounts->createParams['type']);
-        self::assertSame(['transfers' => ['requested' => true]], $accounts->createParams['capabilities']);
+        self::assertSame([
+            'card_payments' => ['requested' => true],
+            'transfers' => ['requested' => true],
+        ], $accounts->createParams['capabilities']);
         self::assertSame('7', $accounts->createParams['metadata']['manufacturer_id']);
 
         self::assertSame([
