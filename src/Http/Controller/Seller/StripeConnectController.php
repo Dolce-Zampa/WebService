@@ -33,6 +33,8 @@ final class StripeConnectController
             ), 201);
         } catch (\InvalidArgumentException $exception) {
             return response(['error' => $exception->getMessage()], 422);
+        } catch (\Stripe\Exception\ApiConnectionException) {
+            return $this->stripeUnavailable();
         } catch (\RuntimeException $exception) {
             return response(['error' => $exception->getMessage()], 409);
         }
@@ -50,6 +52,8 @@ final class StripeConnectController
             return response($result, $result['created'] ? 201 : 200);
         } catch (\InvalidArgumentException $exception) {
             return response(['error' => $exception->getMessage()], 422);
+        } catch (\Stripe\Exception\ApiConnectionException) {
+            return $this->stripeUnavailable();
         } catch (\RuntimeException $exception) {
             return response(['error' => $exception->getMessage()], 409);
         }
@@ -63,6 +67,8 @@ final class StripeConnectController
             return response($this->connect->createDashboardLoginLink((int) $seller->getAttribute('id_manufacturer')));
         } catch (\InvalidArgumentException $exception) {
             return response(['error' => $exception->getMessage()], 422);
+        } catch (\Stripe\Exception\ApiConnectionException) {
+            return $this->stripeUnavailable();
         } catch (\RuntimeException $exception) {
             return response(['error' => $exception->getMessage()], 409);
         }
@@ -74,6 +80,8 @@ final class StripeConnectController
             $this->assertModuleEnabled();
             $seller = $this->authenticatedSeller($request);
             return response($this->connect->status((int) $seller->getAttribute('id_manufacturer')));
+        } catch (\Stripe\Exception\ApiConnectionException) {
+            return $this->stripeUnavailable();
         } catch (\RuntimeException $exception) {
             return response(['error' => $exception->getMessage()], 404);
         }
@@ -97,5 +105,10 @@ final class StripeConnectController
         if (!$this->connect->enabled()) {
             throw new \RuntimeException('Stripe Connect payment module is disabled.');
         }
+    }
+
+    private function stripeUnavailable(): Response
+    {
+        return response(['error' => 'Stripe is temporarily unreachable. Please retry shortly.'], 503);
     }
 }

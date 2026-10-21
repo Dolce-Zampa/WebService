@@ -17,7 +17,9 @@ from that token; clients must never supply a manufacturer or Stripe account ID.
 
 Creates one Stripe Express connected account for the authenticated
 manufacturer. The account is created with the server-configured country and
-the `transfers` capability. Repeating the request is safe: it returns the
+the `transfers` and `card_payments` capabilities. The current Checkout flow
+remains a charge on the DolceZampa platform: `card_payments` does not route
+customer payments to the seller account by itself. Repeating the request is safe: it returns the
 already associated account and `created: false`.
 
 ```json
