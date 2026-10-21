@@ -33,12 +33,14 @@ final class StripeConnectServiceTest extends TestCase
             public int $createCalls = 0;
             public int $loginLinkCalls = 0;
             public array $createParams = [];
+            public array $createOptions = [];
             public ?string $loginLinkAccountId = null;
 
             public function create(array $params, array $options): \Stripe\Account
             {
                 ++$this->createCalls;
                 $this->createParams = $params;
+                $this->createOptions = $options;
                 return $this->account();
             }
 
@@ -95,6 +97,7 @@ final class StripeConnectServiceTest extends TestCase
             'transfers' => ['requested' => true],
         ], $accounts->createParams['capabilities']);
         self::assertSame('7', $accounts->createParams['metadata']['manufacturer_id']);
+        self::assertSame('connect:account:v2:manufacturer:7', $accounts->createOptions['idempotency_key']);
 
         self::assertSame([
             'dashboard_url' => 'https://connect.stripe.com/express/acct_manufacturer_7/login-token',

@@ -23,6 +23,7 @@ final class StripeConnectService
     private const DEFAULT_RETRY_BATCH_SIZE = 100;
     private const DEFAULT_COMMISSION_RATE = '20.00';
     private const MINIMUM_COMMISSION_EUR = '1.00';
+    private const ACCOUNT_CREATION_IDEMPOTENCY_VERSION = 'v2';
     private readonly \Stripe\StripeClient $stripe;
 
     public function __construct(
@@ -274,7 +275,12 @@ final class StripeConnectService
                 'transfers' => ['requested' => true],
             ],
             'metadata' => ['manufacturer_id' => (string) $sellerId],
-        ], ['idempotency_key' => 'connect:account:manufacturer:' . $sellerId]);
+        ], [
+            // The version changes whenever the immutable account-create
+            // payload changes. Stripe rejects the reuse of a key with a
+            // different capability set.
+            'idempotency_key' => 'connect:account:' . self::ACCOUNT_CREATION_IDEMPOTENCY_VERSION . ':manufacturer:' . $sellerId,
+        ]);
 
         return [$this->syncAccount($sellerId, $account), true];
     }
