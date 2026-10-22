@@ -193,6 +193,7 @@ final class StripeConnectService
         string $paymentIntentId,
         string $transferGroup,
         DateTimeImmutable $occurredAt,
+        ?array $checkoutSnapshot = null,
     ): void {
         if (!$this->enabled()) {
             return;
@@ -209,7 +210,10 @@ final class StripeConnectService
         }
         $paidCents = $this->paidAmountCents($paymentIntent);
 
-        foreach ($this->sellerAllocations($orderId, $paidCents) as $allocation) {
+        $allocations = $checkoutSnapshot === null
+            ? $this->sellerAllocations($orderId, $paidCents)
+            : $this->sellerAllocationsFromCheckoutSnapshot($checkoutSnapshot, $paidCents, $currency);
+        foreach ($allocations as $allocation) {
             $sellerId = (int) $allocation['manufacturer_id'];
             $idempotencyKey = 'connect:transfer:' . hash('sha256', $paymentIntentId . ':' . $allocation['manufacturer_id']);
             $existing = $this->db->table(self::TRANSFERS)->where('idempotency_key', $idempotencyKey)->first();
@@ -522,6 +526,83 @@ final class StripeConnectService
         $remainingGrossCents = $grossTotal;
         $allocations = [];
         foreach ($sellers as $sellerId => $seller) {
+            $sellerProductCents = $remainingGrossCents === 0
+                ? 0
+                : intdiv($remainingProductCents * $seller['gross'], $remainingGrossCents);
+            $remainingProductCents -= $sellerProductCents;
+            $remainingGrossCents -= $seller['gross'];
+            $commissionCents = intdiv($sellerProductCents * $seller['commission'], 10000);
+            $commissionCents = min(
+                $sellerProductCents,
+                max($this->minimumCommissionCents(), $commissionCents),
+            );
+            $allocations[] = [
+                'manufacturer_id' => $sellerId,
+                'amount' => $sellerProductCents - $commissionCents,
+            ];
+        }
+
+        return $allocations;
+    }
+
+    /**
+     * Uses the seller identities, product values and commission rates that
+     * were frozen before Checkout. Product ownership and seller settings can
+     * legitimately change after payment; those later changes must never alter
+     * a transfer for an already-approved basket.
+     *
+     * @param array<string, mixed> $snapshot
+     * @return list<array{manufacturer_id:int,amount:int}>
+     */
+    private function sellerAllocationsFromCheckoutSnapshot(array $snapshot, int $paidCents, string $currency): array
+    {
+        if (($snapshot['currency'] ?? null) !== $currency) {
+            throw new \RuntimeException('Checkout snapshot currency differs from the Stripe payment.');
+        }
+        $totals = $snapshot['totals'] ?? null;
+        $sellers = $snapshot['sellers'] ?? null;
+        if (!is_array($totals) || !is_array($sellers)) {
+            throw new \RuntimeException('Checkout snapshot has no seller allocation data.');
+        }
+        $shippingCents = $totals['shipping_cents'] ?? null;
+        $grandTotalCents = $totals['grand_total_cents'] ?? null;
+        if (!is_int($shippingCents) || $shippingCents < 0 || !is_int($grandTotalCents) || $grandTotalCents !== $paidCents) {
+            throw new \RuntimeException('Checkout snapshot totals do not match the Stripe payment.');
+        }
+        $productCents = $paidCents - $shippingCents;
+        if ($productCents < 0) {
+            throw new \RuntimeException('Stripe payment total is less than checkout snapshot shipping.');
+        }
+
+        /** @var array<int, array{gross:int,commission:int}> $snapshotSellers */
+        $snapshotSellers = [];
+        foreach ($sellers as $seller) {
+            if (!is_array($seller)) {
+                throw new \RuntimeException('Checkout snapshot seller allocation is invalid.');
+            }
+            $sellerId = $seller['manufacturer_id'] ?? null;
+            $grossCents = $seller['gross_cents'] ?? null;
+            $commission = $seller['commission_basis_points'] ?? null;
+            if (!is_int($sellerId) || $sellerId < 1 || !is_int($grossCents) || $grossCents < 0
+                || !is_int($commission) || $commission < 0 || $commission > 10000 || isset($snapshotSellers[$sellerId])) {
+                throw new \RuntimeException('Checkout snapshot seller allocation is invalid.');
+            }
+            $snapshotSellers[$sellerId] = ['gross' => $grossCents, 'commission' => $commission];
+        }
+        if ($snapshotSellers === []) {
+            throw new \RuntimeException('Checkout snapshot has no seller allocations.');
+        }
+
+        $grossTotal = array_sum(array_column($snapshotSellers, 'gross'));
+        if ($grossTotal < 1 && $productCents > 0) {
+            throw new \RuntimeException('Checkout snapshot seller lines have no allocable product value.');
+        }
+
+        ksort($snapshotSellers, SORT_NUMERIC);
+        $remainingProductCents = $productCents;
+        $remainingGrossCents = $grossTotal;
+        $allocations = [];
+        foreach ($snapshotSellers as $sellerId => $seller) {
             $sellerProductCents = $remainingGrossCents === 0
                 ? 0
                 : intdiv($remainingProductCents * $seller['gross'], $remainingGrossCents);

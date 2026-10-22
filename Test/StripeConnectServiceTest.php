@@ -139,10 +139,10 @@ final class StripeConnectServiceTest extends TestCase
             $db->bootEloquent();
             $this->createTransferTables($db);
             $db->table('manufacturer_details')->insert(['id_manufacturer' => 7, 'commission' => '20.00']);
-            $db->table('product')->insert(['id_product' => 10, 'id_manufacturer' => 7]);
-            // The product line may be changed by PrestaShop's internal cart
-            // reconciliation rule. Payout must instead start from what the
-            // buyer actually paid (€66.10), less shipping (€6.10).
+            // The catalog product has been reassigned after Checkout. The
+            // frozen checkout snapshot still names seller 7, who must receive
+            // the allocation for this already-paid basket.
+            $db->table('product')->insert(['id_product' => 10, 'id_manufacturer' => 99]);
             $db->table('orders')->insert(['id_order' => 42, 'total_shipping_tax_incl' => '6.10']);
             $db->table('order_detail')->insert(['id_order' => 42, 'product_id' => 10, 'total_price_tax_incl' => '45.00']);
 
@@ -214,12 +214,17 @@ final class StripeConnectServiceTest extends TestCase
             };
 
             $service = new StripeConnectService($db, null, $stripe);
-            $service->createTransfersForOrder(42, 'pi_order42', 'dz_cart_42', new DateTimeImmutable('2026-10-19 10:00:00 UTC'));
+            $service->createTransfersForOrder(42, 'pi_order42', 'dz_cart_42', new DateTimeImmutable('2026-10-19 10:00:00 UTC'), [
+                'currency' => 'EUR',
+                'totals' => ['shipping_cents' => 610, 'grand_total_cents' => 6610],
+                'sellers' => [['manufacturer_id' => 7, 'gross_cents' => 6000, 'commission_basis_points' => 2000]],
+            ]);
 
             $pending = $db->table('stripe_connect_transfers')->first();
             self::assertSame('pending', $pending->status);
             self::assertNull($pending->stripe_account_id);
             self::assertSame('seller_account_not_ready', $pending->failure_code);
+            self::assertSame(7, (int) $pending->manufacturer_id);
             self::assertSame(4800, $pending->amount);
             self::assertSame(0, $transfers->createCalls);
 

@@ -37,7 +37,12 @@ $container->set(\PS\Webservice\Http\Controller\OrderController::class, function 
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
     $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
-    return new \PS\Webservice\Http\Controller\OrderController($orderService, $payment, $repository);
+    return new \PS\Webservice\Http\Controller\OrderController(
+        $orderService,
+        $payment,
+        $repository,
+        $c->get(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class),
+    );
 });
 
 $container->set(\PS\Webservice\Http\Controller\FinancialReconciliationController::class, function ($c) {
@@ -102,7 +107,7 @@ $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, f
     $financialLedger = $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class);
     $sellerSaleNotifications = $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class);
     $stripeConnect = $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class);
-    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger, $sellerSaleNotifications, $stripeConnect);
+    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger, $sellerSaleNotifications, $stripeConnect, $c->get(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class));
 });
 
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {

@@ -18,6 +18,7 @@ use PS\Webservice\Service\Financial\FinancialLedgerService;
 use PS\Webservice\Service\Financial\SellerSaleNotificationService;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
+use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\Payments\StripeConnectService;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Service\Promotions\PromotionService;
@@ -40,6 +41,7 @@ class StripeWebhookController extends OrderController
     private ?FinancialLedgerService $financialLedger;
     private ?SellerSaleNotificationService $sellerSaleNotifications;
     private ?StripeConnectService $stripeConnect;
+    private ?CheckoutSnapshotService $checkoutSnapshots;
 
     private MailerInterface $mailer;
 
@@ -53,6 +55,7 @@ class StripeWebhookController extends OrderController
         ?FinancialLedgerService $financialLedger = null,
         ?SellerSaleNotificationService $sellerSaleNotifications = null,
         ?StripeConnectService $stripeConnect = null,
+        ?CheckoutSnapshotService $checkoutSnapshots = null,
     )
     {
         $this->orderService = $orderService;
@@ -67,6 +70,7 @@ class StripeWebhookController extends OrderController
         $this->financialLedger = $financialLedger;
         $this->sellerSaleNotifications = $sellerSaleNotifications;
         $this->stripeConnect = $stripeConnect;
+        $this->checkoutSnapshots = $checkoutSnapshots;
     }
     //https://hkdk.events/q2u3lxvs2zpfu7 
     public function handleWebhook(Request $request, Response $response, array $argv): Response
@@ -444,7 +448,6 @@ class StripeWebhookController extends OrderController
         ]), $idempotencyKey);
     }
 
-<<<<<<< HEAD
     private function reconcileStripeConnectRefund(\Stripe\Event $event): void
     {
         if ($this->stripeConnect === null || !$this->stripeConnect->enabled()) {
@@ -917,7 +920,17 @@ class StripeWebhookController extends OrderController
             throw new \RuntimeException('Stripe Connect checkout order is not available yet.');
         }
         $transferGroup = $this->stripeOptionalIdentifier($metadata['transfer_group'] ?? null) ?? 'dz_cart_' . $cartId;
-        $this->stripeConnect->createTransfersForOrder($orderId, $paymentIntentId, $transferGroup, $this->stripeEventTimestamp($event->created ?? null));
+        $snapshot = $this->checkoutSnapshotForSession($session);
+        if ($snapshot !== null) {
+            $this->checkoutSnapshots?->bindOrder($snapshot['id'], $orderId);
+        }
+        $this->stripeConnect->createTransfersForOrder(
+            $orderId,
+            $paymentIntentId,
+            $transferGroup,
+            $this->stripeEventTimestamp($event->created ?? null),
+            $snapshot['payload'] ?? null,
+        );
     }
 
     /**
@@ -934,13 +947,25 @@ class StripeWebhookController extends OrderController
             return null;
         }
 
+        $snapshot = $this->checkoutSnapshotForSession($session);
+        $snapshotPayload = $snapshot['payload'] ?? null;
         $data = $session->toArray();
         $metadata = $this->stripeMetadata($data);
-        $cartId = $this->positiveInteger($metadata['cart_id'] ?? null) ?? 0;
-        $customerId = $this->positiveInteger($metadata['id_customer'] ?? null);
-        $guestId = $this->positiveInteger($metadata['id_guest'] ?? null);
-        $carrierId = filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        $couponCode = isset($metadata['coupon_code']) ? (string) $metadata['coupon_code'] : null;
+        $cartId = $snapshotPayload === null
+            ? $this->positiveInteger($metadata['cart_id'] ?? null) ?? 0
+            : (int) $snapshotPayload['cart_id'];
+        $customerId = $snapshotPayload === null
+            ? $this->positiveInteger($metadata['id_customer'] ?? null)
+            : $this->positiveInteger($snapshotPayload['customer_id'] ?? null);
+        $guestId = $snapshotPayload === null
+            ? $this->positiveInteger($metadata['id_guest'] ?? null)
+            : $this->positiveInteger($snapshotPayload['guest_id'] ?? null);
+        $carrierId = $snapshotPayload === null
+            ? filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : (int) $snapshotPayload['carrier_id'];
+        $couponCode = $snapshotPayload === null
+            ? ($this->stripeOptionalIdentifier($metadata['coupon_code'] ?? null))
+            : (($snapshotPayload['coupon_code'] ?? '') === '' ? null : (string) $snapshotPayload['coupon_code']);
 
         if ($cartId <= 0) {
             Log::warning('Stripe webhook: missing or invalid cart_id in metadata for session ' . $session->id);
@@ -956,7 +981,9 @@ class StripeWebhookController extends OrderController
             throw new \RuntimeException('Unsupported currency "' . $currency . '" in Stripe session ' . $session->id);
         }
 
-        $amountPaid = ($data['amount_total'] ?? 0) / 100;
+        $amountPaid = $snapshotPayload === null
+            ? (($session->amount_total ?? 0) / 100)
+            : ((int) $snapshotPayload['totals']['grand_total_cents'] / 100);
         if ($amountPaid <= 0) {
             Log::error('Stripe webhook: missing or zero amount_total for session ' . $session->id);
             throw new \RuntimeException('Invalid amount_total in Stripe session ' . $session->id);
@@ -979,6 +1006,8 @@ class StripeWebhookController extends OrderController
             $amountPaid,
             $session,
             $metadata,
+            $snapshot,
+            $snapshotPayload,
         ): int {
             if ($this->checkoutConfirmationIsRecorded($checkoutSessionId)) {
                 Log::info('Stripe webhook: duplicate paid checkout ignored after confirmation.', [
@@ -1000,26 +1029,51 @@ class StripeWebhookController extends OrderController
                 return $cartId;
             }
 
-            $customerDetails = $this->getCheckoutCustomer($cartId, $customerId, $guestId, $session);
-            $customerDetails->payment_module = $this->metadataPaymentModule($metadata['payment_module'] ?? null);
-            $customerDetails->create_account = $this->metadataBoolean($metadata['create_account'] ?? null, 'create_account');
-            $customerDetails->newsletter = $this->metadataBoolean($metadata['newsletter'] ?? null, 'newsletter');
+            $customerDetails = $snapshotPayload === null
+                ? $this->getCheckoutCustomer($cartId, $customerId, $guestId, $session)
+                : $this->getCheckoutCustomerFromSnapshot($snapshotPayload, $session);
+            $customerDetails->payment_module = $snapshotPayload === null
+                ? $this->metadataPaymentModule($metadata['payment_module'] ?? null)
+                : $this->metadataPaymentModule($snapshotPayload['payment_module'] ?? null);
+            $customerDetails->create_account = $snapshotPayload === null
+                ? $this->metadataBoolean($metadata['create_account'] ?? null, 'create_account')
+                : (bool) $snapshotPayload['create_account'];
+            $customerDetails->newsletter = $snapshotPayload === null
+                ? $this->metadataBoolean($metadata['newsletter'] ?? null, 'newsletter')
+                : (bool) $snapshotPayload['newsletter'];
             $email = $customerDetails->email;
             $firstname = $customerDetails->firstname;
             $lastname = $customerDetails->lastname;
 
-            $this->orderService->confirmSessionOrder(
-                $cartId,
-                $customerId,
-                $guestId,
-                $carrierId,
-                $couponCode,
-                $email,
-                $firstname,
-                $lastname,
-                $customerDetails,
-                $amountPaid
-            );
+            if ($snapshot !== null) {
+                $this->orderService->confirmSessionOrder(
+                    $cartId,
+                    $customerId,
+                    $guestId,
+                    $carrierId,
+                    $couponCode,
+                    $email,
+                    $firstname,
+                    $lastname,
+                    $customerDetails,
+                    $amountPaid,
+                    'Online payment',
+                    $snapshot['id'],
+                );
+            } else {
+                $this->orderService->confirmSessionOrder(
+                    $cartId,
+                    $customerId,
+                    $guestId,
+                    $carrierId,
+                    $couponCode,
+                    $email,
+                    $firstname,
+                    $lastname,
+                    $customerDetails,
+                    $amountPaid,
+                );
+            }
             $this->recordCheckoutConfirmation($checkoutSessionId, $cartId);
 
             try {
@@ -1097,6 +1151,43 @@ class StripeWebhookController extends OrderController
     private function checkoutConfirmationLockKey(string $checkoutSessionId): string
     {
         return 'stripe:checkout:confirmation-lock:' . hash('sha256', $checkoutSessionId);
+    }
+
+    /** @return array{id:string,payload:array<string,mixed>}|null */
+    private function checkoutSnapshotForSession(\Stripe\StripeObject $session): ?array
+    {
+        $snapshotId = $this->stripeMetadata($session->toArray())['checkout_snapshot_id'] ?? null;
+        if ($snapshotId === null || $snapshotId === '') {
+            return null;
+        }
+        if (!is_string($snapshotId) || $this->checkoutSnapshots === null) {
+            throw new \RuntimeException('Checkout snapshot service is unavailable for this Stripe Checkout Session.');
+        }
+        return $this->checkoutSnapshots->resolveForStripeSession($snapshotId, $session);
+    }
+
+    /** @param array<string, mixed> $snapshot */
+    private function getCheckoutCustomerFromSnapshot(array $snapshot, \Stripe\StripeObject $stripeSession): object
+    {
+        $customer = $snapshot['customer'] ?? null;
+        if (!is_array($customer)) {
+            throw new \RuntimeException('Checkout snapshot customer data is invalid.');
+        }
+
+        $shippingAddress = $this->mapStripeAddress($stripeSession->shipping_details?->address ?? null, 'delivery');
+        if ($shippingAddress !== null) {
+            $customer['delivery_address'] = $shippingAddress;
+        }
+        $invoiceAddress = $this->mapStripeAddress($stripeSession->customer_details?->address ?? null, 'invoice');
+        if ($invoiceAddress !== null) {
+            $customer['invoice_address'] = $invoiceAddress;
+        }
+
+        if (empty($customer['email']) || empty($customer['firstname']) || empty($customer['lastname'])
+            || !$this->isValidAddress($customer['delivery_address'] ?? null)) {
+            throw new \RuntimeException('Checkout snapshot customer data is incomplete.');
+        }
+        return (object) $customer;
     }
 
     /** Retrieve the checkout identity and delivery address, including unregistered guests. */

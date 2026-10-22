@@ -157,6 +157,7 @@ class Order extends Cart implements PrestashopServiceInterface
             'amount_paid' => $confirmSession->amount_paid,
             'id_carrier' => $confirmSession->id_carrier,
             'coupon_code' => $confirmSession->coupon_code,
+            'checkout_snapshot_id' => $confirmSession->checkout_snapshot_id,
         ];
 
         // Add customer/guest identification
@@ -229,7 +230,7 @@ class Order extends Cart implements PrestashopServiceInterface
         }
     }
 
-    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment'): void
+    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment', ?string $checkoutSnapshotId = null): void
     {
         // finalize the order with a "payment_success" state. This will trigger the creation of the order in PrestaShop.
         $confirmSession = ConfirmOrderSession::create(
@@ -245,6 +246,7 @@ class Order extends Cart implements PrestashopServiceInterface
                     'id_carrier' => $carrierId,
                     'coupon_code' => $couponCode,
                     'payment_label' => $paymentMethod,
+                    'checkout_snapshot_id' => $checkoutSnapshotId,
                 ],
                 $this
             );

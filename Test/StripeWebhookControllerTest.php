@@ -6,6 +6,7 @@ use PS\Webservice\Repositories\OrderRepository;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
+use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\PS\Order;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -365,6 +366,87 @@ final class StripeWebhookControllerTest extends TestCase
         $result = $controller->handleWebhook($request, $this->createMock(ResponseInterface::class), []);
 
         $this->assertSame(200, $result->getStatusCode());
+    }
+
+    public function test_checkout_snapshot_drives_confirmation_when_stripe_metadata_is_stale(): void
+    {
+        $previousAppKey = getenv('APP_KEY');
+        putenv('APP_KEY=webhook-snapshot-test-key');
+        $_ENV['APP_KEY'] = 'webhook-snapshot-test-key';
+        try {
+            $db = new \Illuminate\Database\Capsule\Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $db->schema()->create('manufacturer_details', function ($table): void {
+                $table->unsignedInteger('id_manufacturer')->primary();
+                $table->string('commission');
+            });
+            $db->schema()->create('stripe_checkout_snapshots', function ($table): void {
+                $table->string('id', 32)->primary();
+                $table->unsignedInteger('cart_id');
+                $table->string('checkout_session_id')->nullable()->unique();
+                $table->string('stripe_payment_intent_id')->nullable()->unique();
+                $table->unsignedBigInteger('order_id')->nullable();
+                $table->string('transfer_group')->nullable();
+                $table->string('currency', 3);
+                $table->text('payload_ciphertext');
+                $table->string('payload_hash', 64);
+                $table->text('verification_payload');
+                $table->dateTime('created_at');
+                $table->dateTime('updated_at');
+            });
+            $db->table('manufacturer_details')->insert(['id_manufacturer' => 7, 'commission' => '20.00']);
+
+            $orderService = $this->createMock(Order::class);
+            $checkout = \PS\Webservice\Domain\Object\OrderSession::create([
+                'cart_id' => 42, 'id_customer' => 7, 'id_carrier' => 3, 'payment_module' => 'webserviceapi',
+                'customer' => \PS\Webservice\Domain\Entities\CustomerEntity::create([
+                    'email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Snapshot',
+                    'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'country' => 'IT'],
+                ], $orderService),
+            ], $orderService);
+            $checkout->addCartLineItem(['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '50.00', 'quantity' => 1]);
+            $snapshotService = new CheckoutSnapshotService($db);
+            $snapshot = $snapshotService->create($checkout, [
+                'currency_iso' => 'EUR',
+                'products' => [['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '50.00', 'quantity' => 1]],
+                'totals' => ['shipping_tax_incl' => '0.00'],
+            ]);
+
+            $orderService->expects($this->once())->method('confirmSessionOrder')->with(
+                42, 7, null, 3, null, 'buyer@example.test', 'Buyer', 'Snapshot',
+                $this->isType('object'), 50.0, 'Online payment', $snapshot['id'],
+            );
+            $controller = new StripeWebhookController(
+                $orderService,
+                $this->createMock(MailjetService::class),
+                $this->createMock(PaymentGatewayInterface::class),
+                $this->createMock(MailerInterface::class),
+                null,
+                null,
+                null,
+                null,
+                null,
+                $snapshotService,
+            );
+            $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
+                'id' => 'cs_snapshot_confirmation', 'amount_total' => 5000, 'currency' => 'eur',
+                // These metadata values are deliberately wrong. The session is
+                // bound to the snapshot and confirmation must use the latter.
+                'metadata' => [
+                    'checkout_snapshot_id' => $snapshot['id'], 'cart_id' => '999', 'id_customer' => '99',
+                    'id_carrier' => '99', 'coupon_code' => 'WRONG', 'payment_module' => 'wrong_module',
+                ],
+            ]));
+        } finally {
+            if ($previousAppKey === false) {
+                putenv('APP_KEY');
+                unset($_ENV['APP_KEY']);
+            } else {
+                putenv('APP_KEY=' . $previousAppKey);
+                $_ENV['APP_KEY'] = $previousAppKey;
+            }
+        }
     }
 
     public function test_logs_ledger_failure_without_retrying_a_confirmed_checkout(): void
