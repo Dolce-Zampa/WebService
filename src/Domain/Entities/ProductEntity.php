@@ -6,8 +6,8 @@ namespace PS\Webservice\Domain\Entities;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Entities\Validations\ProductValidator;
 use PS\Webservice\Domain\Models\PS\Products\ProductConfigurator;
+use PS\Webservice\Domain\Models\PS\Products\ProductBundle;
 use PS\Webservice\Domain\ObjectInterface;
-use PS\Webservice\Facades\JsonDataStorage;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\ProductBuilder;
 use PS\Webservice\Traits\ProductManipulation;
@@ -251,23 +251,27 @@ class ProductEntity extends Entity implements ObjectInterface
 
     private function buildBundles(): void
     {
-        $bundles = JsonDataStorage::productBundles()->createQuery()->where('product_id', (string) $this->getId())->fetch();
-        if (!empty($bundles)) {
+        $bundles = ProductBundle::query()
+            ->where('parent_product_id', $this->getId())
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get();
+
+        if ($bundles->isNotEmpty()) {
             foreach ($bundles as $bundle) {
-                foreach ($bundle['bundle'] as $item) {
-                    try {
-                        $bundleFound = $this->service->getProductById((int) $item['product_id']);
-                        if ($bundleFound === null) {
-                            Log::warning("Bundle product with ID {$item['product_id']} not found for product ID {$this->getId()}");
-                            continue;
-                        }
-                        $bundleFound = $bundleFound->toArray();
-                        $bundleFound['bundle_reduction'] = $item['reduction'];
-                        $bundleFound['bundle_reduction_type'] = $item['reduction_type'];
-                        $this->data['bundles'][] = $bundleFound;
-                    } catch (\Exception $e) {
-                        Log::error("Error retrieving bundle product with ID {$item['product_id']} for product ID {$this->getId()}: " . $e->getMessage());
+                try {
+                    $bundleFound = $this->service->getProductById($bundle->bundled_product_id);
+                    if ($bundleFound === null) {
+                        Log::warning("Bundle product with ID {$bundle->bundled_product_id} not found for product ID {$this->getId()}");
+                        continue;
                     }
+                    $bundleFound = $bundleFound->toArray();
+                    $bundleFound['bundle_reduction'] = $bundle->reduction;
+                    $bundleFound['bundle_reduction_type'] = $bundle->reduction_type;
+                    $bundleFound['bundle_active_reduction'] = $bundle->active_reduction;
+                    $this->data['bundles'][] = $bundleFound;
+                } catch (\Exception $e) {
+                    Log::error("Error retrieving bundle product with ID {$bundle->bundled_product_id} for product ID {$this->getId()}: " . $e->getMessage());
                 }
             }
         }
