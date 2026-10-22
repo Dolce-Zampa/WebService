@@ -112,6 +112,7 @@ final class CheckoutSnapshotServiceTest extends TestCase
         $db = new Manager();
         $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
         $db->bootEloquent();
+        $db->setAsGlobal();
         $db->schema()->create('manufacturer_details', function ($table): void {
             $table->unsignedInteger('id_manufacturer')->primary();
             $table->string('commission');

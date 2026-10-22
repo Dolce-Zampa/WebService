@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use DateTimeImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use PS\Webservice\Domain\Financial\FinancialMovement;
@@ -31,6 +32,8 @@ class StripeWebhookController extends OrderController
     use UseCache, OrderTrait;
     private const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
     private const MAX_WEBHOOK_TOLERANCE_SECONDS = 300;
+    private const CHECKOUT_CONFIRMATION_LOCK_SECONDS = 30;
+    private const CHECKOUT_CONFIRMATION_MARKER_MINUTES = 43200;
     private Order $orderService;
     private MailjetService $mailjetService;
     protected PaymentGatewayInterface $stripeService;
@@ -107,8 +110,23 @@ class StripeWebhookController extends OrderController
             return response(['error' => 'Invalid signature'], 400);
         }
 
-        if ($event->type === 'checkout.session.completed') {
+        if (in_array($event->type, ['checkout.session.completed', 'checkout.session.async_payment_succeeded'], true)) {
             try {
+                if (!$this->isPaidCheckoutSession($event->data->object)) {
+                    // `checkout.session.completed` is also delivered for
+                    // delayed payment methods. In that case Stripe has
+                    // accepted the Checkout flow, but has not collected the
+                    // money yet. The later async success event is the only
+                    // event that may create the order or seller allocations.
+                    $this->recordFinancialWebhook($event);
+                    Log::info('Stripe webhook: checkout payment is not yet paid; confirmation deferred.', [
+                        'event_type' => (string) $event->type,
+                        'event_id' => (string) ($event->id ?? ''),
+                    ]);
+
+                    return response(['received' => true], 200);
+                }
+
                 if ($this->promotionService !== null && $this->promotionService->isPromotionCheckoutSession($event->data->object)) {
                     $this->promotionService->activatePromotionFromStripeSession($event->data->object);
                     return response(['received' => true], 200);
@@ -124,8 +142,12 @@ class StripeWebhookController extends OrderController
                         $this->stripeEventTimestamp($event->created ?? null),
                     );
                 }
-            } catch (\Exception $e) {
-                Log::critical('Stripe webhook: failed to process checkout.session.completed: ' . $e->getMessage());
+            } catch (\Throwable $e) {
+                Log::critical('Stripe webhook: failed to confirm a paid checkout session.', [
+                    'event_type' => (string) $event->type,
+                    'event_id' => (string) ($event->id ?? ''),
+                    'exception' => $e,
+                ]);
                 return response(['error' => 'Failed to process event'], 500);
             }
 
@@ -152,20 +174,7 @@ class StripeWebhookController extends OrderController
                 ]);
                 return response(['error' => 'Failed to allocate seller transfers'], 500);
             }
-        }
 
-        if ($event->type === 'checkout.session.async_payment_succeeded') {
-            try {
-                $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
-                if ($cartId !== null && $this->sellerSaleNotifications !== null) {
-                    $this->sellerSaleNotifications->notifyFinalizedSalesForCart($cartId, $this->stripeEventTimestamp($event->created ?? null));
-                }
-                $this->recordFinancialWebhook($event);
-                $this->createStripeConnectTransfers($event->data->object, $event);
-            } catch (\Throwable $e) {
-                Log::critical('Stripe webhook: failed to process asynchronous payment success.', ['event_id' => (string) ($event->id ?? ''), 'exception' => $e]);
-                return response(['error' => 'Failed to process asynchronous payment'], 500);
-            }
             return response(['received' => true], 200);
         }
 
@@ -275,7 +284,7 @@ class StripeWebhookController extends OrderController
             return;
         }
 
-        $status = $this->financialStatusForEventType((string) $event->type);
+        $status = $this->financialStatusForEvent($event->data->object, (string) $event->type);
         if ($status === null) {
             return;
         }
@@ -428,7 +437,7 @@ class StripeWebhookController extends OrderController
         ]), $idempotencyKey);
     }
 
-    private function financialStatusForEventType(string $eventType): ?string
+    private function financialStatusForEvent(\Stripe\StripeObject $object, string $eventType): ?string
     {
         return match ($eventType) {
             'checkout.session.created',
@@ -438,13 +447,18 @@ class StripeWebhookController extends OrderController
             'payment_intent.requires_action',
             'payment_intent.requires_payment_method' => 'pending',
             'checkout.session.completed',
-            'checkout.session.async_payment_succeeded',
+            'checkout.session.async_payment_succeeded' => $this->isPaidCheckoutSession($object) ? 'available' : 'pending',
             'payment_intent.succeeded' => 'available',
             'checkout.session.async_payment_failed',
             'payment_intent.payment_failed' => 'failed',
             'checkout.session.expired' => 'cancelled',
             default => null,
         };
+    }
+
+    private function isPaidCheckoutSession(\Stripe\StripeObject $session): bool
+    {
+        return ($session->toArray()['payment_status'] ?? null) === 'paid';
     }
 
     private function financialTransactionByProviderTransaction(string $providerTransactionId): ?object
@@ -745,13 +759,23 @@ class StripeWebhookController extends OrderController
     }
 
     /**
-     * Processes a Stripe checkout.session.completed event and confirms the corresponding order.
+     * Confirms an order for a Checkout Session whose payment was already
+     * verified by handleWebhook(). The session-level lock and marker make a
+     * Stripe retry or the later async success event harmless.
      */
     public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): ?int
     {
+        if (!$this->isPaidCheckoutSession($session)) {
+            Log::info('Stripe webhook: unpaid Checkout Session cannot be confirmed.', [
+                'checkout_session_id' => (string) ($session->id ?? ''),
+            ]);
+            return null;
+        }
+
         $snapshot = $this->checkoutSnapshotForSession($session);
         $snapshotPayload = $snapshot['payload'] ?? null;
-        $metadata = $this->stripeMetadata($session->toArray());
+        $data = $session->toArray();
+        $metadata = $this->stripeMetadata($data);
         $cartId = $snapshotPayload === null
             ? $this->positiveInteger($metadata['cart_id'] ?? null) ?? 0
             : (int) $snapshotPayload['cart_id'];
@@ -776,7 +800,7 @@ class StripeWebhookController extends OrderController
         // Convert from Stripe's smallest currency unit to the major unit.
         // This implementation supports only two-decimal currencies (e.g. EUR).
         // Zero-decimal currencies (e.g. JPY) must not be divided; validate the currency first.
-        $currency = strtolower((string) ($session->currency ?? ''));
+        $currency = strtolower((string) ($data['currency'] ?? ''));
         if ($currency !== 'eur') {
             Log::error('Stripe webhook: unsupported currency "' . $currency . '" for session ' . $session->id);
             throw new \RuntimeException('Unsupported currency "' . $currency . '" in Stripe session ' . $session->id);
@@ -795,62 +819,163 @@ class StripeWebhookController extends OrderController
             throw new \RuntimeException('Missing id_carrier in Stripe session metadata for cart ' . $cartId);
         }
 
-        $customerDetails = $snapshotPayload === null
-            ? $this->getCheckoutCustomer($cartId, $customerId, $guestId, $session)
-            : $this->getCheckoutCustomerFromSnapshot($snapshotPayload, $session);
-        $customerDetails->payment_module = $snapshotPayload === null
-            ? $this->metadataPaymentModule($metadata['payment_module'] ?? null)
-            : $this->metadataPaymentModule($snapshotPayload['payment_module'] ?? null);
-        $customerDetails->create_account = $snapshotPayload === null
-            ? $this->metadataBoolean($metadata['create_account'] ?? null, 'create_account')
-            : (bool) $snapshotPayload['create_account'];
-        $customerDetails->newsletter = $snapshotPayload === null
-            ? $this->metadataBoolean($metadata['newsletter'] ?? null, 'newsletter')
-            : (bool) $snapshotPayload['newsletter'];
-        $email = $customerDetails->email;
-        $firstname = $customerDetails->firstname;
-        $lastname = $customerDetails->lastname;
-        
-        if ($snapshot !== null) {
-            $this->orderService->confirmSessionOrder(
-                $cartId,
-                $customerId,
-                $guestId,
-                $carrierId,
-                $couponCode,
-                $email,
-                $firstname,
-                $lastname,
-                $customerDetails,
-                $amountPaid,
-                'Online payment',
-                $snapshot['id'],
-            );
-        } else {
-            $this->orderService->confirmSessionOrder(
-                $cartId,
-                $customerId,
-                $guestId,
-                $carrierId,
-                $couponCode,
-                $email,
-                $firstname,
-                $lastname,
-                $customerDetails,
-                $amountPaid,
-            );
+        $checkoutSessionId = $this->checkoutSessionId($session);
+
+        return $this->withCheckoutConfirmationLock($checkoutSessionId, function () use (
+            $checkoutSessionId,
+            $cartId,
+            $customerId,
+            $guestId,
+            $carrierId,
+            $couponCode,
+            $amountPaid,
+            $session,
+            $metadata,
+            $snapshot,
+            $snapshotPayload,
+        ): int {
+            if ($this->checkoutConfirmationIsRecorded($checkoutSessionId)) {
+                Log::info('Stripe webhook: duplicate paid checkout ignored after confirmation.', [
+                    'checkout_session_id' => $checkoutSessionId,
+                    'cart_id' => $cartId,
+                ]);
+                return $cartId;
+            }
+
+            // The cache marker protects retries in the usual path. This
+            // second lookup keeps a retry safe even if that cache was cleared
+            // after PrestaShop already accepted the order confirmation.
+            if ($this->orderAlreadyExistsForCart($cartId, $customerId, $guestId)) {
+                $this->recordCheckoutConfirmation($checkoutSessionId, $cartId);
+                Log::info('Stripe webhook: existing order found for paid checkout.', [
+                    'checkout_session_id' => $checkoutSessionId,
+                    'cart_id' => $cartId,
+                ]);
+                return $cartId;
+            }
+
+            $customerDetails = $snapshotPayload === null
+                ? $this->getCheckoutCustomer($cartId, $customerId, $guestId, $session)
+                : $this->getCheckoutCustomerFromSnapshot($snapshotPayload, $session);
+            $customerDetails->payment_module = $snapshotPayload === null
+                ? $this->metadataPaymentModule($metadata['payment_module'] ?? null)
+                : $this->metadataPaymentModule($snapshotPayload['payment_module'] ?? null);
+            $customerDetails->create_account = $snapshotPayload === null
+                ? $this->metadataBoolean($metadata['create_account'] ?? null, 'create_account')
+                : (bool) $snapshotPayload['create_account'];
+            $customerDetails->newsletter = $snapshotPayload === null
+                ? $this->metadataBoolean($metadata['newsletter'] ?? null, 'newsletter')
+                : (bool) $snapshotPayload['newsletter'];
+            $email = $customerDetails->email;
+            $firstname = $customerDetails->firstname;
+            $lastname = $customerDetails->lastname;
+
+            if ($snapshot !== null) {
+                $this->orderService->confirmSessionOrder(
+                    $cartId,
+                    $customerId,
+                    $guestId,
+                    $carrierId,
+                    $couponCode,
+                    $email,
+                    $firstname,
+                    $lastname,
+                    $customerDetails,
+                    $amountPaid,
+                    'Online payment',
+                    $snapshot['id'],
+                );
+            } else {
+                $this->orderService->confirmSessionOrder(
+                    $cartId,
+                    $customerId,
+                    $guestId,
+                    $carrierId,
+                    $couponCode,
+                    $email,
+                    $firstname,
+                    $lastname,
+                    $customerDetails,
+                    $amountPaid,
+                );
+            }
+            $this->recordCheckoutConfirmation($checkoutSessionId, $cartId);
+
+            try {
+                $contactId = $this->mailjetService->createNewContact($email, $firstname, $lastname);
+                $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
+                $this->mailjetService->setContactListSubscription($contactId);
+            } catch (\Exception $e) {
+                Log::critical('Stripe webhook: failed to create new contact in Mailjet for email ' . $email . ': ' . $e->getMessage());
+            }
+
+            Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
+            return $cartId;
+        });
+    }
+
+    protected function withCheckoutConfirmationLock(string $checkoutSessionId, callable $callback): mixed
+    {
+        $lock = Cache::lock(
+            $this->checkoutConfirmationLockKey($checkoutSessionId),
+            self::CHECKOUT_CONFIRMATION_LOCK_SECONDS,
+        );
+
+        if (!$lock->get()) {
+            throw new \RuntimeException('Checkout confirmation is already being processed.');
         }
 
         try {
-            $contactId = $this->mailjetService->createNewContact($email, $firstname, $lastname);
-            $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
-            $this->mailjetService->setContactListSubscription($contactId);
-        } catch (\Exception $e) {
-            Log::critical('Stripe webhook: failed to create new contact in Mailjet for email ' . $email . ': ' . $e->getMessage());
+            return $callback();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    protected function checkoutConfirmationIsRecorded(string $checkoutSessionId): bool
+    {
+        return Cache::has($this->checkoutConfirmationMarkerKey($checkoutSessionId));
+    }
+
+    protected function recordCheckoutConfirmation(string $checkoutSessionId, int $cartId): void
+    {
+        Cache::put(
+            $this->checkoutConfirmationMarkerKey($checkoutSessionId),
+            $cartId,
+            (new DateTimeImmutable('now'))->modify('+' . self::CHECKOUT_CONFIRMATION_MARKER_MINUTES . ' minutes'),
+        );
+    }
+
+    private function checkoutSessionId(\Stripe\StripeObject $session): string
+    {
+        $sessionId = $this->stripeOptionalIdentifier($session->toArray()['id'] ?? null);
+        if ($sessionId === null || !str_starts_with($sessionId, 'cs_')) {
+            throw new \RuntimeException('Stripe Checkout session has no valid identifier.');
         }
 
-        Log::info('Stripe webhook: order confirmed for cart ' . $cartId);
-        return $cartId;
+        return $sessionId;
+    }
+
+    private function orderAlreadyExistsForCart(int $cartId, ?int $customerId, ?int $guestId): bool
+    {
+        try {
+            return $this->orderService->getOrderByCartId($cartId, $customerId, $guestId) !== null;
+        } catch (\Throwable) {
+            // The cart-to-order reference is a replay safeguard, not the
+            // payment source of truth. A transient lookup failure must leave
+            // the webhook retryable instead of discarding a paid order.
+            return false;
+        }
+    }
+
+    private function checkoutConfirmationMarkerKey(string $checkoutSessionId): string
+    {
+        return 'stripe:checkout:confirmed:' . hash('sha256', $checkoutSessionId);
+    }
+
+    private function checkoutConfirmationLockKey(string $checkoutSessionId): string
+    {
+        return 'stripe:checkout:confirmation-lock:' . hash('sha256', $checkoutSessionId);
     }
 
     /** @return array{id:string,payload:array<string,mixed>}|null */
