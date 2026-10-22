@@ -223,6 +223,150 @@ final class StripeConnectServiceTest extends TestCase
         }
     }
 
+    public function test_prorates_successful_customer_refunds_and_reverses_only_paid_seller_transfers(): void
+    {
+        $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
+        $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+
+        try {
+            $db = new Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $this->createTransferTables($db);
+            $this->paidTransfer($db, 11, 7, 4800, 'tr_seller_7');
+            $this->paidTransfer($db, 11, 8, 3200, 'tr_seller_8');
+
+            $transfers = new class {
+                /** @var list<array{transfer:string, amount:int, key:string}> */
+                public array $reversals = [];
+
+                public function createReversal(string $transferId, array $params, array $options): \Stripe\TransferReversal
+                {
+                    $this->reversals[] = [
+                        'transfer' => $transferId,
+                        'amount' => $params['amount'],
+                        'key' => $options['idempotency_key'],
+                    ];
+                    return \Stripe\TransferReversal::constructFrom(['id' => 'trr_' . count($this->reversals)]);
+                }
+            };
+            $service = new StripeConnectService($db, null, $this->recoveryStripeClient($transfers));
+            $occurredAt = new DateTimeImmutable('2026-10-22 10:00:00 UTC');
+
+            // A €50 refund on a €100 payment recovers 50% of each seller's
+            // net transfer (€24 and €16); the remaining €10 is the platform
+            // share and is not charged to either seller.
+            $service->reconcileRefund('pi_recovery_11', 're_partial_11', 5000, 'EUR', 'available', $occurredAt);
+            self::assertSame([
+                ['transfer' => 'tr_seller_7', 'amount' => 2400, 'key' => $this->reversalKey('refund', 're_partial_11', 1)],
+                ['transfer' => 'tr_seller_8', 'amount' => 1600, 'key' => $this->reversalKey('refund', 're_partial_11', 2)],
+            ], $transfers->reversals);
+            self::assertSame(['reversed', 'reversed'], $db->table('stripe_connect_transfer_reversals')->orderBy('id')->pluck('status')->all());
+
+            // Stripe may retry the same event. The stored case id makes the
+            // allocation and Transfer reversals exactly once.
+            $service->reconcileRefund('pi_recovery_11', 're_partial_11', 5000, 'EUR', 'available', $occurredAt);
+            self::assertCount(2, $transfers->reversals);
+
+            // A second €50 refund reaches the original paid total, so only
+            // the remaining seller amount is recovered.
+            $service->reconcileRefund('pi_recovery_11', 're_remaining_11', 5000, 'EUR', 'available', $occurredAt);
+            self::assertSame([2400, 1600, 2400, 1600], array_column($transfers->reversals, 'amount'));
+        } finally {
+            $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
+            $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+        }
+    }
+
+    public function test_cancels_unpaid_seller_transfer_and_records_dispute_for_manual_review(): void
+    {
+        $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
+        $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+
+        try {
+            $db = new Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $this->createTransferTables($db);
+            $this->pendingTransfer($db, 11, 7, 4800);
+            $this->paidTransfer($db, 11, 8, 3200, 'tr_seller_8');
+
+            $transfers = new class {
+                public int $reverseCalls = 0;
+
+                public function createReversal(string $transferId, array $params, array $options): \Stripe\TransferReversal
+                {
+                    ++$this->reverseCalls;
+                    return \Stripe\TransferReversal::constructFrom(['id' => 'trr_unexpected']);
+                }
+            };
+            $service = new StripeConnectService($db, null, $this->recoveryStripeClient($transfers));
+            $service->reconcileRefund('pi_recovery_11', 're_full_11', 10000, 'EUR', 'available', new DateTimeImmutable('2026-10-22 10:00:00 UTC'));
+
+            $pending = $db->table('stripe_connect_transfers')->where('manufacturer_id', 7)->first();
+            self::assertSame('cancelled', $pending->status);
+            self::assertSame(0, $pending->amount);
+            self::assertSame('refunded_before_transfer', $pending->failure_code);
+            self::assertSame(1, $transfers->reverseCalls);
+
+            $service->registerDispute('ch_recovery_11', 'dp_11', 2500, 'EUR');
+            $disputes = $db->table('stripe_connect_transfer_reversals')->where('kind', 'dispute')->orderBy('stripe_connect_transfer_id')->get();
+            self::assertSame(['pending_review', 'pending_review'], $disputes->pluck('status')->all());
+            self::assertSame([1200, 800], $disputes->pluck('amount')->all());
+            self::assertSame(1, $transfers->reverseCalls, 'A dispute must not automatically reverse a seller transfer.');
+        } finally {
+            $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
+            $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+        }
+    }
+
+    public function test_keeps_a_failed_transfer_reversal_for_explicit_recovery(): void
+    {
+        $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
+        $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+
+        try {
+            $db = new Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $this->createTransferTables($db);
+            $this->paidTransfer($db, 11, 7, 4800, 'tr_seller_7');
+
+            $transfers = new class {
+                public bool $insufficientBalance = true;
+                public int $calls = 0;
+
+                public function createReversal(string $transferId, array $params, array $options): \Stripe\TransferReversal
+                {
+                    ++$this->calls;
+                    if ($this->insufficientBalance) {
+                        throw new \RuntimeException('Seller balance is insufficient for the reversal.');
+                    }
+                    return \Stripe\TransferReversal::constructFrom(['id' => 'trr_recovered']);
+                }
+            };
+            $service = new StripeConnectService($db, null, $this->recoveryStripeClient($transfers));
+            $service->reconcileRefund('pi_recovery_11', 're_recovery_11', 10000, 'EUR', 'available', new DateTimeImmutable('2026-10-22 10:00:00 UTC'));
+
+            self::assertSame('recovery_required', $db->table('stripe_connect_transfer_reversals')->value('status'));
+            self::assertSame(1, $transfers->calls);
+
+            $transfers->insufficientBalance = false;
+            self::assertSame(1, $service->retryPendingRefundReversals());
+            self::assertSame('reversed', $db->table('stripe_connect_transfer_reversals')->value('status'));
+            self::assertSame(2, $transfers->calls);
+        } finally {
+            $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
+            $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+        }
+    }
+
     private function createTransferTables(Manager $db): void
     {
         foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
@@ -254,11 +398,28 @@ final class StripeConnectServiceTest extends TestCase
             $table->string('transfer_group');
             $table->string('idempotency_key')->unique();
             $table->unsignedInteger('amount');
+            $table->unsignedInteger('original_amount');
             $table->string('currency', 3);
             $table->string('status');
             $table->string('failure_code')->nullable();
             $table->dateTime('created_at');
             $table->dateTime('updated_at');
+        });
+        $db->schema()->create('stripe_connect_transfer_reversals', function ($table): void {
+            $table->increments('id');
+            $table->unsignedInteger('stripe_connect_transfer_id');
+            $table->string('kind');
+            $table->string('provider_case_id');
+            $table->string('stripe_transfer_reversal_id')->nullable();
+            $table->unsignedInteger('source_amount');
+            $table->unsignedInteger('amount');
+            $table->string('currency', 3);
+            $table->string('status');
+            $table->string('failure_code')->nullable();
+            $table->string('idempotency_key')->unique();
+            $table->dateTime('created_at');
+            $table->dateTime('updated_at');
+            $table->unique(['stripe_connect_transfer_id', 'kind', 'provider_case_id']);
         });
         $db->schema()->create('manufacturer_details', function ($table): void {
             $table->unsignedInteger('id_manufacturer')->primary();
@@ -286,5 +447,71 @@ final class StripeConnectServiceTest extends TestCase
             return;
         }
         $_ENV[$key] = $value;
+    }
+
+    private function paidTransfer(Manager $db, int $orderId, int $sellerId, int $amount, string $stripeTransferId): void
+    {
+        $this->transfer($db, $orderId, $sellerId, $amount, 'paid', $stripeTransferId);
+    }
+
+    private function pendingTransfer(Manager $db, int $orderId, int $sellerId, int $amount): void
+    {
+        $this->transfer($db, $orderId, $sellerId, $amount, 'pending', null);
+    }
+
+    private function transfer(Manager $db, int $orderId, int $sellerId, int $amount, string $status, ?string $stripeTransferId): void
+    {
+        $db->table('stripe_connect_transfers')->insert([
+            'order_id' => $orderId,
+            'manufacturer_id' => $sellerId,
+            'stripe_account_id' => 'acct_seller_' . $sellerId,
+            'stripe_payment_intent_id' => 'pi_recovery_11',
+            'stripe_charge_id' => 'ch_recovery_11',
+            'stripe_transfer_id' => $stripeTransferId,
+            'transfer_group' => 'dz_cart_11',
+            'idempotency_key' => 'transfer-' . $sellerId,
+            'amount' => $amount,
+            'original_amount' => $amount,
+            'currency' => 'EUR',
+            'status' => $status,
+            'failure_code' => null,
+            'created_at' => '2026-10-22 09:00:00',
+            'updated_at' => '2026-10-22 09:00:00',
+        ]);
+    }
+
+    private function recoveryStripeClient(object $transfers): \Stripe\StripeClient
+    {
+        $paymentIntents = new class {
+            public function retrieve(string $id, array $params): \Stripe\PaymentIntent
+            {
+                return \Stripe\PaymentIntent::constructFrom([
+                    'id' => $id,
+                    'currency' => 'eur',
+                    'amount_received' => 10000,
+                ]);
+            }
+        };
+
+        return new class($paymentIntents, $transfers) extends \Stripe\StripeClient {
+            public function __construct(private object $paymentIntents, private object $transfers)
+            {
+                parent::__construct('sk_test_123');
+            }
+
+            public function getService($name)
+            {
+                return match ($name) {
+                    'paymentIntents' => $this->paymentIntents,
+                    'transfers' => $this->transfers,
+                    default => parent::getService($name),
+                };
+            }
+        };
+    }
+
+    private function reversalKey(string $kind, string $caseId, int $transferId): string
+    {
+        return 'connect:' . $kind . '-reversal:' . hash('sha256', $caseId . ':' . $transferId);
     }
 }

@@ -20,6 +20,7 @@ final class StripeConnectService
 {
     private const ACCOUNTS = 'stripe_connect_accounts';
     private const TRANSFERS = 'stripe_connect_transfers';
+    private const REVERSALS = 'stripe_connect_transfer_reversals';
     private const DEFAULT_RETRY_BATCH_SIZE = 100;
     private const DEFAULT_COMMISSION_RATE = '20.00';
     private const MINIMUM_COMMISSION_EUR = '1.00';
@@ -212,7 +213,11 @@ final class StripeConnectService
             $sellerId = (int) $allocation['manufacturer_id'];
             $idempotencyKey = 'connect:transfer:' . hash('sha256', $paymentIntentId . ':' . $allocation['manufacturer_id']);
             $existing = $this->db->table(self::TRANSFERS)->where('idempotency_key', $idempotencyKey)->first();
-            if ($existing !== null && $existing->status === 'paid') {
+            // An allocation is immutable once it has been stored. In
+            // particular, a refund can reduce or cancel a still-pending
+            // allocation before a seller completes onboarding; a duplicate
+            // checkout webhook must never restore that amount.
+            if ($existing !== null) {
                 continue;
             }
 
@@ -230,6 +235,7 @@ final class StripeConnectService
                 'transfer_group' => $transferGroup,
                 'idempotency_key' => $idempotencyKey,
                 'amount' => $allocation['amount'],
+                'original_amount' => $allocation['amount'],
                 'currency' => $currency,
                 'status' => 'pending',
                 'failure_code' => 'seller_account_not_ready',
@@ -240,6 +246,169 @@ final class StripeConnectService
                 $this->retryPendingTransfersForSeller($sellerId, $account, $occurredAt);
             }
         }
+    }
+
+    /**
+     * A platform refund does not reverse a Connect Transfer by itself. Once
+     * Stripe has confirmed a refund, allocate the recoverable seller share
+     * across the transfers for the original payment and create explicit
+     * Transfer reversals. Allocations that have not reached a seller yet are
+     * reduced or cancelled instead.
+     */
+    public function reconcileRefund(
+        string $paymentIntentId,
+        string $refundId,
+        int $refundAmount,
+        string $currency,
+        string $refundStatus,
+        DateTimeImmutable $occurredAt,
+    ): void {
+        if (!$this->enabled() || $refundStatus !== 'available') {
+            return;
+        }
+
+        $this->assertConnectCase($paymentIntentId, $refundId, $refundAmount, $currency);
+        $transfers = $this->transfersForPaymentIntent($paymentIntentId, $currency);
+        if ($transfers === []) {
+            return;
+        }
+
+        // A repeated refund event must not create a second reversal. Zero
+        // amount rows are stored too, so this check also covers a refund whose
+        // seller allocation rounds down to zero cents.
+        if ($this->hasCase(self::REVERSALS, 'refund', $refundId)) {
+            return;
+        }
+
+        $paymentAmount = $this->paymentIntentAmountCents($paymentIntentId);
+        $refundedBefore = $this->refundedCentsBefore($paymentIntentId);
+        $targetRefunded = min($paymentAmount, $refundedBefore + $refundAmount);
+        $targetByTransfer = $this->proportionalTransferAmounts($transfers, $targetRefunded, $paymentAmount);
+        $alreadyReversed = $this->reversedAmountsByTransfer('refund');
+
+        foreach ($transfers as $transfer) {
+            $transferId = (int) $transfer->id;
+            $target = $targetByTransfer[$transferId] ?? 0;
+            $additional = max(0, $target - ($alreadyReversed[$transferId] ?? 0));
+            $this->storeReversal([
+                'stripe_connect_transfer_id' => $transferId,
+                'kind' => 'refund',
+                'provider_case_id' => $refundId,
+                'stripe_transfer_reversal_id' => null,
+                'source_amount' => $refundAmount,
+                'amount' => $additional,
+                'currency' => strtoupper($currency),
+                'status' => 'pending',
+                'failure_code' => null,
+                'idempotency_key' => $this->reversalIdempotencyKey('refund', $refundId, $transferId),
+            ]);
+
+            if ($additional === 0) {
+                $this->setReversalStatus($transferId, 'refund', $refundId, 'not_required');
+                continue;
+            }
+
+            if ((string) $transfer->status === 'pending') {
+                $this->reducePendingTransferForRefund($transfer, $target);
+                $this->setReversalStatus($transferId, 'refund', $refundId, 'cancelled');
+                continue;
+            }
+
+            $this->reverseSettledTransfer($transfer, 'refund', $refundId, $additional, $occurredAt);
+        }
+    }
+
+    /**
+     * Charge disputes are deliberately recorded as recovery positions, not
+     * as automatic seller debits. An operator must decide whether evidence,
+     * a recovery, or a subsequent Transfer reversal is appropriate.
+     */
+    public function registerDispute(
+        string $chargeId,
+        string $disputeId,
+        int $disputeAmount,
+        string $currency,
+    ): void {
+        if (!$this->enabled()) {
+            return;
+        }
+
+        $this->assertConnectCase($chargeId, $disputeId, $disputeAmount, $currency);
+        $transfers = $this->transfersForCharge($chargeId, $currency);
+        if ($transfers === [] || $this->hasCase(self::REVERSALS, 'dispute', $disputeId)) {
+            return;
+        }
+
+        $paymentIntentId = (string) $transfers[0]->stripe_payment_intent_id;
+        $paymentAmount = $this->paymentIntentAmountCents($paymentIntentId);
+        $targetByTransfer = $this->proportionalTransferAmounts(
+            $transfers,
+            min($paymentAmount, $disputeAmount),
+            $paymentAmount,
+        );
+
+        foreach ($transfers as $transfer) {
+            $transferId = (int) $transfer->id;
+            $this->storeReversal([
+                'stripe_connect_transfer_id' => $transferId,
+                'kind' => 'dispute',
+                'provider_case_id' => $disputeId,
+                'stripe_transfer_reversal_id' => null,
+                'source_amount' => $disputeAmount,
+                'amount' => $targetByTransfer[$transferId] ?? 0,
+                'currency' => strtoupper($currency),
+                'status' => 'pending_review',
+                'failure_code' => null,
+                'idempotency_key' => $this->reversalIdempotencyKey('dispute', $disputeId, $transferId),
+            ]);
+        }
+    }
+
+    /**
+     * Explicit recovery entry point for an operator or a bounded scheduler.
+     * It retries only recorded refund reversals; disputes remain review-only.
+     */
+    public function retryPendingRefundReversals(int $limit = self::DEFAULT_RETRY_BATCH_SIZE): int
+    {
+        if (!$this->enabled()) {
+            return 0;
+        }
+        if ($limit < 1) {
+            throw new \InvalidArgumentException('Retry limit must be positive.');
+        }
+
+        $pending = $this->db->table(self::REVERSALS . ' as reversal')
+            ->join(self::TRANSFERS . ' as transfer', 'transfer.id', '=', 'reversal.stripe_connect_transfer_id')
+            ->where('reversal.kind', 'refund')
+            ->whereIn('reversal.status', ['pending', 'recovery_required'])
+            ->where('reversal.amount', '>', 0)
+            ->select(['reversal.*', 'transfer.stripe_transfer_id', 'transfer.order_id', 'transfer.manufacturer_id', 'transfer.stripe_account_id'])
+            ->orderBy('reversal.id')
+            ->limit($limit)
+            ->get();
+
+        $completed = 0;
+        foreach ($pending as $reversal) {
+            $transfer = (object) [
+                'id' => (int) $reversal->stripe_connect_transfer_id,
+                'stripe_transfer_id' => $reversal->stripe_transfer_id,
+                'order_id' => $reversal->order_id,
+                'manufacturer_id' => $reversal->manufacturer_id,
+                'stripe_account_id' => $reversal->stripe_account_id,
+            ];
+            $this->reverseSettledTransfer(
+                $transfer,
+                'refund',
+                (string) $reversal->provider_case_id,
+                (int) $reversal->amount,
+                $this->now(),
+            );
+            if ((string) $this->reversalStatus((int) $reversal->stripe_connect_transfer_id, 'refund', (string) $reversal->provider_case_id) === 'reversed') {
+                ++$completed;
+            }
+        }
+
+        return $completed;
     }
 
     public function enabled(): bool
@@ -418,6 +587,250 @@ final class StripeConnectService
                 'failure_code' => $values['failure_code'],
                 'updated_at' => $now,
             ]);
+        }
+    }
+
+    /** @return list<object> */
+    private function transfersForPaymentIntent(string $paymentIntentId, string $currency): array
+    {
+        return $this->db->table(self::TRANSFERS)
+            ->where('stripe_payment_intent_id', $paymentIntentId)
+            ->where('currency', strtoupper($currency))
+            ->orderBy('id')
+            ->get()
+            ->all();
+    }
+
+    /** @return list<object> */
+    private function transfersForCharge(string $chargeId, string $currency): array
+    {
+        return $this->db->table(self::TRANSFERS)
+            ->where('stripe_charge_id', $chargeId)
+            ->where('currency', strtoupper($currency))
+            ->orderBy('id')
+            ->get()
+            ->all();
+    }
+
+    private function hasCase(string $table, string $kind, string $providerCaseId): bool
+    {
+        return $this->db->table($table)
+            ->where('kind', $kind)
+            ->where('provider_case_id', $providerCaseId)
+            ->exists();
+    }
+
+    private function refundedCentsBefore(string $paymentIntentId): int
+    {
+        $amounts = $this->db->table(self::REVERSALS . ' as reversal')
+            ->join(self::TRANSFERS . ' as transfer', 'transfer.id', '=', 'reversal.stripe_connect_transfer_id')
+            ->where('reversal.kind', 'refund')
+            ->where('transfer.stripe_payment_intent_id', $paymentIntentId)
+            ->select(['reversal.provider_case_id', 'reversal.source_amount'])
+            ->get();
+
+        $byRefund = [];
+        foreach ($amounts as $amount) {
+            $byRefund[(string) $amount->provider_case_id] = max(
+                $byRefund[(string) $amount->provider_case_id] ?? 0,
+                (int) $amount->source_amount,
+            );
+        }
+
+        return array_sum($byRefund);
+    }
+
+    /** @return array<int, int> */
+    private function reversedAmountsByTransfer(string $kind): array
+    {
+        $rows = $this->db->table(self::REVERSALS)
+            ->where('kind', $kind)
+            ->select(['stripe_connect_transfer_id', 'amount'])
+            ->get();
+        $amounts = [];
+        foreach ($rows as $row) {
+            $transferId = (int) $row->stripe_connect_transfer_id;
+            $amounts[$transferId] = ($amounts[$transferId] ?? 0) + (int) $row->amount;
+        }
+
+        return $amounts;
+    }
+
+    /**
+     * @param list<object> $transfers
+     * @return array<int, int> transfer id => desired cumulative recovery
+     */
+    private function proportionalTransferAmounts(array $transfers, int $customerAmount, int $paymentAmount): array
+    {
+        if ($paymentAmount < 1 || $customerAmount < 0) {
+            throw new \RuntimeException('Invalid customer recovery amount.');
+        }
+
+        $allocations = [];
+        foreach ($transfers as $transfer) {
+            $base = $this->originalTransferAmount($transfer);
+            if ($base < 0) {
+                throw new \RuntimeException('Invalid Stripe Connect transfer amount.');
+            }
+            // The unallocated remainder is the platform's share (commission,
+            // shipping, and Stripe fees); it must not be charged to a seller.
+            $allocations[(int) $transfer->id] = intdiv($customerAmount * $base, $paymentAmount);
+        }
+
+        return $allocations;
+    }
+
+    private function originalTransferAmount(object $transfer): int
+    {
+        $value = $transfer->original_amount ?? $transfer->amount ?? null;
+        if (filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]) === false) {
+            throw new \RuntimeException('Invalid Stripe Connect transfer amount.');
+        }
+
+        return (int) $value;
+    }
+
+    private function reducePendingTransferForRefund(object $transfer, int $cumulativeReversal): void
+    {
+        $originalAmount = $this->originalTransferAmount($transfer);
+        $remaining = $originalAmount - $cumulativeReversal;
+        if ($remaining < 0) {
+            throw new \RuntimeException('Refund recovery exceeds the seller transfer amount.');
+        }
+
+        $this->db->table(self::TRANSFERS)->where('id', (int) $transfer->id)->update([
+            'amount' => $remaining,
+            'status' => $remaining === 0 ? 'cancelled' : 'pending',
+            'failure_code' => $remaining === 0 ? 'refunded_before_transfer' : 'seller_account_not_ready',
+            'updated_at' => gmdate('Y-m-d H:i:s'),
+        ]);
+    }
+
+    private function reverseSettledTransfer(object $transfer, string $kind, string $providerCaseId, int $amount, DateTimeImmutable $occurredAt): void
+    {
+        $transferId = (int) $transfer->id;
+        $stripeTransferId = $this->stripeId($transfer->stripe_transfer_id ?? null, 'transfer');
+        $idempotencyKey = $this->reversalIdempotencyKey($kind, $providerCaseId, $transferId);
+
+        try {
+            $reversal = $this->stripe->transfers->createReversal($stripeTransferId, [
+                'amount' => $amount,
+                'metadata' => [
+                    'order_id' => (string) $transfer->order_id,
+                    'manufacturer_id' => (string) $transfer->manufacturer_id,
+                    'recovery_kind' => $kind,
+                    'provider_case_id' => $providerCaseId,
+                ],
+            ], ['idempotency_key' => $idempotencyKey]);
+
+            $reversalId = $this->stripeId($reversal->id ?? null, 'transfer reversal');
+            $this->updateReversal($transferId, $kind, $providerCaseId, [
+                'stripe_transfer_reversal_id' => $reversalId,
+                'status' => 'reversed',
+                'failure_code' => null,
+            ]);
+            $this->recordTransferReversal($transfer, $kind, $providerCaseId, $reversalId, $amount, $occurredAt);
+        } catch (\Throwable $exception) {
+            $this->updateReversal($transferId, $kind, $providerCaseId, [
+                'status' => 'recovery_required',
+                'failure_code' => $this->failureCode($exception),
+            ]);
+            Log::warning('Stripe Connect transfer recovery requires review.', [
+                'manufacturer_id' => (int) $transfer->manufacturer_id,
+                'order_id' => (int) $transfer->order_id,
+                'recovery_kind' => $kind,
+                'failure_code' => $this->failureCode($exception),
+            ]);
+        }
+    }
+
+    private function recordTransferReversal(object $transfer, string $kind, string $providerCaseId, string $reversalId, int $amount, DateTimeImmutable $occurredAt): void
+    {
+        if ($this->ledger === null) {
+            return;
+        }
+
+        $originalPayout = $this->ledger->findByProviderTransaction('stripe', (string) $transfer->stripe_transfer_id);
+        if ($originalPayout === null) {
+            return;
+        }
+
+        $this->ledger->recordReversal((int) $originalPayout->id, FinancialMovement::fromArray([
+            'type' => 'payout',
+            'status' => 'reversed',
+            'amount' => $this->centsToDecimal($amount),
+            'currency' => (string) $originalPayout->currency,
+            'occurred_at' => $occurredAt,
+            'order_id' => $this->positiveInteger($originalPayout->order_id),
+            'artisan_id' => $this->positiveInteger($originalPayout->artisan_id),
+            'provider' => 'stripe',
+            'provider_account_id' => $this->stripeOptionalIdentifier($originalPayout->provider_account_id),
+            'provider_transaction_id' => $reversalId,
+            'provider_event_id' => $reversalId,
+            'source_event_type' => 'stripe.transfer.reversal.created',
+            'source_event_id' => $reversalId,
+            'metadata' => [
+                'stripe_transfer_id' => (string) $transfer->stripe_transfer_id,
+                'recovery_kind' => $kind,
+                'provider_case_id' => $providerCaseId,
+            ],
+        ]), 'stripe:transfer-reversal:' . hash('sha256', $reversalId));
+    }
+
+    /** @param array<string, mixed> $values */
+    private function storeReversal(array $values): void
+    {
+        $now = gmdate('Y-m-d H:i:s');
+        $values['created_at'] = $now;
+        $values['updated_at'] = $now;
+        try {
+            $this->db->table(self::REVERSALS)->insert($values);
+        } catch (QueryException) {
+            // A concurrent delivery of the same Stripe event owns the same
+            // idempotency key. Its existing record is the source of truth.
+        }
+    }
+
+    /** @param array<string, mixed> $values */
+    private function updateReversal(int $transferId, string $kind, string $providerCaseId, array $values): void
+    {
+        $values['updated_at'] = gmdate('Y-m-d H:i:s');
+        $this->db->table(self::REVERSALS)
+            ->where('stripe_connect_transfer_id', $transferId)
+            ->where('kind', $kind)
+            ->where('provider_case_id', $providerCaseId)
+            ->update($values);
+    }
+
+    private function setReversalStatus(int $transferId, string $kind, string $providerCaseId, string $status): void
+    {
+        $this->updateReversal($transferId, $kind, $providerCaseId, ['status' => $status]);
+    }
+
+    private function reversalStatus(int $transferId, string $kind, string $providerCaseId): ?string
+    {
+        return $this->db->table(self::REVERSALS)
+            ->where('stripe_connect_transfer_id', $transferId)
+            ->where('kind', $kind)
+            ->where('provider_case_id', $providerCaseId)
+            ->value('status');
+    }
+
+    private function reversalIdempotencyKey(string $kind, string $providerCaseId, int $transferId): string
+    {
+        return 'connect:' . $kind . '-reversal:' . hash('sha256', $providerCaseId . ':' . $transferId);
+    }
+
+    private function paymentIntentAmountCents(string $paymentIntentId): int
+    {
+        $paymentIntent = $this->stripe->paymentIntents->retrieve($paymentIntentId, []);
+        return $this->paidAmountCents($paymentIntent);
+    }
+
+    private function assertConnectCase(string $paymentReference, string $caseId, int $amount, string $currency): void
+    {
+        if ($paymentReference === '' || strlen($paymentReference) > 191 || $caseId === '' || strlen($caseId) > 191 || $amount < 1 || !preg_match('/^[A-Z]{3}$/', strtoupper($currency))) {
+            throw new \InvalidArgumentException('Invalid Stripe Connect recovery correlation.');
         }
     }
 
@@ -640,4 +1053,6 @@ final class StripeConnectService
     private function assertSeller(int $sellerId): void { if ($sellerId < 1) throw new \InvalidArgumentException('Invalid seller.'); }
     private function assertAbsoluteUrl(string $url, string $field): void { if (filter_var($url, FILTER_VALIDATE_URL) === false) throw new \InvalidArgumentException('Invalid ' . $field . '.'); }
     private function stripeId(mixed $value, string $kind): string { $id = $value instanceof \Stripe\StripeObject ? $value->id : $value; if (!is_string($id) || $id === '' || strlen($id) > 191) throw new \RuntimeException('Stripe ' . $kind . ' identifier is invalid.'); return $id; }
+    private function stripeOptionalIdentifier(mixed $value): ?string { if (!is_string($value) && !is_int($value)) return null; $id = trim((string) $value); return $id === '' || strlen($id) > 191 ? null : $id; }
+    private function positiveInteger(mixed $value): ?int { return filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false ? null : (int) $value; }
 }
