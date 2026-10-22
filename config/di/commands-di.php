@@ -38,6 +38,12 @@ $container->set(\PS\Webservice\Commands\RetryPendingStripeConnectTransfersComman
     );
 });
 
+$container->set(\PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class, function ($c) {
     return new \PS\Webservice\Commands\ElasticSearch\CreateIndexElk(
         $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
