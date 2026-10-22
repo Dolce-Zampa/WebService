@@ -28,6 +28,11 @@ final class AppScheduleProvider implements ScheduleProviderInterface
                 RecurringMessage::cron('10 * * * *', new GenerateSitemap())
             )
             ->add(
+                // PrestaShop can acknowledge order creation before its order
+                // row is readable. Durable allocation jobs close that gap.
+                RecurringMessage::cron('*/5 * * * *', new RetryQueuedStripeConnectTransferAllocationsMessage())
+            )
+            ->add(
                 // Reconciliation fallback for delayed or redelivered Connect events.
                 RecurringMessage::cron('*/15 * * * *', new RetryPendingStripeConnectTransfersMessage())
             )

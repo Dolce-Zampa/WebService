@@ -131,6 +131,10 @@ class StripeWebhookController extends OrderController
                     $this->promotionService->activatePromotionFromStripeSession($event->data->object);
                     return response(['received' => true], 200);
                 }
+                // Persist Connect allocation intent before calling PrestaShop.
+                // Its API can time out after accepting the order, and a later
+                // retry must still be able to allocate the verified payment.
+                $this->queueStripeConnectTransferAllocation($event->data->object, $event);
                 $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
                 if ($cartId !== null && $this->sellerSaleNotifications !== null) {
                     // This happens only after Stripe's signature has been
@@ -902,6 +906,17 @@ class StripeWebhookController extends OrderController
         if ($this->stripeConnect === null || !$this->stripeConnect->enabled()) {
             return;
         }
+        $paymentIntentId = $this->stripeTransactionId($session, (string) $event->type, null);
+        if ($paymentIntentId !== null) {
+            $this->stripeConnect->processTransferAllocation($paymentIntentId);
+        }
+    }
+
+    private function queueStripeConnectTransferAllocation(\Stripe\StripeObject $session, \Stripe\Event $event): void
+    {
+        if ($this->stripeConnect === null || !$this->stripeConnect->enabled()) {
+            return;
+        }
         $data = $session->toArray();
         if (($data['payment_status'] ?? null) !== 'paid') {
             return;
@@ -911,21 +926,14 @@ class StripeWebhookController extends OrderController
             return;
         }
         $cartId = $this->positiveInteger($metadata['cart_id'] ?? null);
-        $paymentIntentId = $this->stripeTransactionId($session, 'checkout.session.completed', null);
+        $paymentIntentId = $this->stripeTransactionId($session, (string) $event->type, null);
         if ($cartId === null || $paymentIntentId === null) {
             throw new \RuntimeException('Stripe Connect checkout is missing its cart or payment intent.');
         }
-        [$orderId] = $this->financialOrderReference($session);
-        if ($orderId === null) {
-            throw new \RuntimeException('Stripe Connect checkout order is not available yet.');
-        }
         $transferGroup = $this->stripeOptionalIdentifier($metadata['transfer_group'] ?? null) ?? 'dz_cart_' . $cartId;
         $snapshot = $this->checkoutSnapshotForSession($session);
-        if ($snapshot !== null) {
-            $this->checkoutSnapshots?->bindOrder($snapshot['id'], $orderId);
-        }
-        $this->stripeConnect->createTransfersForOrder(
-            $orderId,
+        $this->stripeConnect->enqueueTransferAllocation(
+            $cartId,
             $paymentIntentId,
             $transferGroup,
             $this->stripeEventTimestamp($event->created ?? null),

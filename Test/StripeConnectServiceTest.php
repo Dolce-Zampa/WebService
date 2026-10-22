@@ -249,6 +249,115 @@ final class StripeConnectServiceTest extends TestCase
         }
     }
 
+    public function test_persists_then_retries_allocation_when_the_order_becomes_readable(): void
+    {
+        $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
+        $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+
+        try {
+            $db = new Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $this->createTransferTables($db);
+            $db->table('manufacturer_details')->insert(['id_manufacturer' => 7, 'commission' => '20.00']);
+            $db->table('product')->insert(['id_product' => 10, 'id_manufacturer' => 7]);
+
+            $paymentIntents = new class {
+                public function retrieve(string $id, array $params): \Stripe\PaymentIntent
+                {
+                    return \Stripe\PaymentIntent::constructFrom([
+                        'id' => $id,
+                        'currency' => 'eur',
+                        'amount_received' => 8080,
+                        'latest_charge' => 'ch_order_83',
+                    ]);
+                }
+            };
+            $stripe = new class($paymentIntents) extends \Stripe\StripeClient {
+                public function __construct(private object $paymentIntents)
+                {
+                    parent::__construct('sk_test_123');
+                }
+
+                public function getService($name)
+                {
+                    return $name === 'paymentIntents' ? $this->paymentIntents : parent::getService($name);
+                }
+            };
+            $service = new StripeConnectService($db, null, $stripe);
+            $occurredAt = new DateTimeImmutable('2026-10-22 11:32:12 UTC');
+            $service->enqueueTransferAllocation(713, 'pi_order83', 'dz_cart_713', $occurredAt);
+
+            // The first attempt sees a delayed PrestaShop write and leaves a
+            // durable job instead of losing the seller allocation.
+            self::assertFalse($service->processTransferAllocation('pi_order83'));
+            $queued = $db->table('stripe_connect_transfer_jobs')->first();
+            self::assertSame('pending', $queued->status);
+            self::assertSame('order_not_available', $queued->last_error);
+            self::assertSame(1, (int) $queued->attempt_count);
+
+            $db->table('orders')->insert([
+                'id_order' => 83,
+                'id_cart' => 713,
+                'total_shipping_tax_incl' => '0.000000',
+            ]);
+            $db->table('order_detail')->insert([
+                'id_order' => 83,
+                'product_id' => 10,
+                'total_price_tax_incl' => '80.800000',
+            ]);
+
+            self::assertTrue($service->processTransferAllocation('pi_order83'));
+            $completed = $db->table('stripe_connect_transfer_jobs')->first();
+            self::assertSame('completed', $completed->status);
+            self::assertSame(83, (int) $completed->order_id);
+
+            $transfer = $db->table('stripe_connect_transfers')->first();
+            self::assertSame(83, (int) $transfer->order_id);
+            self::assertSame('pi_order83', $transfer->stripe_payment_intent_id);
+            self::assertSame(6464, (int) $transfer->amount);
+            self::assertSame('pending', $transfer->status);
+        } finally {
+            $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
+            $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+        }
+    }
+
+    public function test_marks_an_unresolved_allocation_for_manual_review_after_five_attempts(): void
+    {
+        $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
+        $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+
+        try {
+            $db = new Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $this->createTransferTables($db);
+            $service = new StripeConnectService($db, null, new \Stripe\StripeClient('sk_test_123'));
+            $service->enqueueTransferAllocation(713, 'pi_missingorder', 'dz_cart_713', new DateTimeImmutable('2026-10-22 11:32:12 UTC'));
+
+            for ($attempt = 1; $attempt <= 5; ++$attempt) {
+                self::assertFalse($service->processTransferAllocation('pi_missingorder'));
+            }
+
+            $job = $db->table('stripe_connect_transfer_jobs')->first();
+            self::assertSame('manual_review', $job->status);
+            self::assertSame(5, (int) $job->attempt_count);
+
+            // A regular scheduler run leaves terminal jobs alone; an operator
+            // may still use the explicit recovery command to force a retry.
+            self::assertFalse($service->processTransferAllocation('pi_missingorder'));
+            self::assertSame(5, (int) $db->table('stripe_connect_transfer_jobs')->value('attempt_count'));
+        } finally {
+            $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
+            $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+        }
+    }
+
     public function test_prorates_successful_customer_refunds_and_reverses_only_paid_seller_transfers(): void
     {
         $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
@@ -524,7 +633,7 @@ final class StripeConnectServiceTest extends TestCase
 
     private function createTransferTables(Manager $db): void
     {
-        foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfer_reversals', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
+        foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfer_jobs', 'stripe_connect_transfer_reversals', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
             $db->schema()->dropIfExists($table);
         }
         $db->schema()->create('stripe_connect_accounts', function ($table): void {
@@ -578,6 +687,22 @@ final class StripeConnectServiceTest extends TestCase
             $table->dateTime('updated_at');
             $table->unique(['stripe_connect_transfer_id', 'kind', 'provider_case_id']);
         });
+        $db->schema()->create('stripe_connect_transfer_jobs', function ($table): void {
+            $table->increments('id');
+            $table->unsignedInteger('cart_id');
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->string('stripe_payment_intent_id')->unique();
+            $table->string('transfer_group');
+            $table->dateTime('occurred_at');
+            $table->text('allocation_snapshot')->nullable();
+            $table->string('status');
+            $table->unsignedInteger('attempt_count');
+            $table->string('last_error')->nullable();
+            $table->dateTime('next_attempt_at');
+            $table->dateTime('completed_at')->nullable();
+            $table->dateTime('created_at');
+            $table->dateTime('updated_at');
+        });
         $db->schema()->create('manufacturer_details', function ($table): void {
             $table->unsignedInteger('id_manufacturer')->primary();
             $table->string('commission');
@@ -593,6 +718,7 @@ final class StripeConnectServiceTest extends TestCase
         });
         $db->schema()->create('orders', function ($table): void {
             $table->unsignedBigInteger('id_order')->primary();
+            $table->unsignedInteger('id_cart')->nullable();
             $table->decimal('total_shipping_tax_incl', 20, 6);
         });
     }

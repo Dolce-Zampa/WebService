@@ -38,6 +38,18 @@ $container->set(\PS\Webservice\Commands\RetryPendingStripeConnectTransfersComman
     );
 });
 
+$container->set(\PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand::class, function ($c) {
     return new \PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand(
         $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)

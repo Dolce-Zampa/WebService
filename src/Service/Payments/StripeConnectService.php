@@ -21,6 +21,7 @@ final class StripeConnectService
     private const ACCOUNTS = 'stripe_connect_accounts';
     private const TRANSFERS = 'stripe_connect_transfers';
     private const REVERSALS = 'stripe_connect_transfer_reversals';
+    private const ALLOCATION_JOBS = 'stripe_connect_transfer_jobs';
     private const DEFAULT_RETRY_BATCH_SIZE = 100;
     /**
      * A retry that keeps failing can mean that Stripe accepted the Transfer
@@ -29,6 +30,7 @@ final class StripeConnectService
      * idempotency key for manual reconciliation.
      */
     private const MAX_TRANSFER_ATTEMPTS = 5;
+    private const MAX_ALLOCATION_ATTEMPTS = 5;
     private const DEFAULT_COMMISSION_RATE = '20.00';
     private const MINIMUM_COMMISSION_EUR = '1.00';
     private const ACCOUNT_CREATION_IDEMPOTENCY_VERSION = 'v2';
@@ -199,6 +201,196 @@ final class StripeConnectService
         }
 
         return $settled;
+    }
+
+    /**
+     * Durably queues the allocation of a paid Checkout before trying to
+     * create seller transfers. The webhook may acknowledge Stripe after this
+     * write even when PrestaShop has not made the order readable yet.
+     *
+     * @param array<string, mixed>|null $checkoutSnapshot
+     */
+    public function enqueueTransferAllocation(
+        int $cartId,
+        string $paymentIntentId,
+        string $transferGroup,
+        DateTimeImmutable $occurredAt,
+        ?array $checkoutSnapshot = null,
+        ?int $orderId = null,
+    ): void {
+        if (!$this->enabled()) {
+            return;
+        }
+        $this->assertAllocationCorrelation($cartId, $paymentIntentId, $transferGroup, $orderId);
+
+        $now = gmdate('Y-m-d H:i:s');
+        $values = [
+            'cart_id' => $cartId,
+            'order_id' => $orderId,
+            'transfer_group' => $transferGroup,
+            'occurred_at' => $occurredAt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+            'allocation_snapshot' => $this->allocationSnapshotJson($checkoutSnapshot),
+            'status' => 'pending',
+            'next_attempt_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        $existing = $this->db->table(self::ALLOCATION_JOBS)
+            ->where('stripe_payment_intent_id', $paymentIntentId)
+            ->first();
+        if ($existing === null) {
+            $values['stripe_payment_intent_id'] = $paymentIntentId;
+            $values['attempt_count'] = 0;
+            $values['last_error'] = null;
+            $values['completed_at'] = null;
+            $values['created_at'] = $now;
+            try {
+                $this->db->table(self::ALLOCATION_JOBS)->insert($values);
+                return;
+            } catch (QueryException) {
+                // checkout.session.completed and async_payment_succeeded can
+                // race. The unique PaymentIntent key makes one durable job;
+                // the losing request continues as a normal redelivery.
+                $existing = $this->db->table(self::ALLOCATION_JOBS)
+                    ->where('stripe_payment_intent_id', $paymentIntentId)
+                    ->first();
+                if ($existing === null) {
+                    throw new \RuntimeException('Stripe Connect allocation job could not be persisted.');
+                }
+            }
+        }
+
+        if ((string) $existing->status === 'completed') {
+            return;
+        }
+
+        // Never replace a recorded order or frozen allocation data with a
+        // less complete redelivery of the same Checkout event.
+        $updates = ['next_attempt_at' => $now, 'updated_at' => $now];
+        if ($orderId !== null) {
+            $updates['order_id'] = $orderId;
+        }
+        if ($values['allocation_snapshot'] !== null) {
+            $updates['allocation_snapshot'] = $values['allocation_snapshot'];
+        }
+        $this->db->table(self::ALLOCATION_JOBS)
+            ->where('stripe_payment_intent_id', $paymentIntentId)
+            ->update($updates);
+    }
+
+    /**
+     * Attempts one persisted allocation. Failures stay queued and are safe
+     * to retry because the actual Stripe transfer key is deterministic.
+     */
+    public function processTransferAllocation(string $paymentIntentId, bool $force = false): bool
+    {
+        $job = $this->db->table(self::ALLOCATION_JOBS)
+            ->where('stripe_payment_intent_id', $paymentIntentId)
+            ->first();
+        if ($job === null) {
+            throw new \RuntimeException('Stripe Connect allocation job was not found.');
+        }
+        if ((string) $job->status === 'completed') {
+            return true;
+        }
+        if ((string) $job->status === 'manual_review' && !$force) {
+            return false;
+        }
+
+        try {
+            $orderId = $this->queuedOrderId($job);
+            if ($orderId === null) {
+                throw new \RuntimeException('PrestaShop order is not available yet.');
+            }
+
+            $snapshot = $this->allocationSnapshotFromJob($job);
+            $this->createTransfersForOrder(
+                $orderId,
+                (string) $job->stripe_payment_intent_id,
+                (string) $job->transfer_group,
+                new DateTimeImmutable((string) $job->occurred_at, new \DateTimeZone('UTC')),
+                $snapshot,
+            );
+
+            $now = gmdate('Y-m-d H:i:s');
+            $this->db->table(self::ALLOCATION_JOBS)
+                ->where('id', (int) $job->id)
+                ->update([
+                    'order_id' => $orderId,
+                    'status' => 'completed',
+                    'last_error' => null,
+                    'completed_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            return true;
+        } catch (\Throwable $exception) {
+            $attempt = (int) $job->attempt_count + 1;
+            $manualReview = $attempt >= self::MAX_ALLOCATION_ATTEMPTS;
+            $now = new DateTimeImmutable('now', new \DateTimeZone('UTC'));
+            $this->db->table(self::ALLOCATION_JOBS)
+                ->where('id', (int) $job->id)
+                ->update([
+                    'status' => $manualReview ? 'manual_review' : 'pending',
+                    'attempt_count' => $attempt,
+                    'last_error' => $this->allocationFailureCode($exception),
+                    'next_attempt_at' => $now->modify('+' . $this->allocationRetryDelaySeconds($attempt) . ' seconds')->format('Y-m-d H:i:s'),
+                    'updated_at' => $now->format('Y-m-d H:i:s'),
+                ]);
+            $context = [
+                'stripe_payment_intent_id' => $paymentIntentId,
+                'cart_id' => (int) $job->cart_id,
+                'attempt_count' => $attempt,
+                'failure_code' => $this->allocationFailureCode($exception),
+            ];
+            if ($manualReview) {
+                Log::critical('Stripe Connect allocation exhausted automatic retries and requires manual review.', $context);
+            } else {
+                Log::warning('Stripe Connect allocation remains queued for retry.', $context);
+            }
+            return false;
+        }
+    }
+
+    /** Retries due, persisted allocations whose order or Stripe data was temporarily unavailable. */
+    public function retryQueuedTransferAllocations(int $limit = self::DEFAULT_RETRY_BATCH_SIZE): int
+    {
+        if (!$this->enabled()) {
+            return 0;
+        }
+        if ($limit < 1) {
+            throw new \InvalidArgumentException('Retry limit must be positive.');
+        }
+
+        $jobs = $this->db->table(self::ALLOCATION_JOBS)
+            ->where('status', 'pending')
+            ->where('next_attempt_at', '<=', gmdate('Y-m-d H:i:s'))
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+        $completed = 0;
+        foreach ($jobs as $job) {
+            if ($this->processTransferAllocation((string) $job->stripe_payment_intent_id)) {
+                ++$completed;
+            }
+        }
+        return $completed;
+    }
+
+    /**
+     * Operator recovery entry point for historical paid orders that predate
+     * the durable queue.
+     */
+    public function recoverTransferAllocation(int $orderId, int $cartId, string $paymentIntentId, string $transferGroup): bool
+    {
+        $this->enqueueTransferAllocation(
+            $cartId,
+            $paymentIntentId,
+            $transferGroup,
+            $this->now(),
+            null,
+            $orderId,
+        );
+        return $this->processTransferAllocation($paymentIntentId, true);
     }
 
     /**
@@ -637,6 +829,84 @@ final class StripeConnectService
         }
 
         return $allocations;
+    }
+
+    private function assertAllocationCorrelation(int $cartId, string $paymentIntentId, string $transferGroup, ?int $orderId): void
+    {
+        if ($cartId < 1 || !preg_match('/^pi_[A-Za-z0-9]+$/', $paymentIntentId)
+            || !preg_match('/^[A-Za-z0-9_-]{1,191}$/', $transferGroup)
+            || ($orderId !== null && $orderId < 1)) {
+            throw new \InvalidArgumentException('Invalid Stripe Connect allocation correlation.');
+        }
+    }
+
+    /** @param array<string, mixed>|null $snapshot */
+    private function allocationSnapshotJson(?array $snapshot): ?string
+    {
+        if ($snapshot === null) {
+            return null;
+        }
+
+        // Persist only financial allocation facts. Checkout snapshots contain
+        // customer and delivery details which do not belong in this queue.
+        $allocation = [
+            'currency' => $snapshot['currency'] ?? null,
+            'totals' => $snapshot['totals'] ?? null,
+            'sellers' => $snapshot['sellers'] ?? null,
+        ];
+        $encoded = json_encode($allocation, JSON_THROW_ON_ERROR);
+        if (strlen($encoded) > 65535) {
+            throw new \RuntimeException('Stripe Connect allocation snapshot is too large.');
+        }
+        return $encoded;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function allocationSnapshotFromJob(object $job): ?array
+    {
+        $encoded = $job->allocation_snapshot ?? null;
+        if ($encoded === null || $encoded === '') {
+            return null;
+        }
+        $snapshot = json_decode((string) $encoded, true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($snapshot)) {
+            throw new \RuntimeException('Queued Stripe Connect allocation snapshot is invalid.');
+        }
+        return $snapshot;
+    }
+
+    private function queuedOrderId(object $job): ?int
+    {
+        $storedOrderId = filter_var($job->order_id ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($storedOrderId !== false) {
+            return (int) $storedOrderId;
+        }
+
+        $orderId = $this->db->table('orders')
+            ->where('id_cart', (int) $job->cart_id)
+            ->orderByDesc('id_order')
+            ->value('id_order');
+        $orderId = filter_var($orderId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        return $orderId === false ? null : (int) $orderId;
+    }
+
+    private function allocationFailureCode(\Throwable $exception): string
+    {
+        if ($exception->getMessage() === 'PrestaShop order is not available yet.') {
+            return 'order_not_available';
+        }
+        $stripeCode = $exception instanceof \Stripe\Exception\ApiErrorException ? $exception->getStripeCode() : null;
+        if (is_string($stripeCode) && preg_match('/^[A-Za-z0-9_-]+$/', $stripeCode)) {
+            return substr('stripe_' . $stripeCode, 0, 191);
+        }
+        return 'allocation_retry_required';
+    }
+
+    private function allocationRetryDelaySeconds(int $attempt): int
+    {
+        // One minute, then exponential backoff up to six hours. Jobs are
+        // retained indefinitely for explicit operational reconciliation.
+        return min(21600, 60 * (2 ** min(8, max(0, $attempt - 1))));
     }
 
     /** @return object */

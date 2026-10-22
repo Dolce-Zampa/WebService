@@ -15,6 +15,8 @@ return [
     \PS\Webservice\Commands\BackfillFinancialOrdersCommand::class,
     \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class,
     \PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class,
+    \PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand::class,
+    \PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand::class,
     \PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand::class,
     \PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class,
     \PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class,

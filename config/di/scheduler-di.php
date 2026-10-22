@@ -28,3 +28,9 @@ $container->set(\PS\Webservice\Commands\Scheduler\RetryPendingStripeConnectTrans
         $c->get(\PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\Scheduler\RetryQueuedStripeConnectTransferAllocationsMessageHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\RetryQueuedStripeConnectTransferAllocationsMessageHandler(
+        $c->get(\PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand::class)
+    );
+});
