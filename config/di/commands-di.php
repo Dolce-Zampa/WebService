@@ -80,3 +80,9 @@ $container->set(\PS\Webservice\Commands\WarmProductCacheCommand::class, function
         $c->get(\PS\Webservice\Service\RedisQueue::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\ClearProductCacheCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\ClearProductCacheCommand(
+        $c->get(\PS\Webservice\Service\PS\Product::class)
+    );
+});

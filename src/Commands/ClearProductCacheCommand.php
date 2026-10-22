@@ -18,6 +18,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class ClearProductCacheCommand extends Command
 {
+    public function __construct(private Product $products)
+    {
+        parent::__construct();
+    }
+
     protected function configure(): void
     {
         $this->addArgument('product-id', InputArgument::REQUIRED, 'ID del prodotto di cui invalidare la cache');
@@ -40,8 +45,12 @@ final class ClearProductCacheCommand extends Command
         Cache::tags([$productTag])->flush();
         Cache::tags(['product-catalog', 'product-detail'])->flush();
         Product::invalidateCacheTags([$productTag, 'product-catalog']);
+        if ($this->products->getCompleteProductById((int) $productId) === null) {
+            $io->error(sprintf('Prodotto %d non trovato: cache invalidata ma non rigenerata.', $productId));
+            return self::FAILURE;
+        }
 
-        $io->success(sprintf('Cache invalidata per il prodotto %d.', $productId));
+        $io->success(sprintf('Cache rigenerata per il prodotto %d.', $productId));
 
         return self::SUCCESS;
     }

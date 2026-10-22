@@ -322,10 +322,18 @@ final class ProductCacheTest extends TestCase
         $productEightRevision = Product::revisionFor(['product:8']);
         $catalogRevision = Product::revisionFor(['product-catalog']);
 
-        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand());
+        $products = $this->getMockBuilder(Product::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCompleteProductById'])
+            ->getMock();
+        $products->expects($this->once())
+            ->method('getCompleteProductById')
+            ->with(7)
+            ->willReturn(ProductEntity::fromSnapshot(['id' => 7, 'price' => 122.0], $products, true));
+        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand($products));
         $this->assertSame(Command::SUCCESS, $tester->execute(['product-id' => '7']));
 
-        $this->assertStringContainsString('prodotto 7', $tester->getDisplay());
+        $this->assertStringContainsString('rigenerata per il prodotto 7', $tester->getDisplay());
         $this->assertNull(Cache::tags(['product:7'])->get('product-7'));
         $this->assertSame('cached', Cache::tags(['product:8'])->get('product-8'));
         $this->assertNotSame($productSevenRevision, Product::revisionFor(['product:7']));
@@ -335,7 +343,12 @@ final class ProductCacheTest extends TestCase
 
     public function test_clear_product_cache_command_rejects_invalid_product_id(): void
     {
-        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand());
+        $products = $this->getMockBuilder(Product::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCompleteProductById'])
+            ->getMock();
+        $products->expects($this->never())->method('getCompleteProductById');
+        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand($products));
 
         $this->assertSame(Command::INVALID, $tester->execute(['product-id' => '0']));
         $this->assertStringContainsString('intero positivo', $tester->getDisplay());
