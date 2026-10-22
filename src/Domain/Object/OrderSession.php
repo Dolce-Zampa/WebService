@@ -338,6 +338,59 @@ class OrderSession implements ObjectInterface
         ];
     }
 
+    /**
+     * Returns a stable identifier for an equivalent Checkout request.
+     *
+     * The fingerprint deliberately excludes the Stripe Checkout expiry and the
+     * attempt key itself. Both are assigned by the checkout controller and can
+     * change when an expired attempt is replaced; prices, quantities, shipping,
+     * discounts and the cart owner remain part of the fingerprint.
+     */
+    public function checkoutAttemptFingerprint(): string
+    {
+        $payload = $this->data;
+        unset($payload['expires_at']);
+        unset($payload['metadata']['checkout_attempt_key']);
+
+        return hash('sha256', json_encode($this->sortCheckoutPayload($payload), JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Makes the Checkout Session payload repeatable for a single attempt.
+     *
+     * Stripe treats a repeated idempotency key with different request
+     * parameters as an error. Keeping the expiry on the session makes
+     * concurrent API requests submit the same payload as well as the same key.
+     */
+    public function setCheckoutAttempt(string $attemptKey, int $expiresAt): void
+    {
+        if (!preg_match('/^dz_checkout_v1_[a-f0-9]{64}_[1-9][0-9]*$/', $attemptKey)) {
+            throw new \InvalidArgumentException('Invalid Stripe checkout attempt key.');
+        }
+        if ($expiresAt <= time()) {
+            throw new \InvalidArgumentException('Stripe checkout attempt expiry must be in the future.');
+        }
+
+        $this->data['metadata']['checkout_attempt_key'] = $attemptKey;
+        $this->data['expires_at'] = $expiresAt;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function sortCheckoutPayload(array $payload): array
+    {
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $payload[$key] = $this->sortCheckoutPayload($value);
+            }
+        }
+
+        if (!array_is_list($payload)) {
+            ksort($payload);
+        }
+
+        return $payload;
+    }
+
     public function hash(): string
     {
         return md5(json_encode($this->data));
