@@ -10,7 +10,10 @@ class PaymentService implements PaymentGatewayInterface
 {
     private static ?string $apiKey = null;
 
-    public function __construct(private readonly ?CheckoutSnapshotService $checkoutSnapshots = null)
+    public function __construct(
+        private ?\Stripe\StripeClient $stripeClient = null,
+        private readonly ?CheckoutSnapshotService $checkoutSnapshots = null,
+    )
     {
     }
 
@@ -23,7 +26,7 @@ class PaymentService implements PaymentGatewayInterface
 
     public function createPaymentSession(OrderSession $orderSession): string
     {
-        if (self::$apiKey === null) {
+        if (self::$apiKey === null && $this->stripeClient === null) {
             throw new \RuntimeException("Stripe API key not set. Call setApiKey() first.");
         }
 
@@ -35,9 +38,17 @@ class PaymentService implements PaymentGatewayInterface
                 }
                 $orderSession->enableStripeConnect('dz_cart_' . $cartId);
             }
-            $checkout_session = \Stripe\Checkout\Session::create(
-                $orderSession->toArray()
-            );
+            $metadata = $orderSession->metadata;
+            $idempotencyKey = $metadata['checkout_attempt_key'] ?? $orderSession->checkoutAttemptFingerprint();
+            if (!is_string($idempotencyKey) || $idempotencyKey === '') {
+                throw new \RuntimeException('Stripe checkout idempotency key is invalid.');
+            }
+
+            $params = $orderSession->toArray();
+            $options = ['idempotency_key' => $idempotencyKey];
+            $checkout_session = $this->stripeClient === null
+                ? \Stripe\Checkout\Session::create($params, $options)
+                : $this->stripeClient->checkout->sessions->create($params, $options);
             $snapshotId = $orderSession->metadata['checkout_snapshot_id'] ?? null;
             if (is_string($snapshotId) && $this->checkoutSnapshots !== null) {
                 $this->checkoutSnapshots->bindStripeSession(

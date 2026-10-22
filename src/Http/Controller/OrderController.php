@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
@@ -21,6 +22,10 @@ class OrderController extends CartController
 {
     use UseCache, OrderHelper;
     private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
+    private const CHECKOUT_ATTEMPT_CACHE_TAG = 'stripe-checkout-attempt';
+    private const CHECKOUT_ATTEMPT_CACHE_MINUTES = 1560;
+    private const CHECKOUT_ATTEMPT_WINDOW_SECONDS = 3600;
+    private const CHECKOUT_ATTEMPT_LIFETIME_SECONDS = 7200;
     private Order $orderService;
     private ?PrestashopRepository $customerRepository;
     private ?CheckoutSnapshotService $checkoutSnapshots;
@@ -214,15 +219,7 @@ class OrderController extends CartController
                 throw new \InvalidArgumentException('A payment module must be selected or configured.');
             }
 
-            $this->persistCheckoutSnapshot($orderSession, $cart->toArray());
-
-            //save in cache the order session only for 24h
-            $this->tags(['order-session'])->setEncryptedToCache(
-                $orderSession->metadata['cart_id'],
-                $orderSession->toCacheData(),
-                24 * 60
-            );
-            $checkoutUrl = $paymentService->createPaymentSession($orderSession);
+            $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray());
 
             return response([
                 'order' => $cart->toArray(),
@@ -241,6 +238,138 @@ class OrderController extends CartController
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Returns the URL of an open Checkout Session for the same server-derived
+     * cart. An expired record is retained so its version can never be reused
+     * while Stripe still remembers the old idempotency key.
+     */
+    private function existingCheckoutUrl(OrderSession $orderSession): ?string
+    {
+        $record = $this->checkoutAttemptRecord($orderSession->checkoutAttemptFingerprint());
+        if ($record === null || ($record['state'] ?? null) !== 'open') {
+            return null;
+        }
+
+        $expiresAt = filter_var($record['expires_at'] ?? null, FILTER_VALIDATE_INT);
+        $url = $record['url'] ?? null;
+        if ($expiresAt === false || $expiresAt <= time() || !is_string($url) || $url === '') {
+            return null;
+        }
+
+        return $url;
+    }
+
+    /**
+     * Serialises the short critical section around the local record. Stripe's
+     * idempotency key is still the final guard if the distributed lock expires
+     * or a worker crashes after Stripe has accepted the request.
+     *
+     * @param array<string, mixed> $cart
+     */
+    private function createOrReuseCheckout(OrderSession $orderSession, PaymentGatewayInterface $paymentService, array $cart): string
+    {
+        $fingerprint = $orderSession->checkoutAttemptFingerprint();
+        $callback = function () use ($orderSession, $paymentService, $cart): string {
+            $existingCheckoutUrl = $this->existingCheckoutUrl($orderSession);
+            if ($existingCheckoutUrl !== null) {
+                return $existingCheckoutUrl;
+            }
+
+            [$checkoutFingerprint, $checkoutVersion, $checkoutExpiresAt] = $this->startCheckoutAttempt($orderSession);
+
+            $this->persistCheckoutSnapshot($orderSession, $cart);
+
+            // Save the immutable customer details needed by the webhook only
+            // after the attempt key has been attached to the session.
+            $this->tags(['order-session'])->setEncryptedToCache(
+                $orderSession->metadata['cart_id'],
+                $orderSession->toCacheData(),
+                24 * 60
+            );
+            $checkoutUrl = $paymentService->createPaymentSession($orderSession);
+            $this->saveCheckoutAttempt(
+                $checkoutFingerprint,
+                $checkoutVersion,
+                $checkoutExpiresAt,
+                $checkoutUrl,
+            );
+
+            return $checkoutUrl;
+        };
+
+        $cache = Cache::getFacadeRoot();
+        if (!is_object($cache) || !method_exists($cache, 'lock')) {
+            return $callback();
+        }
+
+        $lock = $cache->lock('stripe-checkout-attempt:' . $fingerprint, 15);
+        if (!is_object($lock) || !method_exists($lock, 'get') || !method_exists($lock, 'release')) {
+            return $callback();
+        }
+
+        if (!$lock->get()) {
+            if (!method_exists($lock, 'block')) {
+                throw new \RuntimeException('Checkout is already being prepared.');
+            }
+            $lock->block(5);
+        }
+
+        try {
+            return $callback();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /** @return array{string, int, int} fingerprint, version, expiry */
+    private function startCheckoutAttempt(OrderSession $orderSession): array
+    {
+        $fingerprint = $orderSession->checkoutAttemptFingerprint();
+        $record = $this->checkoutAttemptRecord($fingerprint);
+        $now = time();
+        $version = $record === null
+            ? max(1, intdiv($now, self::CHECKOUT_ATTEMPT_WINDOW_SECONDS))
+            : max(1, (int) ($record['version'] ?? 0) + 1);
+
+        // Stripe requires repeated idempotent requests to have exactly the
+        // same parameters. The expiry is aligned to the key's hourly window,
+        // leaving each session open for one to two hours.
+        $windowStart = intdiv($now, self::CHECKOUT_ATTEMPT_WINDOW_SECONDS) * self::CHECKOUT_ATTEMPT_WINDOW_SECONDS;
+        $expiresAt = $windowStart + self::CHECKOUT_ATTEMPT_LIFETIME_SECONDS;
+        $attemptKey = 'dz_checkout_v1_' . $fingerprint . '_' . $version;
+        $orderSession->setCheckoutAttempt($attemptKey, $expiresAt);
+
+        return [$fingerprint, $version, $expiresAt];
+    }
+
+    private function saveCheckoutAttempt(string $fingerprint, int $version, int $expiresAt, string $url): void
+    {
+        if ($url === '') {
+            throw new \RuntimeException('Stripe returned an empty Checkout Session URL.');
+        }
+
+        $this->tags([self::CHECKOUT_ATTEMPT_CACHE_TAG])->setEncryptedToCache(
+            $fingerprint,
+            [
+                'state' => 'open',
+                'version' => $version,
+                'expires_at' => $expiresAt,
+                'url' => $url,
+            ],
+            self::CHECKOUT_ATTEMPT_CACHE_MINUTES,
+        );
+    }
+
+    /** @return array{state: string, version: int, expires_at: int, url: string}|null */
+    private function checkoutAttemptRecord(string $fingerprint): ?array
+    {
+        $cached = $this->decryptCachedValue(
+            $this->tags([self::CHECKOUT_ATTEMPT_CACHE_TAG])->getFromCache($fingerprint)
+        );
+
+        return is_array($cached) ? $cached : null;
     }
 
     public function initiatePayment(Request $request, Response $response, array $argv): Response
