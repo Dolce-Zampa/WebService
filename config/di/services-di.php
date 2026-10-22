@@ -176,9 +176,15 @@ $container->set(\PS\Webservice\Service\PS\Mailer::class, function($c) {
 
 
 $container->set(\PS\Webservice\Service\Payments\PaymentService::class, function ($c) {
-    $payment = new \PS\Webservice\Service\Payments\PaymentService();
+    $payment = new \PS\Webservice\Service\Payments\PaymentService(
+        $c->get(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class),
+    );
     $payment->setApiKey(env('STRIPE_API_KEY'));
     return $payment;
+});
+
+$container->set(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Payments\CheckoutSnapshotService($capsule);
 });
 
 $container->set(\PS\Webservice\Service\Payments\StripeConnectService::class, function ($c) use ($capsule) {

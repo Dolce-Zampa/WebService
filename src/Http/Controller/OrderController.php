@@ -9,6 +9,7 @@ use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Http\Controller\CartController;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
+use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Traits\Order as OrderHelper;
@@ -22,14 +23,21 @@ class OrderController extends CartController
     private const ORDER_STATE_PAYMENT_ACCEPTED = 2;
     private Order $orderService;
     private ?PrestashopRepository $customerRepository;
+    private ?CheckoutSnapshotService $checkoutSnapshots;
 
     protected PaymentGatewayInterface $stripeService;
 
-    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, ?PrestashopRepository $customerRepository = null)
+    public function __construct(
+        Order $orderService,
+        PaymentGatewayInterface $stripeService,
+        ?PrestashopRepository $customerRepository = null,
+        ?CheckoutSnapshotService $checkoutSnapshots = null,
+    )
     {
         $this->stripeService = $stripeService;
         $this->orderService = $orderService;
         $this->customerRepository = $customerRepository;
+        $this->checkoutSnapshots = $checkoutSnapshots;
     }
 
     public function orderHistory(Request $request, Response $response, array $argv): Response
@@ -206,6 +214,8 @@ class OrderController extends CartController
                 throw new \InvalidArgumentException('A payment module must be selected or configured.');
             }
 
+            $this->persistCheckoutSnapshot($orderSession, $cart->toArray());
+
             //save in cache the order session only for 24h
             $this->tags(['order-session'])->setEncryptedToCache(
                 $orderSession->metadata['cart_id'],
@@ -277,6 +287,17 @@ class OrderController extends CartController
         } catch (\Exception $e) {
             return response(['error' => $e->getMessage()], 500);
         }
+    }
+
+    /** @param array<string, mixed> $cart */
+    private function persistCheckoutSnapshot(OrderSession $orderSession, array $cart): void
+    {
+        if ($this->checkoutSnapshots === null) {
+            return;
+        }
+
+        $snapshot = $this->checkoutSnapshots->create($orderSession, $cart);
+        $orderSession->setCheckoutSnapshotId($snapshot['id']);
     }
 
 }

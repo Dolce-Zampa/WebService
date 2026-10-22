@@ -328,6 +328,19 @@ class OrderSession implements ObjectInterface
         $this->data['payment_intent_data'] = ['transfer_group' => $transferGroup];
     }
 
+    /**
+     * The identifier points to the encrypted, server-generated checkout
+     * snapshot. It is safe to place in Stripe metadata and lets the webhook
+     * retrieve the exact quote instead of re-reading a mutable cart.
+     */
+    public function setCheckoutSnapshotId(string $snapshotId): void
+    {
+        if (!preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
+            throw new \InvalidArgumentException('Invalid checkout snapshot identifier.');
+        }
+        $this->data['metadata']['checkout_snapshot_id'] = $snapshotId;
+    }
+
     public function toCacheData(): array
     {
         return [
