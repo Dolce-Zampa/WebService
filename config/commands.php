@@ -7,6 +7,7 @@
 
 return [
     \PS\Webservice\Commands\AddProductBundleCommand::class,
+    \PS\Webservice\Commands\ClearProductCacheCommand::class,
     \PS\Webservice\Commands\WarmProductCacheCommand::class,
     \PS\Webservice\Commands\GenerateSitemap::class,
     \PS\Webservice\Commands\SendReviewRequestMailCommand::class,

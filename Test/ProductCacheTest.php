@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\WebserviceConfig;
+use PS\Webservice\Commands\ClearProductCacheCommand;
 use PS\Webservice\Http\Controller\ConfigController;
 use PS\Webservice\Http\Middleware\CachingMiddleware;
 use PS\Webservice\Service\HttpServiceInterface;
@@ -17,6 +18,7 @@ use PS\Webservice\Service\RedisQueue;
 use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Factory\ServerRequestFactory;
 use Slim\Psr7\Response;
+use Symfony\Component\Console\Command\Command;
 
 final class ProductCacheTest extends TestCase
 {
@@ -310,6 +312,33 @@ final class ProductCacheTest extends TestCase
         $this->assertFalse($service->reserveWarmup(7));
         $service->releaseWarmup(7);
         $this->assertTrue($service->reserveWarmup(7));
+    }
+
+    public function test_clear_product_cache_command_invalidates_only_the_requested_product_and_catalog(): void
+    {
+        Cache::tags(['product:7'])->forever('product-7', 'cached');
+        Cache::tags(['product:8'])->forever('product-8', 'cached');
+        $productSevenRevision = Product::revisionFor(['product:7']);
+        $productEightRevision = Product::revisionFor(['product:8']);
+        $catalogRevision = Product::revisionFor(['product-catalog']);
+
+        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand());
+        $this->assertSame(Command::SUCCESS, $tester->execute(['product-id' => '7']));
+
+        $this->assertStringContainsString('prodotto 7', $tester->getDisplay());
+        $this->assertNull(Cache::tags(['product:7'])->get('product-7'));
+        $this->assertSame('cached', Cache::tags(['product:8'])->get('product-8'));
+        $this->assertNotSame($productSevenRevision, Product::revisionFor(['product:7']));
+        $this->assertSame($productEightRevision, Product::revisionFor(['product:8']));
+        $this->assertNotSame($catalogRevision, Product::revisionFor(['product-catalog']));
+    }
+
+    public function test_clear_product_cache_command_rejects_invalid_product_id(): void
+    {
+        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand());
+
+        $this->assertSame(Command::INVALID, $tester->execute(['product-id' => '0']));
+        $this->assertStringContainsString('intero positivo', $tester->getDisplay());
     }
     public function test_webhook_invalidates_base_snapshot_and_old_slug(): void
     {
