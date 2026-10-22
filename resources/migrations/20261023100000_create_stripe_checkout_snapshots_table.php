@@ -16,7 +16,7 @@ final class CreateStripeCheckoutSnapshotsTable extends AbstractMigration
     {
         $tableName = (string) env('PS_TABLE_PREFIX', '') . 'stripe_checkout_snapshots';
         $this->table($tableName, ['id' => false, 'primary_key' => ['id']])
-            ->addColumn('id', 'char', ['limit' => 32])
+            ->addColumn('id', 'char', ['limit' => 32, 'null' => false])
             ->addColumn('cart_id', 'integer', ['signed' => false])
             ->addColumn('checkout_session_id', 'string', ['limit' => 191, 'null' => true])
             ->addColumn('stripe_payment_intent_id', 'string', ['limit' => 191, 'null' => true])
