@@ -21,6 +21,13 @@ final class StripeConnectService
     private const ACCOUNTS = 'stripe_connect_accounts';
     private const TRANSFERS = 'stripe_connect_transfers';
     private const DEFAULT_RETRY_BATCH_SIZE = 100;
+    /**
+     * A retry that keeps failing can mean that Stripe accepted the Transfer
+     * but its response was lost, or that an operator must resolve an account
+     * restriction. Stop automatic calls in both cases and preserve the
+     * idempotency key for manual reconciliation.
+     */
+    private const MAX_TRANSFER_ATTEMPTS = 5;
     private const DEFAULT_COMMISSION_RATE = '20.00';
     private const MINIMUM_COMMISSION_EUR = '1.00';
     private const ACCOUNT_CREATION_IDEMPOTENCY_VERSION = 'v2';
@@ -166,9 +173,19 @@ final class StripeConnectService
             throw new \InvalidArgumentException('Retry limit must be positive.');
         }
 
-        $pending = $this->db->table(self::TRANSFERS)
-            ->where('status', 'pending')
-            ->orderBy('id')
+        // Pending allocations for an artisan who has not started Connect must
+        // remain durable, but they must not consume the whole bounded batch
+        // forever. account.updated and status() process those allocations as
+        // soon as the account becomes ready.
+        $pending = $this->db->table(self::TRANSFERS . ' as transfer')
+            ->join(self::ACCOUNTS . ' as account', 'account.manufacturer_id', '=', 'transfer.manufacturer_id')
+            ->where('transfer.status', 'pending')
+            ->where('transfer.attempt_count', '<', self::MAX_TRANSFER_ATTEMPTS)
+            ->where('account.details_submitted', true)
+            ->where('account.payouts_enabled', true)
+            ->where('account.transfers_enabled', true)
+            ->select('transfer.*')
+            ->orderBy('transfer.id')
             ->limit($limit)
             ->get();
         $settled = 0;
@@ -433,11 +450,14 @@ final class StripeConnectService
                 ++$settled;
             } catch (\Throwable $exception) {
                 $failureCode = $this->failureCode($exception);
-                $this->markTransferPending($pending, (string) $account->stripe_account_id, $failureCode);
-                Log::warning('Stripe Connect transfer left pending for a later retry.', [
+                $status = $this->markTransferPending($pending, (string) $account->stripe_account_id, $failureCode);
+                Log::warning($status === 'manual_review'
+                    ? 'Stripe Connect transfer needs manual reconciliation after bounded retries.'
+                    : 'Stripe Connect transfer left pending for a later retry.', [
                     'manufacturer_id' => (int) $pending->manufacturer_id,
                     'order_id' => (int) $pending->order_id,
                     'failure_code' => $failureCode,
+                    'status' => $status,
                 ]);
             }
         }
@@ -454,6 +474,7 @@ final class StripeConnectService
         $pending = $this->db->table(self::TRANSFERS)
             ->where('manufacturer_id', $sellerId)
             ->where('status', 'pending')
+            ->where('attempt_count', '<', self::MAX_TRANSFER_ATTEMPTS)
             ->orderBy('id')
             ->limit(self::DEFAULT_RETRY_BATCH_SIZE)
             ->get()
@@ -514,16 +535,22 @@ final class StripeConnectService
         );
     }
 
-    private function markTransferPending(object $pending, string $accountId, string $failureCode): void
+    private function markTransferPending(object $pending, string $accountId, string $failureCode): string
     {
+        $attemptCount = (int) ($pending->attempt_count ?? 0) + 1;
+        $status = $attemptCount >= self::MAX_TRANSFER_ATTEMPTS ? 'manual_review' : 'pending';
         $this->db->table(self::TRANSFERS)
             ->where('idempotency_key', (string) $pending->idempotency_key)
             ->update([
                 'stripe_account_id' => $accountId,
-                'status' => 'pending',
+                'status' => $status,
                 'failure_code' => $failureCode,
+                'attempt_count' => $attemptCount,
+                'last_attempted_at' => gmdate('Y-m-d H:i:s'),
                 'updated_at' => gmdate('Y-m-d H:i:s'),
             ]);
+
+        return $status;
     }
 
     private function isReadyForTransfers(object $account): bool

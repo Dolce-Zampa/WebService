@@ -105,3 +105,9 @@ php bin/console app:stripe-connect:retry-pending-transfers --limit=100
 Configurare l'endpoint webhook `/api/webhooks/stripe/checkout` anche per
 l'evento Stripe `account.updated`; il job pianificato resta la protezione
 aggiuntiva contro eventi in ritardo o mancati.
+
+Le quote senza un account pronto non consumano il batch dello scheduler. Un
+Transfer che fallisce dopo che l'account è pronto viene tentato al massimo
+cinque volte con la stessa chiave di idempotenza; poi passa a `manual_review`.
+In quel caso la piattaforma conserva i fondi e l'operatore riconcilia il
+Transfer in Stripe prima di decidere se riprenderlo o rimborsare il cliente.

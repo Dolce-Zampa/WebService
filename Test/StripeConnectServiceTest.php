@@ -223,6 +223,129 @@ final class StripeConnectServiceTest extends TestCase
         }
     }
 
+    public function test_scheduler_skips_unready_sellers_and_stops_after_bounded_failed_attempts(): void
+    {
+        $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
+        $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+
+        try {
+            $db = new Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $this->createTransferTables($db);
+            $now = '2026-10-22 10:00:00';
+
+            $db->table('stripe_connect_accounts')->insert([
+                'manufacturer_id' => 7,
+                'stripe_account_id' => 'acct_manufacturer_7',
+                'account_type' => 'express',
+                'country' => 'IT',
+                'details_submitted' => true,
+                'charges_enabled' => true,
+                'payouts_enabled' => true,
+                'transfers_enabled' => true,
+                'requirements_due' => '[]',
+                'last_synced_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            foreach ([
+                [
+                    'order_id' => 1,
+                    'manufacturer_id' => 8,
+                    'stripe_account_id' => null,
+                    'stripe_payment_intent_id' => 'pi_unready',
+                    'stripe_charge_id' => 'ch_unready',
+                    'idempotency_key' => 'connect:transfer:unready',
+                ],
+                [
+                    'order_id' => 2,
+                    'manufacturer_id' => 7,
+                    'stripe_account_id' => 'acct_manufacturer_7',
+                    'stripe_payment_intent_id' => 'pi_ready',
+                    'stripe_charge_id' => 'ch_ready',
+                    'idempotency_key' => 'connect:transfer:ready',
+                ],
+            ] as $transfer) {
+                $db->table('stripe_connect_transfers')->insert($transfer + [
+                    'stripe_transfer_id' => null,
+                    'transfer_group' => 'dz_cart_' . $transfer['order_id'],
+                    'amount' => 1000,
+                    'currency' => 'EUR',
+                    'status' => 'pending',
+                    'failure_code' => 'seller_account_not_ready',
+                    'attempt_count' => 0,
+                    'last_attempted_at' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+
+            $accounts = new class {
+                public function retrieve(string $id, array $params): \Stripe\Account
+                {
+                    return \Stripe\Account::constructFrom([
+                        'id' => $id,
+                        'type' => 'express',
+                        'country' => 'IT',
+                        'details_submitted' => true,
+                        'charges_enabled' => true,
+                        'payouts_enabled' => true,
+                        'capabilities' => ['transfers' => 'active'],
+                        'requirements' => ['currently_due' => []],
+                    ]);
+                }
+            };
+            $transfers = new class {
+                public int $createCalls = 0;
+
+                public function create(array $params, array $options): never
+                {
+                    ++$this->createCalls;
+                    throw new \RuntimeException('Stripe temporarily unavailable.');
+                }
+            };
+            $stripe = new class($accounts, $transfers) extends \Stripe\StripeClient {
+                public function __construct(private object $accounts, private object $transfers)
+                {
+                    parent::__construct('sk_test_123');
+                }
+
+                public function getService($name)
+                {
+                    return match ($name) {
+                        'accounts' => $this->accounts,
+                        'transfers' => $this->transfers,
+                        default => parent::getService($name),
+                    };
+                }
+            };
+
+            $service = new StripeConnectService($db, null, $stripe);
+            for ($attempt = 1; $attempt <= 5; ++$attempt) {
+                self::assertSame(0, $service->retryPendingTransfers(1));
+                $ready = $db->table('stripe_connect_transfers')->where('manufacturer_id', 7)->first();
+                self::assertSame($attempt, $ready->attempt_count);
+            }
+
+            $ready = $db->table('stripe_connect_transfers')->where('manufacturer_id', 7)->first();
+            $unready = $db->table('stripe_connect_transfers')->where('manufacturer_id', 8)->first();
+            self::assertSame('manual_review', $ready->status);
+            self::assertSame(5, $ready->attempt_count);
+            self::assertSame(5, $transfers->createCalls);
+            self::assertSame(0, $unready->attempt_count);
+            self::assertSame('pending', $unready->status);
+
+            self::assertSame(0, $service->retryPendingTransfers(1));
+            self::assertSame(5, $transfers->createCalls);
+        } finally {
+            $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
+            $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+        }
+    }
+
     private function createTransferTables(Manager $db): void
     {
         foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
@@ -257,6 +380,8 @@ final class StripeConnectServiceTest extends TestCase
             $table->string('currency', 3);
             $table->string('status');
             $table->string('failure_code')->nullable();
+            $table->unsignedInteger('attempt_count')->default(0);
+            $table->dateTime('last_attempted_at')->nullable();
             $table->dateTime('created_at');
             $table->dateTime('updated_at');
         });
