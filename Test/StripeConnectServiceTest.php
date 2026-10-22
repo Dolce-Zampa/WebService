@@ -3,11 +3,31 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Capsule\Manager;
+use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Service\Payments\StripeConnectService;
 
 final class StripeConnectServiceTest extends TestCase
 {
+    private mixed $previousFacadeApplication;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->previousFacadeApplication = Facade::getFacadeApplication();
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication(['log' => new \Psr\Log\NullLogger()]);
+    }
+
+    protected function tearDown(): void
+    {
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication($this->previousFacadeApplication);
+
+        parent::tearDown();
+    }
+
     public function test_creates_one_express_account_per_manufacturer(): void
     {
         $db = new Manager();
@@ -369,7 +389,7 @@ final class StripeConnectServiceTest extends TestCase
 
     private function createTransferTables(Manager $db): void
     {
-        foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
+        foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfer_reversals', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
             $db->schema()->dropIfExists($table);
         }
         $db->schema()->create('stripe_connect_accounts', function ($table): void {
