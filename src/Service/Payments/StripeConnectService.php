@@ -22,6 +22,13 @@ final class StripeConnectService
     private const TRANSFERS = 'stripe_connect_transfers';
     private const REVERSALS = 'stripe_connect_transfer_reversals';
     private const DEFAULT_RETRY_BATCH_SIZE = 100;
+    /**
+     * A retry that keeps failing can mean that Stripe accepted the Transfer
+     * but its response was lost, or that an operator must resolve an account
+     * restriction. Stop automatic calls in both cases and preserve the
+     * idempotency key for manual reconciliation.
+     */
+    private const MAX_TRANSFER_ATTEMPTS = 5;
     private const DEFAULT_COMMISSION_RATE = '20.00';
     private const MINIMUM_COMMISSION_EUR = '1.00';
     private const ACCOUNT_CREATION_IDEMPOTENCY_VERSION = 'v2';
@@ -167,9 +174,19 @@ final class StripeConnectService
             throw new \InvalidArgumentException('Retry limit must be positive.');
         }
 
-        $pending = $this->db->table(self::TRANSFERS)
-            ->where('status', 'pending')
-            ->orderBy('id')
+        // Pending allocations for an artisan who has not started Connect must
+        // remain durable, but they must not consume the whole bounded batch
+        // forever. account.updated and status() process those allocations as
+        // soon as the account becomes ready.
+        $pending = $this->db->table(self::TRANSFERS . ' as transfer')
+            ->join(self::ACCOUNTS . ' as account', 'account.manufacturer_id', '=', 'transfer.manufacturer_id')
+            ->where('transfer.status', 'pending')
+            ->where('transfer.attempt_count', '<', self::MAX_TRANSFER_ATTEMPTS)
+            ->where('account.details_submitted', true)
+            ->where('account.payouts_enabled', true)
+            ->where('account.transfers_enabled', true)
+            ->select('transfer.*')
+            ->orderBy('transfer.id')
             ->limit($limit)
             ->get();
         $settled = 0;
@@ -193,6 +210,7 @@ final class StripeConnectService
         string $paymentIntentId,
         string $transferGroup,
         DateTimeImmutable $occurredAt,
+        ?array $checkoutSnapshot = null,
     ): void {
         if (!$this->enabled()) {
             return;
@@ -209,7 +227,10 @@ final class StripeConnectService
         }
         $paidCents = $this->paidAmountCents($paymentIntent);
 
-        foreach ($this->sellerAllocations($orderId, $paidCents) as $allocation) {
+        $allocations = $checkoutSnapshot === null
+            ? $this->sellerAllocations($orderId, $paidCents)
+            : $this->sellerAllocationsFromCheckoutSnapshot($checkoutSnapshot, $paidCents, $currency);
+        foreach ($allocations as $allocation) {
             $sellerId = (int) $allocation['manufacturer_id'];
             $idempotencyKey = 'connect:transfer:' . hash('sha256', $paymentIntentId . ':' . $allocation['manufacturer_id']);
             $existing = $this->db->table(self::TRANSFERS)->where('idempotency_key', $idempotencyKey)->first();
@@ -541,6 +562,83 @@ final class StripeConnectService
         return $allocations;
     }
 
+    /**
+     * Uses the seller identities, product values and commission rates that
+     * were frozen before Checkout. Product ownership and seller settings can
+     * legitimately change after payment; those later changes must never alter
+     * a transfer for an already-approved basket.
+     *
+     * @param array<string, mixed> $snapshot
+     * @return list<array{manufacturer_id:int,amount:int}>
+     */
+    private function sellerAllocationsFromCheckoutSnapshot(array $snapshot, int $paidCents, string $currency): array
+    {
+        if (($snapshot['currency'] ?? null) !== $currency) {
+            throw new \RuntimeException('Checkout snapshot currency differs from the Stripe payment.');
+        }
+        $totals = $snapshot['totals'] ?? null;
+        $sellers = $snapshot['sellers'] ?? null;
+        if (!is_array($totals) || !is_array($sellers)) {
+            throw new \RuntimeException('Checkout snapshot has no seller allocation data.');
+        }
+        $shippingCents = $totals['shipping_cents'] ?? null;
+        $grandTotalCents = $totals['grand_total_cents'] ?? null;
+        if (!is_int($shippingCents) || $shippingCents < 0 || !is_int($grandTotalCents) || $grandTotalCents !== $paidCents) {
+            throw new \RuntimeException('Checkout snapshot totals do not match the Stripe payment.');
+        }
+        $productCents = $paidCents - $shippingCents;
+        if ($productCents < 0) {
+            throw new \RuntimeException('Stripe payment total is less than checkout snapshot shipping.');
+        }
+
+        /** @var array<int, array{gross:int,commission:int}> $snapshotSellers */
+        $snapshotSellers = [];
+        foreach ($sellers as $seller) {
+            if (!is_array($seller)) {
+                throw new \RuntimeException('Checkout snapshot seller allocation is invalid.');
+            }
+            $sellerId = $seller['manufacturer_id'] ?? null;
+            $grossCents = $seller['gross_cents'] ?? null;
+            $commission = $seller['commission_basis_points'] ?? null;
+            if (!is_int($sellerId) || $sellerId < 1 || !is_int($grossCents) || $grossCents < 0
+                || !is_int($commission) || $commission < 0 || $commission > 10000 || isset($snapshotSellers[$sellerId])) {
+                throw new \RuntimeException('Checkout snapshot seller allocation is invalid.');
+            }
+            $snapshotSellers[$sellerId] = ['gross' => $grossCents, 'commission' => $commission];
+        }
+        if ($snapshotSellers === []) {
+            throw new \RuntimeException('Checkout snapshot has no seller allocations.');
+        }
+
+        $grossTotal = array_sum(array_column($snapshotSellers, 'gross'));
+        if ($grossTotal < 1 && $productCents > 0) {
+            throw new \RuntimeException('Checkout snapshot seller lines have no allocable product value.');
+        }
+
+        ksort($snapshotSellers, SORT_NUMERIC);
+        $remainingProductCents = $productCents;
+        $remainingGrossCents = $grossTotal;
+        $allocations = [];
+        foreach ($snapshotSellers as $sellerId => $seller) {
+            $sellerProductCents = $remainingGrossCents === 0
+                ? 0
+                : intdiv($remainingProductCents * $seller['gross'], $remainingGrossCents);
+            $remainingProductCents -= $sellerProductCents;
+            $remainingGrossCents -= $seller['gross'];
+            $commissionCents = intdiv($sellerProductCents * $seller['commission'], 10000);
+            $commissionCents = min(
+                $sellerProductCents,
+                max($this->minimumCommissionCents(), $commissionCents),
+            );
+            $allocations[] = [
+                'manufacturer_id' => $sellerId,
+                'amount' => $sellerProductCents - $commissionCents,
+            ];
+        }
+
+        return $allocations;
+    }
+
     /** @return object */
     private function syncAccount(int $sellerId, \Stripe\StripeObject $account): object
     {
@@ -846,11 +944,14 @@ final class StripeConnectService
                 ++$settled;
             } catch (\Throwable $exception) {
                 $failureCode = $this->failureCode($exception);
-                $this->markTransferPending($pending, (string) $account->stripe_account_id, $failureCode);
-                Log::warning('Stripe Connect transfer left pending for a later retry.', [
+                $status = $this->markTransferPending($pending, (string) $account->stripe_account_id, $failureCode);
+                Log::warning($status === 'manual_review'
+                    ? 'Stripe Connect transfer needs manual reconciliation after bounded retries.'
+                    : 'Stripe Connect transfer left pending for a later retry.', [
                     'manufacturer_id' => (int) $pending->manufacturer_id,
                     'order_id' => (int) $pending->order_id,
                     'failure_code' => $failureCode,
+                    'status' => $status,
                 ]);
             }
         }
@@ -867,6 +968,7 @@ final class StripeConnectService
         $pending = $this->db->table(self::TRANSFERS)
             ->where('manufacturer_id', $sellerId)
             ->where('status', 'pending')
+            ->where('attempt_count', '<', self::MAX_TRANSFER_ATTEMPTS)
             ->orderBy('id')
             ->limit(self::DEFAULT_RETRY_BATCH_SIZE)
             ->get()
@@ -927,16 +1029,22 @@ final class StripeConnectService
         );
     }
 
-    private function markTransferPending(object $pending, string $accountId, string $failureCode): void
+    private function markTransferPending(object $pending, string $accountId, string $failureCode): string
     {
+        $attemptCount = (int) ($pending->attempt_count ?? 0) + 1;
+        $status = $attemptCount >= self::MAX_TRANSFER_ATTEMPTS ? 'manual_review' : 'pending';
         $this->db->table(self::TRANSFERS)
             ->where('idempotency_key', (string) $pending->idempotency_key)
             ->update([
                 'stripe_account_id' => $accountId,
-                'status' => 'pending',
+                'status' => $status,
                 'failure_code' => $failureCode,
+                'attempt_count' => $attemptCount,
+                'last_attempted_at' => gmdate('Y-m-d H:i:s'),
                 'updated_at' => gmdate('Y-m-d H:i:s'),
             ]);
+
+        return $status;
     }
 
     private function isReadyForTransfers(object $account): bool

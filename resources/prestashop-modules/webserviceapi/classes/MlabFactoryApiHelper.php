@@ -290,6 +290,11 @@ class MlabFactoryApiHelper
                 'reference' => (string) $product['reference'],
                 'attributes' => (string) ($product['attributes'] ?? ''),
                 'quantity' => (int) $product['cart_quantity'],
+                // price_wt/total_wt are tax-inclusive. Preserve the
+                // corresponding tax-exclusive values when PrestaShop exposes
+                // them so an immutable checkout snapshot can retain both.
+                'price_tax_excl' => isset($product['price']) ? (float) $product['price'] : null,
+                'total_tax_excl' => isset($product['total']) ? (float) $product['total'] : null,
                 'price_wt' => (float) $product['price_wt'],
                 'total_wt' => (float) $product['total_wt'],
             );

@@ -89,6 +89,7 @@ class ConfirmOrderSession implements ObjectInterface
             'newsletter' => (bool) ($data['newsletter'] ?? false),
             'id_carrier' => isset($data['id_carrier']) ? (int) $data['id_carrier'] : 14,
             'coupon_code' => $data['coupon_code'] ?? null,
+            'checkout_snapshot_id' => $this->snapshotId($data['checkout_snapshot_id'] ?? null),
         ];
     }
 
@@ -131,6 +132,17 @@ class ConfirmOrderSession implements ObjectInterface
     public function get(string $key, mixed $default = null): mixed
     {
         return $this->data[$key] ?? $default;
+    }
+
+    private function snapshotId(mixed $snapshotId): ?string
+    {
+        if ($snapshotId === null || $snapshotId === '') {
+            return null;
+        }
+        if (!is_string($snapshotId) || !preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
+            throw new \InvalidArgumentException('Invalid checkout snapshot identifier.');
+        }
+        return $snapshotId;
     }
 
     public function hash(): string
