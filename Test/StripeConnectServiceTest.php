@@ -6,6 +6,7 @@ use Illuminate\Database\Capsule\Manager;
 use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Service\Payments\StripeConnectService;
+use Psr\Log\NullLogger;
 
 final class StripeConnectServiceTest extends TestCase
 {
@@ -396,8 +397,11 @@ final class StripeConnectServiceTest extends TestCase
     {
         $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
         $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $previousFacadeApplication = Facade::getFacadeApplication();
         $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
         $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+        Facade::clearResolvedInstance('log');
+        Facade::setFacadeApplication(['log' => new NullLogger()]);
 
         try {
             $db = new Manager();
@@ -513,6 +517,8 @@ final class StripeConnectServiceTest extends TestCase
         } finally {
             $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
             $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+            Facade::clearResolvedInstance('log');
+            Facade::setFacadeApplication($previousFacadeApplication);
         }
     }
 
