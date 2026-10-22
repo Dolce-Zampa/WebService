@@ -241,7 +241,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
     {
         try {
             $this->httpService->setUrl('/mailer?debug=true');
-            $this->httpService->invoke('POST', new PayloadServiceData([
+            $response = $this->httpService->invoke('POST', new PayloadServiceData([
                 'subject' => 'Hai ricevuto una nuova vendita',
                 'to_email' => $email,
                 'to_name' => $sellerName,
@@ -256,6 +256,14 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                     'status' => $status,
                 ],
             ]));
+            if ($response->failed()) {
+                throw new \RuntimeException('PrestaShop rejected seller sale notification with HTTP ' . $response->getHttpCode() . '.');
+            }
+
+            $payload = $response->toArray();
+            if (($payload['success'] ?? false) !== true) {
+                throw new \RuntimeException('PrestaShop did not confirm seller sale notification delivery.');
+            }
         } catch (\Throwable $e) {
             throw new PrestashopConnectorException($this->httpService, $e);
         }
