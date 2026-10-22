@@ -128,6 +128,11 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             $this->addCustomCartRule($cart, $amountPaid);
         }
 
+        $checkoutSnapshotId = (string) MlabFactoryApiHelper::getValue($payload, 'checkout_snapshot_id', '');
+        if ($checkoutSnapshotId !== '') {
+            $this->assertCheckoutSnapshotMatchesCart($cart, $checkoutSnapshotId, $carrierId, $amountPaid);
+        }
+
 
         $paymentModule->validateOrder(
             (int) $cart->id,
@@ -340,6 +345,87 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
 
         return new Order($orderId);
     }
+
+    /**
+     * A buyer may have completed Stripe Checkout while the PrestaShop cart is
+     * still editable. Confirm only when that cart still equals the immutable
+     * server quote stored with the Checkout Session.
+     */
+    private function assertCheckoutSnapshotMatchesCart(Cart $cart, $snapshotId, $carrierId, $amountPaid)
+    {
+        if (!is_string($snapshotId) || !preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
+            throw new MlabFactoryApiException('Invalid checkout snapshot identifier.', 422);
+        }
+
+        $row = Db::getInstance()->getRow(
+            'SELECT `verification_payload` FROM `' . _DB_PREFIX_ . 'stripe_checkout_snapshots`'
+            . ' WHERE `id` = \'' . pSQL($snapshotId) . '\''
+        );
+        if (!$row || empty($row['verification_payload'])) {
+            throw new MlabFactoryApiException('Checkout snapshot not found.', 409);
+        }
+        $snapshot = json_decode((string) $row['verification_payload'], true);
+        if (!is_array($snapshot) || !isset($snapshot['totals']) || !is_array($snapshot['totals']) || !isset($snapshot['lines']) || !is_array($snapshot['lines'])) {
+            throw new MlabFactoryApiException('Checkout snapshot is invalid.', 409);
+        }
+
+        $currency = new Currency((int) $cart->id_currency);
+        if ((int) ($snapshot['cart_id'] ?? 0) !== (int) $cart->id
+            || (int) ($snapshot['carrier_id'] ?? 0) !== (int) $carrierId
+            || strtoupper((string) ($snapshot['currency'] ?? '')) !== strtoupper((string) $currency->iso_code)
+            || (int) ($snapshot['totals']['grand_total_cents'] ?? -1) !== $this->minorAmount($amountPaid)) {
+            throw new MlabFactoryApiException('Checkout snapshot does not match the order confirmation.', 409);
+        }
+
+        if ($this->minorAmount($cart->getOrderTotal(true, Cart::BOTH)) !== (int) ($snapshot['totals']['grand_total_cents'] ?? -1)) {
+            throw new MlabFactoryApiException('Cart total changed after Checkout was created.', 409);
+        }
+
+        $expectedLines = array();
+        foreach ($snapshot['lines'] as $line) {
+            if (!is_array($line)) {
+                throw new MlabFactoryApiException('Checkout snapshot is invalid.', 409);
+            }
+            $expectedLines[] = array(
+                'product_id' => (int) ($line['product_id'] ?? 0),
+                'product_attribute_id' => (int) ($line['product_attribute_id'] ?? 0),
+                'customization_id' => (int) ($line['customization_id'] ?? 0),
+                'quantity' => (int) ($line['quantity'] ?? 0),
+                'unit_amount_tax_incl_cents' => (int) ($line['unit_amount_tax_incl_cents'] ?? -1),
+                'total_amount_tax_incl_cents' => (int) ($line['total_amount_tax_incl_cents'] ?? -1),
+            );
+        }
+        $actualLines = array();
+        foreach ($cart->getProducts() as $line) {
+            $actualLines[] = array(
+                'product_id' => (int) ($line['id_product'] ?? 0),
+                'product_attribute_id' => (int) ($line['id_product_attribute'] ?? 0),
+                'customization_id' => (int) ($line['id_customization'] ?? 0),
+                'quantity' => (int) ($line['cart_quantity'] ?? 0),
+                'unit_amount_tax_incl_cents' => $this->minorAmount($line['price_wt'] ?? null),
+                'total_amount_tax_incl_cents' => $this->minorAmount($line['total_wt'] ?? null),
+            );
+        }
+        usort($expectedLines, array($this, 'sortSnapshotLines'));
+        usort($actualLines, array($this, 'sortSnapshotLines'));
+        if ($expectedLines !== $actualLines) {
+            throw new MlabFactoryApiException('Cart products changed after Checkout was created.', 409);
+        }
+    }
+
+    private function sortSnapshotLines($left, $right)
+    {
+        return strcmp(json_encode($left), json_encode($right));
+    }
+
+    private function minorAmount($amount)
+    {
+        if (!is_numeric($amount) || !is_finite((float) $amount) || (float) $amount < 0) {
+            throw new MlabFactoryApiException('Invalid checkout amount.', 409);
+        }
+        return (int) round((float) $amount * 100, 0, PHP_ROUND_HALF_UP);
+    }
+
     /**
      * Applica una cart rule (coupon) al carrello
      * 

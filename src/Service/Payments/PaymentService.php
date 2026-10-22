@@ -10,7 +10,10 @@ class PaymentService implements PaymentGatewayInterface
 {
     private static ?string $apiKey = null;
 
-    public function __construct(private ?\Stripe\StripeClient $stripeClient = null)
+    public function __construct(
+        private ?\Stripe\StripeClient $stripeClient = null,
+        private readonly ?CheckoutSnapshotService $checkoutSnapshots = null,
+    )
     {
     }
 
@@ -46,6 +49,15 @@ class PaymentService implements PaymentGatewayInterface
             $checkout_session = $this->stripeClient === null
                 ? \Stripe\Checkout\Session::create($params, $options)
                 : $this->stripeClient->checkout->sessions->create($params, $options);
+            $snapshotId = $orderSession->metadata['checkout_snapshot_id'] ?? null;
+            if (is_string($snapshotId) && $this->checkoutSnapshots !== null) {
+                $this->checkoutSnapshots->bindStripeSession(
+                    $snapshotId,
+                    $checkout_session->id ?? null,
+                    $checkout_session->payment_intent ?? null,
+                    $orderSession->metadata['transfer_group'] ?? null,
+                );
+            }
             
             return $checkout_session->url;
         } catch (\Stripe\Exception\ApiErrorException $e) {

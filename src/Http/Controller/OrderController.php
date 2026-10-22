@@ -10,6 +10,7 @@ use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Http\Controller\CartController;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
+use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Traits\Order as OrderHelper;
@@ -27,14 +28,21 @@ class OrderController extends CartController
     private const CHECKOUT_ATTEMPT_LIFETIME_SECONDS = 7200;
     private Order $orderService;
     private ?PrestashopRepository $customerRepository;
+    private ?CheckoutSnapshotService $checkoutSnapshots;
 
     protected PaymentGatewayInterface $stripeService;
 
-    public function __construct(Order $orderService, PaymentGatewayInterface $stripeService, ?PrestashopRepository $customerRepository = null)
+    public function __construct(
+        Order $orderService,
+        PaymentGatewayInterface $stripeService,
+        ?PrestashopRepository $customerRepository = null,
+        ?CheckoutSnapshotService $checkoutSnapshots = null,
+    )
     {
         $this->stripeService = $stripeService;
         $this->orderService = $orderService;
         $this->customerRepository = $customerRepository;
+        $this->checkoutSnapshots = $checkoutSnapshots;
     }
 
     public function orderHistory(Request $request, Response $response, array $argv): Response
@@ -211,7 +219,7 @@ class OrderController extends CartController
                 throw new \InvalidArgumentException('A payment module must be selected or configured.');
             }
 
-            $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService);
+            $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray());
 
             return response([
                 'order' => $cart->toArray(),
@@ -257,17 +265,21 @@ class OrderController extends CartController
      * Serialises the short critical section around the local record. Stripe's
      * idempotency key is still the final guard if the distributed lock expires
      * or a worker crashes after Stripe has accepted the request.
+     *
+     * @param array<string, mixed> $cart
      */
-    private function createOrReuseCheckout(OrderSession $orderSession, PaymentGatewayInterface $paymentService): string
+    private function createOrReuseCheckout(OrderSession $orderSession, PaymentGatewayInterface $paymentService, array $cart): string
     {
         $fingerprint = $orderSession->checkoutAttemptFingerprint();
-        $callback = function () use ($orderSession, $paymentService): string {
+        $callback = function () use ($orderSession, $paymentService, $cart): string {
             $existingCheckoutUrl = $this->existingCheckoutUrl($orderSession);
             if ($existingCheckoutUrl !== null) {
                 return $existingCheckoutUrl;
             }
 
             [$checkoutFingerprint, $checkoutVersion, $checkoutExpiresAt] = $this->startCheckoutAttempt($orderSession);
+
+            $this->persistCheckoutSnapshot($orderSession, $cart);
 
             // Save the immutable customer details needed by the webhook only
             // after the attempt key has been attached to the session.
@@ -404,6 +416,17 @@ class OrderController extends CartController
         } catch (\Exception $e) {
             return response(['error' => $e->getMessage()], 500);
         }
+    }
+
+    /** @param array<string, mixed> $cart */
+    private function persistCheckoutSnapshot(OrderSession $orderSession, array $cart): void
+    {
+        if ($this->checkoutSnapshots === null) {
+            return;
+        }
+
+        $snapshot = $this->checkoutSnapshots->create($orderSession, $cart);
+        $orderSession->setCheckoutSnapshotId($snapshot['id']);
     }
 
 }
