@@ -157,6 +157,23 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
         ], $metadata);
     }
 
+    public function test_completed_but_unpaid_checkout_remains_pending_in_the_ledger(): void
+    {
+        $this->controller()->ingest($this->checkoutEvent(
+            'evt_unpaid_completed',
+            'checkout.session.completed',
+            [
+                'id' => 'cs_unpaid_ledger_1',
+                'amount_total' => 1299,
+                'currency' => 'eur',
+                'payment_status' => 'unpaid',
+                'metadata' => ['cart_id' => '42'],
+            ],
+        ));
+
+        self::assertSame('pending', DB::table('financial_transaction_events')->value('status'));
+    }
+
     public function test_records_an_exact_expanded_stripe_fee_and_internal_customer_id_once(): void
     {
         $event = $this->stripeEvent('evt_fee_1', 'payment_intent.succeeded', [
