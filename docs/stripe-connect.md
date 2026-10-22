@@ -102,6 +102,37 @@ Il recupero è anche eseguito ogni 15 minuti dallo scheduler:
 php bin/console app:stripe-connect:retry-pending-transfers --limit=100
 ```
 
+## Ordini non ancora leggibili da PrestaShop
+
+Un webhook Stripe può arrivare quando PrestaShop ha accettato la creazione
+dell'ordine ma la riga `orders` non è ancora disponibile per la lettura. Il
+webservice salva in `stripe_connect_transfer_jobs` l'allocazione del pagamento
+prima di provare a creare i transfer. Il job viene ritentato ogni cinque minuti
+e usa `id_cart` per risolvere direttamente l'ordine nel database, senza
+dipendere dalla cache o da una seconda richiesta HTTP a PrestaShop. Dopo cinque
+tentativi falliti passa a `manual_review` e genera un log critical; resta
+recuperabile con il comando manuale.
+
+Per elaborare manualmente i job già in coda:
+
+```bash
+php bin/console app:stripe-connect:retry-queued-allocations --limit=100
+```
+
+Per recuperare un ordine storico che non aveva ancora un job, usare i valori
+verificati dell'ordine, del carrello e del PaymentIntent:
+
+```bash
+php bin/console app:stripe-connect:recover-allocation \
+  --order-id=83 \
+  --cart-id=713 \
+  --payment-intent=pi_... \
+  --transfer-group=dz_cart_713
+```
+
+Il comando è idempotente: per ogni PaymentIntent conserva un solo job e i
+transfer per artigiano mantengono la loro chiave di idempotenza Stripe.
+
 Configurare l'endpoint webhook `/api/webhooks/stripe/checkout` anche per
 l'evento Stripe `account.updated`; il job pianificato resta la protezione
 aggiuntiva contro eventi in ritardo o mancati.
