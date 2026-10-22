@@ -106,6 +106,25 @@ Configurare l'endpoint webhook `/api/webhooks/stripe/checkout` anche per
 l'evento Stripe `account.updated`; il job pianificato resta la protezione
 aggiuntiva contro eventi in ritardo o mancati.
 
+## Rimborsi e contestazioni
+
+Un rimborso del charge della piattaforma non annulla automaticamente i
+Transfer già eseguiti. Al webhook `refund.*` riuscito, il WebService calcola
+la quota venditore in proporzione all'importo effettivamente trasferito:
+riduce i Transfer ancora pendenti oppure crea un `Transfer Reversal` per quelli
+già eseguiti. La quota della piattaforma, inclusi commissione e spedizione, non
+viene addebitata al venditore.
+
+Se Stripe non può completare il reversal, la posizione resta
+`recovery_required` per una verifica operativa. Il retry è esplicito e limitato:
+
+```bash
+php bin/console app:stripe-connect:retry-refund-reversals --limit=100
+```
+
+Un evento `charge.dispute.*` non genera invece un reversal automatico: salva le
+quote attribuibili ai venditori con stato `pending_review`, così da permettere
+la raccolta delle evidenze e una decisione sul recupero prima di spostare fondi.
 Le quote senza un account pronto non consumano il batch dello scheduler. Un
 Transfer che fallisce dopo che l'account è pronto viene tentato al massimo
 cinque volte con la stessa chiave di idempotenza; poi passa a `manual_review`.

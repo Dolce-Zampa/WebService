@@ -275,12 +275,23 @@ class StripeWebhookController extends OrderController
      */
     protected function recordFinancialWebhook(\Stripe\Event $event): void
     {
-        if ($this->financialLedger === null) {
+        if (str_starts_with((string) $event->type, 'refund.')) {
+            if ($this->financialLedger !== null) {
+                $this->recordStripeRefundWebhook($event);
+            }
+            $this->reconcileStripeConnectRefund($event);
             return;
         }
 
-        if (str_starts_with((string) $event->type, 'refund.')) {
-            $this->recordStripeRefundWebhook($event);
+        if (str_starts_with((string) $event->type, 'charge.dispute.')) {
+            if ($this->financialLedger !== null) {
+                $this->recordStripeDisputeWebhook($event);
+            }
+            $this->registerStripeConnectDispute($event);
+            return;
+        }
+
+        if ($this->financialLedger === null) {
             return;
         }
 
@@ -437,6 +448,113 @@ class StripeWebhookController extends OrderController
         ]), $idempotencyKey);
     }
 
+    private function reconcileStripeConnectRefund(\Stripe\Event $event): void
+    {
+        if ($this->stripeConnect === null || !$this->stripeConnect->enabled()) {
+            return;
+        }
+
+        $object = $event->data->object;
+        if (!$object instanceof \Stripe\StripeObject) {
+            throw new \RuntimeException('Invalid Stripe refund event object.');
+        }
+        $this->stripeConnect->reconcileRefund(
+            $this->stripeIdentifier($this->stripeRefundPaymentIntentId($object), 'refund payment intent'),
+            $this->stripeIdentifier($object->id ?? null, 'refund'),
+            $this->stripeMinorAmountValue($object),
+            $this->stripeCurrency($object),
+            $this->stripeRefundStatus($object),
+            $this->stripeEventTimestamp($event->created ?? null),
+        );
+    }
+
+    /**
+     * A dispute belongs to the platform charge. Record its lifecycle against
+     * that customer payment and retain the linked seller recovery positions;
+     * a Transfer reversal remains a separate, explicit business decision.
+     */
+    private function recordStripeDisputeWebhook(\Stripe\Event $event): void
+    {
+        $object = $event->data->object;
+        if (!$object instanceof \Stripe\StripeObject) {
+            throw new \RuntimeException('Invalid Stripe dispute event object.');
+        }
+
+        $eventId = $this->stripeIdentifier($event->id ?? null, 'event');
+        $disputeId = $this->stripeIdentifier($object->id ?? null, 'dispute');
+        $paymentIntentId = $this->stripeDisputePaymentIntentId($object);
+        if ($paymentIntentId === null) {
+            throw new \RuntimeException('Stripe dispute has no payment intent for ledger correlation.');
+        }
+        $sourceEventType = 'stripe.' . (string) $event->type;
+        $occurredAt = $this->stripeEventTimestamp($event->created ?? null);
+        $status = $this->stripeDisputeStatus($object);
+        $idempotencyKey = 'stripe:webhook:' . hash('sha256', $eventId);
+        $metadata = $this->stripeDisputeMetadata($object, $disputeId, $paymentIntentId);
+        $existing = $this->financialTransactionByProviderTransaction($disputeId);
+
+        if ($existing !== null) {
+            $this->financialLedger?->recordProviderStatus(
+                (int) $existing->id,
+                $status,
+                $idempotencyKey,
+                $occurredAt,
+                $sourceEventType,
+                $eventId,
+                $metadata,
+            );
+            return;
+        }
+
+        $payment = $this->financialLedger?->findPaymentByProviderTransaction('stripe', $paymentIntentId);
+        if ($payment === null) {
+            throw new \RuntimeException('Stripe dispute original payment is not recorded.');
+        }
+        $currency = $this->stripeCurrency($object);
+        if ($currency !== (string) $payment->currency) {
+            throw new \RuntimeException('Stripe dispute currency differs from the original payment.');
+        }
+
+        $this->financialLedger?->recordReversal((int) $payment->id, FinancialMovement::fromArray([
+            'type' => 'chargeback',
+            'status' => $status,
+            'amount' => '-' . $this->stripeGrossAmount($object),
+            'currency' => $currency,
+            'occurred_at' => $occurredAt,
+            'order_id' => $this->positiveInteger($payment->order_id),
+            'customer_id' => $this->positiveInteger($payment->customer_id),
+            'order_reference' => $this->stripeOptionalIdentifier($payment->order_reference),
+            'provider' => 'stripe',
+            'provider_account_id' => $this->stripeOptionalIdentifier($event->account ?? null) ?? $this->stripeOptionalIdentifier($payment->provider_account_id),
+            'provider_transaction_id' => $disputeId,
+            'provider_event_id' => $eventId,
+            'source_event_type' => $sourceEventType,
+            'source_event_id' => $eventId,
+            'metadata' => $metadata,
+        ]), $idempotencyKey);
+    }
+
+    private function registerStripeConnectDispute(\Stripe\Event $event): void
+    {
+        if ($this->stripeConnect === null || !$this->stripeConnect->enabled()) {
+            return;
+        }
+        $object = $event->data->object;
+        if (!$object instanceof \Stripe\StripeObject) {
+            throw new \RuntimeException('Invalid Stripe dispute event object.');
+        }
+        $chargeId = $this->stripeOptionalIdentifier($object->toArray()['charge'] ?? null);
+        if ($chargeId === null) {
+            throw new \RuntimeException('Stripe dispute has no charge for seller recovery correlation.');
+        }
+        $this->stripeConnect->registerDispute(
+            $chargeId,
+            $this->stripeIdentifier($object->id ?? null, 'dispute'),
+            $this->stripeMinorAmountValue($object),
+            $this->stripeCurrency($object),
+        );
+    }
+
     private function financialStatusForEvent(\Stripe\StripeObject $object, string $eventType): ?string
     {
         return match ($eventType) {
@@ -490,6 +608,30 @@ class StripeWebhookController extends OrderController
         };
     }
 
+    private function stripeDisputePaymentIntentId(\Stripe\StripeObject $object): ?string
+    {
+        $data = $object->toArray();
+        $paymentIntent = $data['payment_intent'] ?? null;
+        if (is_array($paymentIntent)) {
+            $paymentIntent = $paymentIntent['id'] ?? null;
+        } elseif ($paymentIntent instanceof \Stripe\StripeObject) {
+            $paymentIntent = $paymentIntent->id ?? null;
+        }
+
+        return $this->stripeOptionalIdentifier($paymentIntent);
+    }
+
+    private function stripeDisputeStatus(\Stripe\StripeObject $object): string
+    {
+        return match ($this->stripeOptionalIdentifier($object->toArray()['status'] ?? null)) {
+            'needs_response', 'warning_needs_response', 'under_review', 'warning_under_review' => 'pending',
+            'lost' => 'available',
+            'won' => 'reversed',
+            'warning_closed' => 'cancelled',
+            default => throw new \RuntimeException('Stripe dispute has no supported status.'),
+        };
+    }
+
     /** @return array<string, string> */
     private function stripeRefundMetadata(\Stripe\StripeObject $object, string $refundId, string $paymentIntentId): array
     {
@@ -504,6 +646,26 @@ class StripeWebhookController extends OrderController
         $status = $this->stripeOptionalIdentifier($object->toArray()['status'] ?? null);
         if ($status !== null) {
             $metadata['stripe_refund_status'] = $status;
+        }
+
+        return $metadata;
+    }
+
+    /** @return array<string, string> */
+    private function stripeDisputeMetadata(\Stripe\StripeObject $object, string $disputeId, string $paymentIntentId): array
+    {
+        $metadata = [
+            'stripe_dispute_id' => $disputeId,
+            'stripe_payment_intent_id' => $paymentIntentId,
+        ];
+        $data = $object->toArray();
+        $chargeId = $this->stripeOptionalIdentifier($data['charge'] ?? null);
+        if ($chargeId !== null) {
+            $metadata['stripe_charge_id'] = $chargeId;
+        }
+        $status = $this->stripeOptionalIdentifier($data['status'] ?? null);
+        if ($status !== null) {
+            $metadata['stripe_dispute_status'] = $status;
         }
 
         return $metadata;
@@ -652,6 +814,19 @@ class StripeWebhookController extends OrderController
         }
 
         return intdiv($minorUnits, 100) . '.' . str_pad((string) ($minorUnits % 100), 2, '0', STR_PAD_LEFT);
+    }
+
+    private function stripeMinorAmountValue(\Stripe\StripeObject $object): int
+    {
+        $amount = $object->toArray()['amount'] ?? null;
+        if (!is_int($amount) && !(is_string($amount) && ctype_digit($amount))) {
+            throw new \RuntimeException('Stripe financial event has no valid amount.');
+        }
+        if ((int) $amount < 1) {
+            throw new \RuntimeException('Stripe financial event has no positive amount.');
+        }
+
+        return (int) $amount;
     }
 
     private function stripeMinorAmount(int $minorUnits, string $currency): string
