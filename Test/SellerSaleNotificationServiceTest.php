@@ -24,6 +24,7 @@ final class SellerSaleNotificationServiceTest extends TestCase
         $schema->create('orders', function ($table): void {
             $table->unsignedInteger('id_order')->primary();
             $table->unsignedInteger('id_cart');
+            $table->unsignedInteger('id_lang');
             $table->string('reference', 64);
             $table->unsignedInteger('current_state');
             $table->dateTime('date_add');
@@ -32,6 +33,7 @@ final class SellerSaleNotificationServiceTest extends TestCase
             $table->increments('id_order_detail');
             $table->unsignedInteger('id_order');
             $table->unsignedInteger('product_id');
+            $table->unsignedInteger('product_attribute_id')->default(0);
             $table->string('product_name');
             $table->unsignedInteger('product_quantity');
             $table->decimal('total_price_tax_incl', 20, 6)->nullable();
@@ -44,6 +46,44 @@ final class SellerSaleNotificationServiceTest extends TestCase
         $schema->create('manufacturer', function ($table): void {
             $table->unsignedInteger('id_manufacturer')->primary();
             $table->string('email')->nullable();
+            $table->string('name');
+        });
+        $schema->create('product_attribute_combination', function ($table): void {
+            $table->unsignedInteger('id_product_attribute');
+            $table->unsignedInteger('id_attribute');
+        });
+        $schema->create('attribute', function ($table): void {
+            $table->unsignedInteger('id_attribute')->primary();
+            $table->unsignedInteger('id_attribute_group');
+        });
+        $schema->create('attribute_lang', function ($table): void {
+            $table->unsignedInteger('id_attribute');
+            $table->unsignedInteger('id_lang');
+            $table->string('name');
+        });
+        $schema->create('attribute_group_lang', function ($table): void {
+            $table->unsignedInteger('id_attribute_group');
+            $table->unsignedInteger('id_lang');
+            $table->string('name');
+        });
+        $schema->create('customization', function ($table): void {
+            $table->unsignedInteger('id_customization')->primary();
+            $table->unsignedInteger('id_cart');
+            $table->unsignedInteger('id_product');
+            $table->unsignedInteger('id_product_attribute')->default(0);
+        });
+        $schema->create('customized_data', function ($table): void {
+            $table->unsignedInteger('id_customization');
+            $table->unsignedInteger('type');
+            $table->unsignedInteger('index');
+            $table->string('value');
+        });
+        $schema->create('customization_field', function ($table): void {
+            $table->unsignedInteger('id_customization_field')->primary();
+        });
+        $schema->create('customization_field_lang', function ($table): void {
+            $table->unsignedInteger('id_customization_field');
+            $table->unsignedInteger('id_lang');
             $table->string('name');
         });
         $schema->create('seller_sale_notification_logs', function ($table): void {
@@ -63,6 +103,7 @@ final class SellerSaleNotificationServiceTest extends TestCase
         DB::table('orders')->insert([
             'id_order' => 501,
             'id_cart' => 701,
+            'id_lang' => 1,
             'reference' => 'ORDER-501',
             'current_state' => 2,
             'date_add' => '2026-10-09 09:00:00',
@@ -76,8 +117,34 @@ final class SellerSaleNotificationServiceTest extends TestCase
             ['id_product' => 102, 'id_manufacturer' => 12],
         ]);
         DB::table('order_detail')->insert([
-            ['id_order' => 501, 'product_id' => 101, 'product_name' => 'Prodotto uno', 'product_quantity' => 2, 'total_price_tax_incl' => '24.00', 'unit_price_tax_incl' => '12.00'],
-            ['id_order' => 501, 'product_id' => 102, 'product_name' => 'Prodotto due', 'product_quantity' => 1, 'total_price_tax_incl' => '8.50', 'unit_price_tax_incl' => '8.50'],
+            ['id_order' => 501, 'product_id' => 101, 'product_attribute_id' => 1001, 'product_name' => 'Prodotto uno', 'product_quantity' => 2, 'total_price_tax_incl' => '24.00', 'unit_price_tax_incl' => '12.00'],
+            ['id_order' => 501, 'product_id' => 102, 'product_attribute_id' => 0, 'product_name' => 'Prodotto due', 'product_quantity' => 1, 'total_price_tax_incl' => '8.50', 'unit_price_tax_incl' => '8.50'],
+        ]);
+        DB::table('product_attribute_combination')->insert([
+            ['id_product_attribute' => 1001, 'id_attribute' => 201],
+            ['id_product_attribute' => 1001, 'id_attribute' => 202],
+        ]);
+        DB::table('attribute')->insert([
+            ['id_attribute' => 201, 'id_attribute_group' => 1],
+            ['id_attribute' => 202, 'id_attribute_group' => 2],
+        ]);
+        DB::table('attribute_lang')->insert([
+            ['id_attribute' => 201, 'id_lang' => 1, 'name' => 'Rosso'],
+            ['id_attribute' => 202, 'id_lang' => 1, 'name' => 'M'],
+        ]);
+        DB::table('attribute_group_lang')->insert([
+            ['id_attribute_group' => 1, 'id_lang' => 1, 'name' => 'Colore'],
+            ['id_attribute_group' => 2, 'id_lang' => 1, 'name' => 'Taglia'],
+        ]);
+        DB::table('customization')->insert([
+            ['id_customization' => 301, 'id_cart' => 701, 'id_product' => 101, 'id_product_attribute' => 1001],
+        ]);
+        DB::table('customized_data')->insert([
+            ['id_customization' => 301, 'type' => 1, 'index' => 401, 'value' => 'Luna'],
+        ]);
+        DB::table('customization_field')->insert(['id_customization_field' => 401]);
+        DB::table('customization_field_lang')->insert([
+            'id_customization_field' => 401, 'id_lang' => 1, 'name' => 'Nome',
         ]);
     }
 
@@ -104,9 +171,19 @@ final class SellerSaleNotificationServiceTest extends TestCase
         $service->notifyFinalizedSalesForCart(701, new DateTimeImmutable('2026-10-09 10:30:00'));
 
         self::assertSame('24.00', $deliveries['one@example.test']['amount']);
-        self::assertSame([['name' => 'Prodotto uno', 'quantity' => 2, 'amount' => '24.00']], $deliveries['one@example.test']['items']);
+        self::assertSame([[
+            'name' => 'Prodotto uno',
+            'quantity' => 2,
+            'amount' => '24.00',
+            'details' => ['Colore: Rosso', 'Taglia: M', 'Nome: Luna'],
+        ]], $deliveries['one@example.test']['items']);
         self::assertSame('8.50', $deliveries['two@example.test']['amount']);
-        self::assertSame([['name' => 'Prodotto due', 'quantity' => 1, 'amount' => '8.50']], $deliveries['two@example.test']['items']);
+        self::assertSame([[
+            'name' => 'Prodotto due',
+            'quantity' => 1,
+            'amount' => '8.50',
+            'details' => [],
+        ]], $deliveries['two@example.test']['items']);
         self::assertSame('payment_accepted', $deliveries['one@example.test']['status']);
         self::assertSame('2026-10-09 10:30:00', $deliveries['one@example.test']['finalizedAt']);
         self::assertSame(2, DB::table('seller_sale_notification_logs')->where('status', 'sent')->count());
