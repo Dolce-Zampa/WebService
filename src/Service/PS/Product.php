@@ -60,6 +60,11 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         if ($cached !== null && ($valid === null || $valid($cached))) {
             return $cached;
         }
+        if ($cached !== null) {
+            // Do not leave entries which are no longer eligible for this
+            // request (for example a product that has been deactivated).
+            $store->forget($key);
+        }
         // Also guard loads of products that embed a bundle modified during this request.
         $revision = self::revisionFor(array_merge($tags, ['product-catalog']));
         $namespace = $store->getTags()->getNamespace();
@@ -75,6 +80,9 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             $cached = $store->get($key);
             if ($cached !== null && ($valid === null || $valid($cached))) {
                 return $cached;
+            }
+            if ($cached !== null) {
+                $store->forget($key);
             }
             $data = $loader();
             if ($data !== null && $store->getTags()->getNamespace() === $namespace && self::revisionFor(array_merge($tags, ['product-catalog'])) === $revision) {
@@ -316,12 +324,18 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 }
                 throw new PrestashopConnectorException($this->httpService);
             }
-            $product = new ProductEntity($response->toArray()['products'][0], $this);
+            $productData = $response->toArray()['products'][0] ?? null;
+            if (!is_array($productData) || (int) ($productData['active'] ?? 0) !== 1) {
+                // Inactive products must not appear in artisan catalogues and
+                // must never populate the product cache.
+                return null;
+            }
+            $product = new ProductEntity($productData, $this);
             if (!\PS\Webservice\Domain\Entities\Validations\ProductValidator::isValid($product)) {
                 throw new \RuntimeException('Incomplete upstream product payload: ' . $id);
             }
             return $product->toArray();
-        });
+        }, 0, static fn (array $cached): bool => (int) ($cached['active'] ?? 0) === 1);
         if (self::revisionFor(['product:' . $id]) === $productRevision && $data !== null && !empty($data['link_rewrite']) && is_string($data['link_rewrite']) && !env('APP_DISABLE_CACHE', false)) {
             Cache::forever('product-slug:v3:' . $this->contextKey() . ':' . sha1($data['link_rewrite']), [
                 'id' => $id, 'revision' => $productRevision,

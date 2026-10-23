@@ -192,6 +192,20 @@ final class ProductCacheTest extends TestCase
         $this->assertNotSame($first, $second);
     }
 
+    public function test_inactive_product_is_not_cached_or_validated_as_an_incomplete_payload(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['id'] = 251;
+        $data['active'] = 0;
+        unset($data['description']);
+
+        $http = $this->http(['products' => [$data]], 2);
+        $service = new Product($http);
+
+        $this->assertNull($service->getProductById(251));
+        $this->assertNull($service->getProductById(251));
+    }
+
     public function test_unfiltered_category_keeps_all_products(): void
     {
         $first = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
