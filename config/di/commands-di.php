@@ -11,6 +11,12 @@ $container->set(\PS\Webservice\Commands\SendReviewRequestMailCommand::class, fun
     );
 });
 
+$container->set(\PS\Webservice\Commands\ResetCustomerPasswordCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\ResetCustomerPasswordCommand(
+        $c->get(\PS\Webservice\Service\MailerInterface::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class, function ($c) {
     return new \PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand(
         $c->get(\PS\Webservice\Service\Financial\WeeklySellerFinancialSummaryService::class),

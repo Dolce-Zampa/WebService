@@ -11,6 +11,7 @@ return [
     \PS\Webservice\Commands\WarmProductCacheCommand::class,
     \PS\Webservice\Commands\GenerateSitemap::class,
     \PS\Webservice\Commands\SendReviewRequestMailCommand::class,
+    \PS\Webservice\Commands\ResetCustomerPasswordCommand::class,
     \PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class,
     \PS\Webservice\Commands\BackfillFinancialOrdersCommand::class,
     \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class,
