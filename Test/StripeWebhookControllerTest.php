@@ -377,6 +377,8 @@ final class StripeWebhookControllerTest extends TestCase
             $db = new \Illuminate\Database\Capsule\Manager();
             $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
             $db->bootEloquent();
+            $db->schema()->dropIfExists('stripe_checkout_snapshots');
+            $db->schema()->dropIfExists('manufacturer_details');
             $db->schema()->create('manufacturer_details', function ($table): void {
                 $table->unsignedInteger('id_manufacturer')->primary();
                 $table->string('commission');
@@ -402,7 +404,7 @@ final class StripeWebhookControllerTest extends TestCase
                 'cart_id' => 42, 'id_customer' => 7, 'id_carrier' => 3, 'payment_module' => 'webserviceapi',
                 'customer' => \PS\Webservice\Domain\Entities\CustomerEntity::create([
                     'email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Snapshot',
-                    'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'country' => 'IT'],
+                    'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'country' => 'IT', 'id_country' => 10],
                 ], $orderService),
             ], $orderService);
             $checkout->addCartLineItem(['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '50.00', 'quantity' => 1]);
@@ -417,20 +419,39 @@ final class StripeWebhookControllerTest extends TestCase
                 42, 7, null, 3, null, 'buyer@example.test', 'Buyer', 'Snapshot',
                 $this->isType('object'), 50.0, 'Online payment', $snapshot['id'],
             );
-            $controller = new StripeWebhookController(
+            $controller = new class(
                 $orderService,
                 $this->createMock(MailjetService::class),
                 $this->createMock(PaymentGatewayInterface::class),
                 $this->createMock(MailerInterface::class),
-                null,
-                null,
-                null,
-                null,
-                null,
                 $snapshotService,
-            );
+            ) extends StripeWebhookController {
+                public function __construct(
+                    Order $orderService,
+                    MailjetService $mailjetService,
+                    PaymentGatewayInterface $stripeService,
+                    MailerInterface $mailer,
+                    CheckoutSnapshotService $checkoutSnapshots,
+                ) {
+                    parent::__construct($orderService, $mailjetService, $stripeService, $mailer, null, null, null, null, null, $checkoutSnapshots);
+                }
+
+                protected function withCheckoutConfirmationLock(string $checkoutSessionId, callable $callback): mixed
+                {
+                    return $callback();
+                }
+
+                protected function checkoutConfirmationIsRecorded(string $checkoutSessionId): bool
+                {
+                    return false;
+                }
+
+                protected function recordCheckoutConfirmation(string $checkoutSessionId, int $cartId): void
+                {
+                }
+            };
             $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
-                'id' => 'cs_snapshot_confirmation', 'amount_total' => 5000, 'currency' => 'eur',
+                'id' => 'cs_snapshot_confirmation', 'amount_total' => 5000, 'currency' => 'eur', 'payment_status' => 'paid',
                 // These metadata values are deliberately wrong. The session is
                 // bound to the snapshot and confirmation must use the latter.
                 'metadata' => [
@@ -744,7 +765,7 @@ final class StripeWebhookControllerTest extends TestCase
         $customer = [
             'email' => 'guest@example.com', 'firstname' => 'Stefano', 'lastname' => 'Galmarini',
             'phone' => '3312345678', 'newsletter' => false,
-            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051', 'country' => 'IT'],
+            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051', 'country' => 'IT', 'id_country' => 10],
         ];
         $orderService = $this->createMock(Order::class);
         $orderService->expects($this->once())->method('confirmSessionOrder')->with(
@@ -816,7 +837,7 @@ final class StripeWebhookControllerTest extends TestCase
         $customer = \PS\Webservice\Domain\Entities\CustomerEntity::create([
             'email' => 'guest@example.com', 'firstname' => 'Stefano', 'lastname' => 'Galmarini',
             'phone' => '3312345678', 'newsletter' => false,
-            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051', 'country' => 'IT'],
+            'delivery_address' => ['address1' => 'Via Consegna 1', 'city' => 'Arcisate', 'postcode' => '21051', 'country' => 'IT', 'id_country' => 10],
         ], $orderService);
         $cached = \PS\Webservice\Domain\Object\OrderSession::create([
             'cart_id' => 621, 'id_customer' => null, 'id_guest' => 359,

@@ -104,16 +104,16 @@ final class OrderTest extends TestCase
             'invoice_address' => [
                 'address1' => 'Via Monte Rosa, 13',
                 'city' => 'Somma Lombardo',
-                'state' => 'VA',
                 'postcode' => '21019',
-                'country' => 'IT'
+                'country' => 'IT',
+                'id_country' => 10,
             ],
             'delivery_address' => [
                 'address1' => 'Via Monte Rosa, 13',
                 'city' => 'Somma Lombardo',
-                'state' => 'VA',
                 'postcode' => '21019',
-                'country' => 'IT'
+                'country' => 'IT',
+                'id_country' => 10,
             ],
             'id_carrier' => 15,
             'payment_module' => 'webserviceapi',
@@ -149,8 +149,8 @@ final class OrderTest extends TestCase
             ->method('prepareCouponCart')
             ->willReturnCallback(function ($cartId, $customerId, $guestId, $carrierId, $codes, $checkout) use ($quotedCart) {
                 $this->assertSame(1, $cartId);
-                $this->assertNull($customerId);
-                $this->assertSame(11, $guestId);
+                $this->assertSame(456, $customerId);
+                $this->assertNull($guestId);
                 $this->assertSame(15, $carrierId);
                 $this->assertSame([], $codes);
                 $this->assertSame(10, $checkout['delivery_address']['id_country']);

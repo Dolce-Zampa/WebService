@@ -14,7 +14,7 @@ use PS\Webservice\Service\PS\Cart;
 
 class CartController extends Controller {
     protected Cart $cartService;
-    protected PrestashopRepository $prestashopRepository;
+    protected ?PrestashopRepository $prestashopRepository = null;
 
     public function __construct(Cart $cartService, PrestashopRepository $prestashopRepository)
     {
@@ -315,6 +315,10 @@ class CartController extends Controller {
 
     protected function resolveOwnerContext(Request $request, array $payload): array|Response
     {
+        if ($this->prestashopRepository === null) {
+            return response(['error' => 'Unauthorized'], 401);
+        }
+
         try {
             return [
                 'customerId' => $this->resolveAuthenticatedCustomerIdFromRepository($request, $this->prestashopRepository),

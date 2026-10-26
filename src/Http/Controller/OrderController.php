@@ -47,6 +47,9 @@ class OrderController extends CartController
     public function orderHistory(Request $request, Response $response, array $argv): Response
     {
         $customerId = (int) ($argv['customerId'] ?? 0);
+        if ($this->prestashopRepository === null) {
+            return response(['error' => 'Unauthorized'], 401);
+        }
         $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;
@@ -69,6 +72,9 @@ class OrderController extends CartController
     public function getOrder(Request $request, Response $response, array $argv): Response
     {
         $orderId = $argv['orderId'];
+        if ($this->prestashopRepository === null) {
+            return response(['error' => 'Unauthorized'], 401);
+        }
         $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
         if ($authenticatedCustomerId instanceof Response) {
             return $authenticatedCustomerId;

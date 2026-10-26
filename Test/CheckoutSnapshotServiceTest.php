@@ -47,7 +47,7 @@ final class CheckoutSnapshotServiceTest extends TestCase
                 'email' => 'buyer@example.test',
                 'firstname' => 'Buyer',
                 'lastname' => 'Example',
-                'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'country' => 'IT'],
+                'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'country' => 'IT', 'id_country' => 10],
             ], $order),
         ], $order);
         $session->addCartLineItem(['id_product' => 10, 'id_product_attribute' => 4, 'id_customization' => 2, 'id_manufacturer' => 7, 'manufacturer_name' => 'Venditore', 'name' => 'Collare', 'reference' => 'COL-10', 'price_wt' => '60.00', 'quantity' => 1]);
@@ -112,6 +112,8 @@ final class CheckoutSnapshotServiceTest extends TestCase
         $db = new Manager();
         $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
         $db->bootEloquent();
+        $db->schema()->dropIfExists('stripe_checkout_snapshots');
+        $db->schema()->dropIfExists('manufacturer_details');
         $db->schema()->create('manufacturer_details', function ($table): void {
             $table->unsignedInteger('id_manufacturer')->primary();
             $table->string('commission');

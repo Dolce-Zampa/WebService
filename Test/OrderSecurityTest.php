@@ -454,16 +454,16 @@ final class OrderSecurityTest extends TestCase
             'products' => [['id_product' => 7, 'id_product_attribute' => 999, 'quantity' => 1, 'price_wt' => '0.01']],
             'total_paid_tax_incl' => 0.01,
             'total_paid_tax_excl' => 20.00,
-            'delivery_address' => ['address1' => 'Via Main', 'id_country' => 10],
-            'invoice_address' => ['address1' => 'Via Main', 'id_country' => 10],
+            'delivery_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
+            'invoice_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
             'customer' => [
                 'id_customer' => 5,
                 'firstname' => 'Mario',
                 'lastname' => 'Rossi',
                 'email' => 'mario@example.com',
                 'phone' => '123456789',
-                'delivery_address' => ['address1' => 'Via Main', 'id_country' => 10],
-                'invoice_address' => ['address1' => 'Via Main', 'id_country' => 10],
+                'delivery_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
+                'invoice_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
             ],
         ]);
         $response = $this->createMock(ResponseInterface::class);
