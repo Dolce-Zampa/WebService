@@ -16,12 +16,14 @@ final class CreateStripeCheckoutCustomersTable extends AbstractMigration
     {
         $tableName = (string) env('PS_TABLE_PREFIX', '') . 'stripe_checkout_customers';
         $this->table($tableName)
+            ->addColumn('customer_id', 'biginteger', ['null' => true, 'signed' => false])
             ->addColumn('customer_key', 'string', ['limit' => 64])
             ->addColumn('stripe_customer_id', 'string', ['limit' => 191, 'null' => true])
             ->addColumn('created_at', 'datetime')
             ->addColumn('updated_at', 'datetime')
             ->addIndex(['customer_key'], ['unique' => true, 'name' => 'uniq_stripe_checkout_customer_key'])
             ->addIndex(['stripe_customer_id'], ['unique' => true, 'name' => 'uniq_stripe_checkout_customer_id'])
+            ->addIndex(['customer_id'], ['name' => 'idx_stripe_checkout_customer_id'])
             ->create();
     }
 
