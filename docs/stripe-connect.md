@@ -156,7 +156,6 @@ php bin/console app:stripe-connect:retry-refund-reversals --limit=100
 Un evento `charge.dispute.*` non genera invece un reversal automatico: salva le
 quote attribuibili ai venditori con stato `pending_review`, così da permettere
 la raccolta delle evidenze e una decisione sul recupero prima di spostare fondi.
-
 Le quote senza un account pronto non consumano il batch dello scheduler. Un
 Transfer che fallisce dopo che l'account è pronto viene tentato al massimo
 cinque volte con la stessa chiave di idempotenza; poi passa a `manual_review`.

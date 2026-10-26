@@ -112,7 +112,6 @@ class ConfirmOrderSession implements ObjectInterface
         if ($this->data['id_carrier'] === null || $this->data['id_carrier'] <= 0) {
             $errors[] = 'id_carrier is required and must be greater than 0';
         }
-
         if (!is_string($this->data['payment_module'])
             || !preg_match('/^[a-z][a-z0-9_-]*$/i', $this->data['payment_module'])) {
             $errors[] = 'payment_module must be a configured module name';

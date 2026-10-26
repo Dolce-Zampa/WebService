@@ -8,10 +8,10 @@ use Illuminate\Support\Facades\Cache;
 use PS\Webservice\Domain\Entities\OrderEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\OrderSession;
-use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Traits\Order as OrderHelper;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -84,6 +84,11 @@ class OrderController extends CartController
 
         if (is_null($cartList)) {
             return response([], 404);
+        }
+
+        $order = $cartList->toArray();
+        if ((int) ($order['id_customer'] ?? 0) !== $authenticatedCustomerId) {
+            return response(['message' => 'Order not found'], 404);
         }
 
         return response($cartList);

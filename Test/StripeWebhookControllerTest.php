@@ -440,7 +440,6 @@ final class StripeWebhookControllerTest extends TestCase
                 {
                     return $callback();
                 }
-
                 protected function checkoutConfirmationIsRecorded(string $checkoutSessionId): bool
                 {
                     return false;

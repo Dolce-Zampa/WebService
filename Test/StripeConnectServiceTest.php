@@ -630,7 +630,6 @@ final class StripeConnectServiceTest extends TestCase
             Facade::setFacadeApplication($previousFacadeApplication);
         }
     }
-
     private function createTransferTables(Manager $db): void
     {
         foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfer_jobs', 'stripe_connect_transfer_reversals', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {
