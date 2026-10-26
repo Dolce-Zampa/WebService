@@ -82,6 +82,10 @@ final class StripeCheckoutCustomerServiceTest extends TestCase
             'cus_checkoutbuyer10',
             $db->table('stripe_checkout_customers')->where('customer_key', 'prestashop_customer:10')->value('stripe_customer_id'),
         );
+        self::assertSame(
+            10,
+            $db->table('stripe_checkout_customers')->where('customer_key', 'prestashop_customer:10')->value('id_customer'),
+        );
     }
 
     private function database(): Manager
@@ -91,6 +95,7 @@ final class StripeCheckoutCustomerServiceTest extends TestCase
         $db->bootEloquent();
         $db->schema()->create('stripe_checkout_customers', function ($table): void {
             $table->increments('id');
+            $table->unsignedInteger('id_customer')->nullable()->index();
             $table->string('customer_key', 64)->unique();
             $table->string('stripe_customer_id')->nullable()->unique();
             $table->dateTime('created_at');

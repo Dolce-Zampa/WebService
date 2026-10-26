@@ -23,12 +23,13 @@ final class StripeCheckoutCustomerService
 
     public function getOrCreate(OrderSession $session, ?\Stripe\StripeClient $stripeClient = null): string
     {
-        [$customerKey, $metadata] = $this->customerIdentity($session);
+        [$customerKey, $prestashopCustomerId, $metadata] = $this->customerIdentity($session);
 
-        return $this->db->getConnection()->transaction(function () use ($session, $stripeClient, $customerKey, $metadata): string {
+        return $this->db->getConnection()->transaction(function () use ($session, $stripeClient, $customerKey, $prestashopCustomerId, $metadata): string {
             $now = gmdate('Y-m-d H:i:s');
             $reserved = $this->db->table(self::TABLE)->insertOrIgnore([
                 'customer_key' => $customerKey,
+                'id_customer' => $prestashopCustomerId,
                 'stripe_customer_id' => null,
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -60,18 +61,18 @@ final class StripeCheckoutCustomerService
         });
     }
 
-    /** @return array{0:string,1:array<string,string>} */
+    /** @return array{0:string,1:?int,2:array<string,string>} */
     private function customerIdentity(OrderSession $session): array
     {
         $metadata = $session->metadata;
         $customerId = $this->positiveInteger($metadata['id_customer'] ?? null);
         if ($customerId !== null) {
-            return ['prestashop_customer:' . $customerId, ['prestashop_customer_id' => (string) $customerId]];
+            return ['prestashop_customer:' . $customerId, $customerId, ['prestashop_customer_id' => (string) $customerId]];
         }
 
         $guestId = $this->positiveInteger($metadata['id_guest'] ?? null);
         if ($guestId !== null) {
-            return ['prestashop_guest:' . $guestId, ['prestashop_guest_id' => (string) $guestId]];
+            return ['prestashop_guest:' . $guestId, null, ['prestashop_guest_id' => (string) $guestId]];
         }
 
         throw new \RuntimeException('A PrestaShop customer or guest ID is required for Stripe Checkout.');
