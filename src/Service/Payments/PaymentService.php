@@ -13,6 +13,7 @@ class PaymentService implements PaymentGatewayInterface
     public function __construct(
         private ?\Stripe\StripeClient $stripeClient = null,
         private readonly ?CheckoutSnapshotService $checkoutSnapshots = null,
+        private readonly ?StripeCheckoutCustomerService $checkoutCustomers = null,
     )
     {
     }
@@ -45,6 +46,12 @@ class PaymentService implements PaymentGatewayInterface
             }
 
             $params = $orderSession->toArray();
+            if ($this->checkoutCustomers !== null) {
+                // Bank transfers in Checkout require an existing Customer.
+                // Resolve it before creating the Session so retries always
+                // pass the same `cus_...` identifier.
+                $params['customer'] = $this->checkoutCustomers->getOrCreate($orderSession, $this->stripeClient);
+            }
             $options = ['idempotency_key' => $idempotencyKey];
             $checkout_session = $this->stripeClient === null
                 ? \Stripe\Checkout\Session::create($params, $options)
