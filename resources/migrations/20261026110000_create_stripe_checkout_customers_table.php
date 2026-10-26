@@ -24,6 +24,7 @@ final class CreateStripeCheckoutCustomersTable extends AbstractMigration
             ->addIndex(['customer_key'], ['unique' => true, 'name' => 'uniq_stripe_checkout_customer_key'])
             ->addIndex(['stripe_customer_id'], ['unique' => true, 'name' => 'uniq_stripe_checkout_customer_id'])
             ->addIndex(['customer_id'], ['name' => 'idx_stripe_checkout_customer_id'])
+            ->addForeignKey('customer_id', env('PS_TABLE_PREFIX', '') . 'customers', 'customer_id')
             ->create();
     }
 
