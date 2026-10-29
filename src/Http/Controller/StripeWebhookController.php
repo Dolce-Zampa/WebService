@@ -22,6 +22,7 @@ use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\Payments\StripeConnectService;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Service\Promotions\PromotionService;
+use PS\Webservice\Service\Promotions\RecoveryCartIncentive;
 use PS\Webservice\Traits\Order as OrderTrait;
 use PS\Webservice\Traits\UseCache;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -56,6 +57,7 @@ class StripeWebhookController extends OrderController
         ?SellerSaleNotificationService $sellerSaleNotifications = null,
         ?StripeConnectService $stripeConnect = null,
         ?CheckoutSnapshotService $checkoutSnapshots = null,
+        private readonly ?RecoveryCartIncentive $recoveryIncentive = null,
     )
     {
         $this->orderService = $orderService;
@@ -1443,7 +1445,13 @@ class StripeWebhookController extends OrderController
         $recoveryTotal = is_numeric($amountTotal) && (float) $amountTotal >= 0
             ? (float) $amountTotal / 100
             : $order->total();
-        $this->mailer->sendRecoveryCartExpired($order->getCustomer()->email, $paymentUrl, $this->getProducts(), (string) $recoveryTotal, $order->getCustomer()->firstname);
+        $message = '';
+        try {
+            $message = $this->recoveryIncentive?->message($cart->toArray(), $order) ?? '';
+        } catch (\Throwable $e) {
+            Log::warning('Unable to evaluate recovery cart incentive.', ['error' => $e->getMessage()]);
+        }
+        $this->mailer->sendRecoveryCartExpired($order->getCustomer()->email, $paymentUrl, $this->getProducts(), (string) $recoveryTotal, $order->getCustomer()->firstname, $message);
 
         Log::info('Stripe webhook: checkout session expired for cart ' . $cartId);
     }

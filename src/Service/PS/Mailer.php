@@ -146,7 +146,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
 
 
 
-    public function sendRecoveryCartExpired(string $email, string $paymentUrl, array $products, string $cartTotal, $firstname = '')
+    public function sendRecoveryCartExpired(string $email, string $paymentUrl, array $products, string $cartTotal, $firstname = '', string $message = '')
     {
          try {
             $this->httpService->setUrl('/mailer?debug=true');
@@ -157,7 +157,8 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                         'to_email' => $email,
                         'template' => TemplateMail::ABBANDONED_CART->value,
                         'template_vars' => [
-                            'products_list' => $this->recoveryCartHtml($products),
+                            'products_list' => $this->recoveryCartHtml($products) . ($message === '' ? '' : '<p style="padding:16px;color:#252525;font-weight:bold">' . htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>'),
+                            'message' => $message,
                             'cart_total' => $cartTotal,
                             'recovery_url' => $paymentUrl,
                             'firstname' => $firstname,

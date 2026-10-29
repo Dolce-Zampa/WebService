@@ -243,3 +243,7 @@ $container->set(\PS\Webservice\Service\ElkService::class, function($c) {
         $c->get(\PS\Webservice\Service\PS\Product::class)
     );
 });
+
+$container->set(\PS\Webservice\Service\Promotions\RecoveryCartIncentive::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Promotions\RecoveryCartIncentive($capsule);
+});
