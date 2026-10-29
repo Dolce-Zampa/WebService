@@ -491,5 +491,3 @@ e negozi; i prezzi specifici globali con `id_product = 0` e le regole carrello
 non sono coperti. Questo cron rileva il passaggio del tempo: modifiche o
 cancellazioni di prezzi specifici già trascorsi richiedono la normale
 invalidazione al salvataggio o uno svuotamento esplicito della cache.
-
-Il dettaglio prodotto dell'API espone `promotion_start` e `promotion_end` per il prodotto e per le sue combinazioni. Le date sono stringhe ISO 8601 con fuso orario del negozio, oppure `null` per un limite non impostato o non disponibile. Le date derivano dal prezzo specifico attivo per quantità 1 nel contesto predefinito del webservice. Per abilitare i campi è necessario aggiornare anche questo modulo PrestaShop; la cache dei cambi programmati richiede il cron `scheduled-promotion-cache.php` descritto sopra.

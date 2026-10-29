@@ -11,6 +11,7 @@ use PS\Webservice\Domain\Entities\EntityExceptions;
 use PS\Webservice\Domain\Entities\FilterEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Filter;
+use PS\Webservice\Service\PS\ProductPromotionDates;
 
 class Product extends PrestashopService implements PrestashopServiceInterface
 {
@@ -112,9 +113,6 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     private function snapshotIsCurrent(array $snapshot): bool
     {
-        if (($snapshot['promotion_dates_available'] ?? true) === false) {
-            return false;
-        }
         foreach ($snapshot['dependencies'] as $tag => $revision) {
             if (self::revisionFor([$tag]) !== $revision) {
                 return false;
@@ -129,7 +127,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return false;
         }
         $tags = ['product:' . $id];
-        $snapshot = Cache::tags($tags)->get($this->productCacheKey('detail:v4:' . $id, $tags));
+        $snapshot = Cache::tags($tags)->get($this->productCacheKey('detail:' . $id, $tags));
         return is_array($snapshot) && $this->snapshotIsCurrent($snapshot);
     }
 
@@ -145,39 +143,13 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function getCompleteProductById(int $id): ?ProductEntity
     {
-        $snapshot = $this->cachedProductData('detail:v4:' . $id, ['product:' . $id], function () use ($id) {
+        $snapshot = $this->cachedProductData('detail:' . $id, ['product:' . $id], function () use ($id) {
             $product = $this->getProductById($id);
             if ($product === null) {
                 return null;
             }
             $data = $product->withFeatures()->toArray();
             $data['lowest_price_last_30_days'] = $this->getLowestPriceLast30Days($id);
-            $data['promotion_start'] = null;
-            $data['promotion_end'] = null;
-            $promotionDatesAvailable = true;
-            if (!empty($data['on_sale']) || !empty($data['associations']['combinations'])) {
-                $promotionDatesAvailable = false;
-                try {
-                    // Do not cache this request separately from the detail snapshot.
-                    $this->httpService->setUrl('/catalog?promotion_product_id=' . $id);
-                    $response = $this->httpService->invoke('GET');
-                    if (!$response->failed()) {
-                        $promotion = $response->toArray()['data'] ?? [];
-                        if (array_key_exists('start', $promotion) && array_key_exists('end', $promotion)) {
-                            $data['promotion_start'] = $promotion['start'];
-                            $data['promotion_end'] = $promotion['end'];
-                            foreach ($data['associations']['combinations'] ?? [] as $index => $combination) {
-                                $dates = $promotion['combinations'][$combination['id']] ?? [];
-                                $data['associations']['combinations'][$index]['promotion_start'] = $dates['start'] ?? null;
-                                $data['associations']['combinations'][$index]['promotion_end'] = $dates['end'] ?? null;
-                            }
-                            $promotionDatesAvailable = isset($promotion['combinations']) && is_array($promotion['combinations']);
-                        }
-                    }
-                } catch (\Throwable $exception) {
-                    Log::warning('Unable to retrieve promotion dates', ['product_id' => $id, 'exception' => $exception->getMessage()]);
-                }
-            }
             $dependencies = [];
             foreach (array_merge($data['bundles'] ?? [], $data['associations']['accessories'] ?? []) as $related) {
                 if (isset($related['id'])) {
@@ -185,9 +157,24 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                     $dependencies[$tag] = self::revisionFor([$tag]);
                 }
             }
-            return ['product' => $data, 'dependencies' => $dependencies, 'promotion_dates_available' => $promotionDatesAvailable];
+            return ['product' => $data, 'dependencies' => $dependencies];
         }, 0, fn (array $cached) => $this->snapshotIsCurrent($cached));
-        return $snapshot === null ? null : ProductEntity::fromSnapshot($snapshot['product'], $this, true);
+        if ($snapshot === null) {
+            return null;
+        }
+        $data = $snapshot['product'];
+        $promotions = (new ProductPromotionDates())->forProduct($id);
+        $base = $promotions[0] ?? null;
+        $data['promotion'] = $base;
+        $data['promotion_start'] = $base['start'] ?? null;
+        $data['promotion_end'] = $base['end'] ?? null;
+        foreach ($data['associations']['combinations'] ?? [] as $index => $combination) {
+            $promotion = $promotions[(int) $combination['id']] ?? $base;
+            $data['associations']['combinations'][$index]['promotion'] = $promotion;
+            $data['associations']['combinations'][$index]['promotion_start'] = $promotion['start'] ?? null;
+            $data['associations']['combinations'][$index]['promotion_end'] = $promotion['end'] ?? null;
+        }
+        return ProductEntity::fromSnapshot($data, $this, true);
     }
 
     /**
