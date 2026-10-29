@@ -8,12 +8,11 @@ use PS\Webservice\Domain\Models\PS\Products\SpecificPrice;
 
 final class ProductPromotionDates
 {
-    /** @return array<int, array{start: string, end: string}> */
+    /** @return array<int, array{start: ?string, end: ?string}> */
     public function forProduct(int $productId, ?\DateTimeImmutable $now = null): array
     {
         $timezone = new \DateTimeZone((string) env('APP_TIMEZONE', 'Europe/Rome'));
         $now = ($now ?? new \DateTimeImmutable('now', $timezone))->setTimezone($timezone);
-        $today = $now->setTime(0, 0);
 
         try {
             $prices = SpecificPrice::query()
@@ -21,9 +20,11 @@ final class ProductPromotionDates
                 ->where('id_cart', 0)
                 ->where('id_customer', 0)
                 ->where('from_quantity', '<=', 1)
-                ->where('from', '>=', $today->format('Y-m-d H:i:s'))
                 ->where('from', '<=', $now->format('Y-m-d H:i:s'))
-                ->where('to', '>=', $now->format('Y-m-d H:i:s'))
+                ->where(function ($query) use ($now) {
+                    $query->where('to', '0000-00-00 00:00:00')
+                        ->orWhere('to', '>=', $now->format('Y-m-d H:i:s'));
+                })
                 ->where(function ($query) {
                     $query->where('reduction', '>', 0)->orWhere('price', '>=', 0);
                 })
@@ -36,8 +37,10 @@ final class ProductPromotionDates
                 $attribute = (int) $price->id_product_attribute;
                 if (!isset($result[$attribute])) {
                     $result[$attribute] = [
-                        'start' => (new \DateTimeImmutable($price->from, $timezone))->format(\DateTimeInterface::ATOM),
-                        'end' => (new \DateTimeImmutable($price->to, $timezone))->format(\DateTimeInterface::ATOM),
+                        'start' => $price->from === '0000-00-00 00:00:00'
+                            ? null : (new \DateTimeImmutable($price->from, $timezone))->format(\DateTimeInterface::ATOM),
+                        'end' => $price->to === '0000-00-00 00:00:00'
+                            ? null : (new \DateTimeImmutable($price->to, $timezone))->format(\DateTimeInterface::ATOM),
                     ];
                 }
             }

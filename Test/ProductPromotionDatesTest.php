@@ -27,7 +27,7 @@ final class ProductPromotionDatesTest extends TestCase
         });
     }
 
-    public function test_returns_only_active_promotions_started_today_for_the_product(): void
+    public function test_returns_active_promotions_started_today_or_earlier_for_the_product(): void
     {
         $now = new DateTimeImmutable('2026-11-20 12:00:00', new DateTimeZone('Europe/Rome'));
         $row = ['id_product' => 7, 'from' => '2026-11-20 10:00:00', 'to' => '2026-11-22 23:59:59', 'reduction' => 0.2];
@@ -47,11 +47,29 @@ final class ProductPromotionDatesTest extends TestCase
         }
 
         $promotions = (new ProductPromotionDates())->forProduct(7, $now);
-        $this->assertEqualsCanonicalizing([0, 9], array_keys($promotions));
+        $this->assertEqualsCanonicalizing([0, 9, 10], array_keys($promotions));
         $this->assertSame('2026-11-20T10:00:00+01:00', $promotions[0]['start']);
         $this->assertSame('2026-11-22T23:59:59+01:00', $promotions[9]['end']);
-        $this->assertSame([], (new ProductPromotionDates())->forProduct(7, $now->modify('+1 day')));
+        $this->assertEqualsCanonicalizing([0, 9, 10, 11], array_keys((new ProductPromotionDates())->forProduct(7, $now->modify('+1 day'))));
     }
+    public function test_promotion_with_open_dates_and_the_reported_product(): void
+    {
+        DB::table('specific_price')->insert([
+            ['id_product' => 37, 'reduction' => 0.4, 'from' => '2026-10-07 00:00:00', 'to' => '2026-11-08 23:59:59'],
+            ['id_product' => 37, 'reduction' => 0.4, 'from' => '2026-11-27 00:00:00', 'to' => '2026-11-27 23:59:59'],
+            ['id_product' => 56, 'reduction' => 0.5, 'from' => '0000-00-00 00:00:00', 'to' => '0000-00-00 00:00:00'],
+            ['id_product' => 57, 'reduction' => 0.5, 'from' => '0000-00-00 00:00:00', 'to' => '2026-11-08 23:59:59'],
+            ['id_product' => 58, 'reduction' => 0.5, 'from' => '2026-10-07 00:00:00', 'to' => '0000-00-00 00:00:00'],
+        ]);
+        $now = new DateTimeImmutable('2026-10-29 12:00:00', new DateTimeZone('Europe/Rome'));
+        $service = new ProductPromotionDates();
+        $this->assertSame(['start' => '2026-10-07T00:00:00+02:00', 'end' => '2026-11-08T23:59:59+01:00'], $service->forProduct(37, $now)[0]);
+        $this->assertSame(['start' => null, 'end' => null], $service->forProduct(56, $now)[0]);
+        $this->assertSame(['start' => null, 'end' => '2026-11-08T23:59:59+01:00'], $service->forProduct(57, $now)[0]);
+        $this->assertSame(['start' => '2026-10-07T00:00:00+02:00', 'end' => null], $service->forProduct(58, $now)[0]);
+        $this->assertSame([], $service->forProduct(37, new DateTimeImmutable('2026-11-09 12:00:00', new DateTimeZone('Europe/Rome'))));
+    }
+
     public function test_product_detail_includes_dates_for_the_selected_combination(): void
     {
         $container = new Illuminate\Container\Container();
