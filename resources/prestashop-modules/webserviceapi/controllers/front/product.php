@@ -18,6 +18,39 @@ class webserviceapiproductModuleFrontController extends MlabFactoryApiBaseModule
 
     protected function handleGetRequest()
     {
+        $promotionProductId = (int) Tools::getValue('promotion_product_id');
+        if ($promotionProductId > 0) {
+            // Match the defaults used by the PrestaShop webservice price calculation.
+            $datesForAttribute = function ($attributeId) use ($promotionProductId) {
+                $specificPrice = SpecificPrice::getSpecificPrice(
+                    $promotionProductId, (int) Context::getContext()->shop->id,
+                    (int) Currency::getDefaultCurrencyId(), (int) Configuration::get('PS_COUNTRY_DEFAULT'),
+                    (int) Configuration::get('PS_CUSTOMER_GROUP'), 1, (int) $attributeId, 0, 0
+                );
+                $dates = array('start' => null, 'end' => null);
+                if (!empty($specificPrice)) {
+                    foreach (array('from' => 'start', 'to' => 'end') as $source => $target) {
+                        $value = $specificPrice[$source] ?? '';
+                        if ($value && $value !== '0000-00-00 00:00:00') {
+                            $dates[$target] = (new DateTimeImmutable($value, new DateTimeZone(Configuration::get('PS_TIMEZONE') ?: 'Europe/Rome')))->format(DateTimeInterface::ATOM);
+                        }
+                    }
+                }
+                return $dates;
+            };
+            $dates = $datesForAttribute(0);
+            $dates['combinations'] = array();
+            $attributes = Db::getInstance()->executeS('SELECT `id_product_attribute` FROM `' . _DB_PREFIX_ . 'product_attribute` WHERE `id_product` = ' . $promotionProductId);
+            if ($attributes === false) {
+                throw new PrestaShopException('Unable to retrieve product combinations.');
+            }
+            foreach ($attributes as $attribute) {
+                $id = (int) $attribute['id_product_attribute'];
+                $dates['combinations'][$id] = $datesForAttribute($id);
+            }
+            return $dates;
+        }
+
         $productSlug = Tools::getValue('by_slug');
         
         if (empty($productSlug)) {
