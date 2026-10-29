@@ -19,6 +19,18 @@ services:
       restart_policy:
         condition: on-failure
 
+  scheduler:
+    image: ghcr.io/dolce-zampa/webservice:latest
+    command: ["php", "bin/workers/scheduler"]
+    networks:
+      - dolcezampa_default
+    volumes:
+      - /opt/dolcezampa/.env:/var/www/workdir/.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
   worker-product-images:
     image: ghcr.io/dolce-zampa/webservice:latest
     command: ["php", "bin/worker-product-images"]
