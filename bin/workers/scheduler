@@ -36,6 +36,7 @@ $warmProductCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\War
 $weeklySellerSummaryHandler = $container->get(SendWeeklySellerFinancialSummaryMessageHandler::class);
 $retryPendingStripeConnectTransfersHandler = $container->get(RetryPendingStripeConnectTransfersMessageHandler::class);
 $retryQueuedStripeConnectTransferAllocationsHandler = $container->get(RetryQueuedStripeConnectTransferAllocationsMessageHandler::class);
+$scheduledPromotionCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessageHandler::class);
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(new HandlersLocator([
@@ -45,6 +46,7 @@ $bus = new MessageBus([
         \PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSummaryMessage::class => [$weeklySellerSummaryHandler],
         \PS\Webservice\Commands\Scheduler\RetryPendingStripeConnectTransfersMessage::class => [$retryPendingStripeConnectTransfersHandler],
         \PS\Webservice\Commands\Scheduler\RetryQueuedStripeConnectTransferAllocationsMessage::class => [$retryQueuedStripeConnectTransferAllocationsHandler],
+        \PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessage::class => [$scheduledPromotionCacheHandler],
     ])),
 ]);
 

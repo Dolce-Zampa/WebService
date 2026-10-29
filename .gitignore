@@ -3,3 +3,5 @@ vendor/
 .vscode/
 .DS_Store
 .phpunit.cache/
+s
+storage/*
