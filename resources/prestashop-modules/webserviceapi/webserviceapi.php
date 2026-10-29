@@ -340,7 +340,7 @@ class webserviceapi extends PaymentModule
     {
         $webhookEnabled = (bool) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED);
         if (!$webhookEnabled) {
-            return;
+            return false;
         }
 
         $webhookBaseUrl = rtrim((string) Configuration::get(self::CONFIG_WEBSERVICE_URL), '/');
@@ -354,7 +354,7 @@ class webserviceapi extends PaymentModule
                 'Product',
                 (int) $product->id
             );
-            return;
+            return false;
         }
 
         $link = str_replace("http://aidyis-prod-backoffice.dolcezampa.com", "", $this->context->link->getProductLink($product));
@@ -404,11 +404,24 @@ class webserviceapi extends PaymentModule
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if ($result === false || $httpCode >= 400) {
+        if ($result === false || $httpCode < 200 || $httpCode >= 300) {
             PrestaShopLogger::addLog(
-                "[webserviceapi] Webhook failed fto clear cahce",
+                "[webserviceapi] Cache webhook failed for product #" . (int) $product->id . " (HTTP {$httpCode}).",
             );
+            return false;
         }
+        return true;
+    }
+
+    /** Called by the CLI scheduler; failures must be retried before advancing its checkpoint. */
+    public function clearScheduledPromotionCache($productId)
+    {
+        $product = new Product((int) $productId);
+        if (!Validate::isLoadedObject($product)) {
+            // A deleted product cannot be refreshed and must not block subsequent runs.
+            return true;
+        }
+        return $this->clearCacheWebhook($product);
     }
 
     /**

@@ -463,3 +463,31 @@ Test (dalla radice PsWebService):
 APP_DISABLE_CACHE=false php vendor/bin/phpunit Test
 php vendor/bin/phpunit resources/prestashop-modules/webserviceapi/Test/CouponValidationTest.php
 ```
+
+### Cache e promozioni programmate
+
+L'inizio e la fine di un prezzo specifico non generano un hook al momento del
+cambio: installare un cron sul server PrestaShop, ad esempio ogni minuto:
+
+```cron
+* * * * * /usr/bin/php /percorso/prestashop/modules/webserviceapi/cron/scheduled-promotion-cache.php >> /percorso/log/promotion-cache.log 2>&1
+```
+
+Usare il PHP CLI e i percorsi effettivi del server. Il cron deve avere accesso
+al database PrestaShop e alla rete verso il webservice. Configurare URL e secret
+del webhook e abilitare l'opzione webhook del modulo. Il comando invia il
+webhook di clear cache esistente una volta per prodotto interessato, sia
+all'inizio sia dopo la fine del prezzo specifico. La precisione dipende dalla
+frequenza del cron e dalla disponibilità del webhook; il confronto usa l'ora
+del database PrestaShop. Il primo avvio invalida anche i prodotti con prezzi
+specifici programmati già iniziati o terminati, per recuperare eventuali
+cambiamenti precedenti all'installazione. Le esecuzioni successive riprendono
+dall'ultimo completamento; in caso di errore ripetono l'intervallo. La prima
+esecuzione può quindi richiedere tempo su cataloghi con molti prezzi storici.
+Un lock sul database impedisce esecuzioni concorrenti.
+
+Sono inclusi i prezzi specifici associati a un prodotto, anche per combinazioni
+e negozi; i prezzi specifici globali con `id_product = 0` e le regole carrello
+non sono coperti. Questo cron rileva il passaggio del tempo: modifiche o
+cancellazioni di prezzi specifici già trascorsi richiedono la normale
+invalidazione al salvataggio o uno svuotamento esplicito della cache.
