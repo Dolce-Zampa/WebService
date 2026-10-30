@@ -463,3 +463,36 @@ Test (dalla radice PsWebService):
 APP_DISABLE_CACHE=false php vendor/bin/phpunit Test
 php vendor/bin/phpunit resources/prestashop-modules/webserviceapi/Test/CouponValidationTest.php
 ```
+
+### Cache e promozioni programmate
+
+L'inizio e la fine di un prezzo specifico non generano un hook al momento del
+cambio. Il worker `bin/workers/scheduler` avvia ogni minuto il controllo tramite
+un endpoint POST autenticato del modulo. Il worker usa `PS_BASE_URL` e
+`WEBSERVICE_KEY`; l'endpoint nativo è
+`/index.php?fc=module&module=webserviceapi&controller=scheduledpromotioncache`.
+Il worker e PrestaShop devono potersi raggiungere in rete; PrestaShop deve a
+sua volta poter raggiungere il webservice configurato per il webhook.
+Il file `docker-compose.yml` include un servizio scheduler con una replica.
+Distribuire sia l'immagine del webservice sia i file aggiornati del modulo
+PrestaShop, quindi avviare o aggiornare il servizio scheduler nello stack.
+Configurare URL e secret del webhook e abilitare l'opzione webhook del modulo.
+
+Il controllo invia il webhook di clear cache esistente una volta per prodotto
+interessato, sia all'inizio sia dopo la fine del prezzo specifico. La precisione
+dipende dalla frequenza dello scheduler e dalla disponibilità del webhook; il
+confronto usa l'ora del database PrestaShop. Il primo avvio invalida anche i
+prodotti con prezzi specifici programmati già iniziati o terminati, per
+recuperare eventuali cambiamenti precedenti all'installazione. Le esecuzioni
+successive riprendono dall'ultimo completamento; in caso di errore ripetono
+l'intervallo. La prima esecuzione può quindi richiedere tempo su cataloghi con
+molti prezzi storici: verificare i timeout HTTP e PHP del server PrestaShop.
+Un lock sul database impedisce esecuzioni concorrenti. È disponibile anche
+lo script CLI `cron/scheduled-promotion-cache.php` per l'esecuzione manuale
+nel container PrestaShop; non è necessario configurare un cron esterno.
+
+Sono inclusi i prezzi specifici associati a un prodotto, anche per combinazioni
+e negozi; i prezzi specifici globali con `id_product = 0` e le regole carrello
+non sono coperti. Questo controllo rileva il passaggio del tempo: modifiche o
+cancellazioni di prezzi specifici già trascorsi richiedono la normale
+invalidazione al salvataggio o uno svuotamento esplicito della cache.

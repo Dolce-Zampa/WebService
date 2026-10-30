@@ -11,6 +11,7 @@ use PS\Webservice\Domain\Entities\EntityExceptions;
 use PS\Webservice\Domain\Entities\FilterEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Filter;
+use PS\Webservice\Service\PS\ProductPromotionDates;
 
 class Product extends PrestashopService implements PrestashopServiceInterface
 {
@@ -158,7 +159,22 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             }
             return ['product' => $data, 'dependencies' => $dependencies];
         }, 0, fn (array $cached) => $this->snapshotIsCurrent($cached));
-        return $snapshot === null ? null : ProductEntity::fromSnapshot($snapshot['product'], $this, true);
+        if ($snapshot === null) {
+            return null;
+        }
+        $data = $snapshot['product'];
+        $promotions = (new ProductPromotionDates())->forProduct($id);
+        $base = $promotions[0] ?? null;
+        $data['promotion'] = $base;
+        $data['promotion_start'] = $base['start'] ?? null;
+        $data['promotion_end'] = $base['end'] ?? null;
+        foreach ($data['associations']['combinations'] ?? [] as $index => $combination) {
+            $promotion = $promotions[(int) $combination['id']] ?? $base;
+            $data['associations']['combinations'][$index]['promotion'] = $promotion;
+            $data['associations']['combinations'][$index]['promotion_start'] = $promotion['start'] ?? null;
+            $data['associations']['combinations'][$index]['promotion_end'] = $promotion['end'] ?? null;
+        }
+        return ProductEntity::fromSnapshot($data, $this, true);
     }
 
     /**
