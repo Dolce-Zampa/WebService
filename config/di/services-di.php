@@ -16,6 +16,14 @@ $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
     return new \PS\Webservice\Service\HttpService($webserviceConfig);
 });
 
+$container->set(\PS\Webservice\Service\PacklinkInpostGateway::class, function ($c) {
+    return new \PS\Webservice\Service\PacklinkInpostGateway(
+        new \GuzzleHttp\Client(),
+        rtrim((string) env('PACKLINK_INPOST_HEADLESS_URL', ''), '/'),
+        (string) env('PACKLINK_INPOST_HEADLESS_SECRET', ''),
+    );
+});
+
 $container->set(\Elastic\Elasticsearch\ClientBuilder::class, function ($c) {
     $client = Elastic\Elasticsearch\ClientBuilder::create()
         ->setHosts([env('ELASTICH_HOST')]) // Indirizzo del server ES

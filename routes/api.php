@@ -21,6 +21,7 @@ $app->get('/api/cart-rules', PS\Webservice\Http\Controller\CartController::class
 $app->get('/api/cart-rules/coupon/featured', PS\Webservice\Http\Controller\CartController::class . ':getFeaturedCoupons');
 $app->get('/api/cart-rules/coupon/{code}', PS\Webservice\Http\Controller\CartController::class . ':getCouponDetail');
 $app->post('/api/cart-rules/coupon/{code}/validate/{cartId}', PS\Webservice\Http\Controller\CartController::class . ':validateCoupon')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+$app->post('/api/packlink/inpost', PS\Webservice\Http\Controller\PacklinkInpostController::class . ':handle')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
 /** Password reset */
 $app->group('/api', function () use ($app) {
