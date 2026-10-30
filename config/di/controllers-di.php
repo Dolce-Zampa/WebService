@@ -33,6 +33,14 @@ $container->set(\PS\Webservice\Http\Controller\CartController::class, function (
     return new \PS\Webservice\Http\Controller\CartController($cartService, $repository);
 });
 
+$container->set(\PS\Webservice\Http\Controller\PacklinkInpostController::class, function ($c) {
+    return new \PS\Webservice\Http\Controller\PacklinkInpostController(
+        $c->get(\PS\Webservice\Service\PS\Cart::class),
+        $c->get(\PS\Webservice\Repositories\PrestashopRepository::class),
+        $c->get(\PS\Webservice\Service\PacklinkInpostGateway::class),
+    );
+});
+
 $container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
