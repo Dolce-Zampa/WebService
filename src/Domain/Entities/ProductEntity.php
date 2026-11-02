@@ -145,11 +145,12 @@ class ProductEntity extends Entity implements ObjectInterface
             $this->data['url'] = str_replace('http://aidyis-prod-backoffice.dolcezampa.com', '', $this->data['url']);
         }
 
-        // normalize on_sale flag
+        $this->calculateFullPrice();
+
+        // Compare the tax-inclusive prices supplied by PrestaShop.
         $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);
         $currentPrice = round((float)$this->data['price'], 2, PHP_ROUND_HALF_UP);
         $this->data['on_sale'] = $originalePrice < $currentPrice;
-        $this->calculateFullPrice(); // Ensure the price is calculated before converting to array
 
         $this->isNormalized = true;
 

@@ -46,7 +46,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     private function productCacheKey(string $key, array $tags): string
     {
-        return 'product-cache:v3:' . $this->contextKey() . ':' . self::revisionFor($tags) . ':' . $key;
+        return 'product-cache:v4:' . $this->contextKey() . ':' . self::revisionFor($tags) . ':' . $key;
     }
 
     /** TTL is in minutes; zero means forever. */
@@ -224,7 +224,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
             $displayOptions['sort'] = "[$sorting]";
             $queryString = http_build_query($displayOptions);
-            $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1")['products'] ?? [];
+            $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&date=1")['products'] ?? [];
             $snapshots = [];
             foreach ($products as $productData) {
                 $productFilter = $filter ?? new Filter([]);
@@ -332,7 +332,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     {
         $productRevision = self::revisionFor(['product:' . $id]);
         $data = $this->cachedProductData('base:' . $id, ['product:' . $id], function () use ($id) {
-            $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
+            $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&display=full");
             $response = $this->httpService->invoke('GET');
             if ($response->failed()) {
                 if ($response->getHttpCode() === 404) {

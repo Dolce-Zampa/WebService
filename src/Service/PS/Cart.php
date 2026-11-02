@@ -94,7 +94,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
      * Never use prices provided by the frontend; always fetch from the server to prevent price manipulation.
      *
      * @param int $productId The product ID
-     * @return float The product price including 22% VAT
+     * @return float The effective product price including the applicable tax
      * @throws \RuntimeException When the product is not found or the API call fails
      */
     public function getProductPriceById(int $productId): float
@@ -102,6 +102,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         $queryString = http_build_query([
             'display' => '[id,price]',
             'filter[id]' => $productId,
+            'price' => ['original_price' => ['use_tax' => 1, 'use_reduction' => 1]],
         ]);
         $this->httpService->setUrl("/products?{$queryString}");
 
@@ -117,9 +118,11 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             throw new \RuntimeException("Product #{$productId} not found in catalog. Ensure the product exists and is published.");
         }
 
-        $basePrice = (float) ($products[0]['price'] ?? 0.0);
-        // Apply 22% VAT — consistent with ProductManipulation::calculateFullPrice()
-        return round($basePrice * 1.22, 2);
+        if (!isset($products[0]['original_price']) || !is_numeric($products[0]['original_price'])) {
+            throw new \RuntimeException("Missing calculated price for product #{$productId}");
+        }
+
+        return round((float) $products[0]['original_price'], 2);
     }
 
     /**

@@ -781,6 +781,11 @@ class webserviceapi extends PaymentModule
     // nuovo metodo
     public function hookActionGetExtraMailTemplateVars($params)
     {
+        if (($params['template'] ?? '') === 'order_conf') {
+            $this->addOrderProductionTimes($params);
+            return;
+        }
+
         // Intervenire solo sul template shipped
         if ($params['template'] !== 'shipped') {
             return;
@@ -830,4 +835,39 @@ class webserviceapi extends PaymentModule
             ['{followup}' => $trackingUrl]
         );
     }
+
+    private function addOrderProductionTimes(array $params)
+    {
+        $orderId = (int) ($params['template_vars']['{id_order}'] ?? 0);
+        if (!$orderId) {
+            return;
+        }
+
+        try {
+            $order = new Order($orderId);
+            if (!Validate::isLoadedObject($order)) {
+                return;
+            }
+            $items = array();
+            foreach ($order->getProducts() as $line) {
+                $product = new Product((int) $line['product_id'], false, (int) $order->id_lang, (int) $order->id_shop);
+                $seller = (int) $product->id_manufacturer > 0 ? new Manufacturer((int) $product->id_manufacturer) : null;
+                $items[] = array(
+                    'name' => (string) $line['product_name'],
+                    'seller' => $seller && Validate::isLoadedObject($seller) ? (string) $seller->name : '',
+                    'available_now' => $product->available_now ?? '',
+                );
+            }
+            if (!$items) {
+                return;
+            }
+            require_once __DIR__ . '/classes/MlabOrderProductionTimes.php';
+            list($html, $text) = MlabOrderProductionTimes::format($items);
+            $params['extra_template_vars']['{products}'] = ($params['template_vars']['{products}'] ?? '') . $html;
+            $params['extra_template_vars']['{products_txt}'] = ($params['template_vars']['{products_txt}'] ?? '') . $text;
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog('Unable to add order production times: ' . $e->getMessage(), 3);
+        }
+    }
+
 }
