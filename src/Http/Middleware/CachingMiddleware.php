@@ -38,18 +38,7 @@ class CachingMiddleware implements MiddlewareInterface
         unset($params['clear_cache'], $params['no_cache']);
         ksort($params);
         $queryParams = http_build_query($params);
-        $principalCacheKey = '';
-        $userId = $request->getAttribute('user_id');
-        if (is_string($userId) && $userId !== '') {
-            $principalCacheKey = ':user=' . $userId;
-        } else {
-            $authHeader = $request->getHeaderLine('Authorization');
-            if ($authHeader !== '') {
-                $principalCacheKey = ':auth=' . sha1($authHeader);
-            }
-        }
-
-        $cacheKey = 'api_cache:' . $uri . '?' . $queryParams . $principalCacheKey;
+        $cacheKey = 'api_cache:pricing-v2:' . $uri . '?' . $queryParams;
         $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
 
         $catalogTags = in_array($this->tag[0], ['product-detail', 'products', 'products,promotions', 'product-reviews', 'search'], true) ? ['product-catalog'] : [];
