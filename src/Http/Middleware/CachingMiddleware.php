@@ -38,7 +38,7 @@ class CachingMiddleware implements MiddlewareInterface
         unset($params['clear_cache'], $params['no_cache']);
         ksort($params);
         $queryParams = http_build_query($params);
-        $cacheKey = 'api_cache:' . $uri . '?' . $queryParams;
+        $cacheKey = 'api_cache:pricing-v2:' . $uri . '?' . $queryParams;
         $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
 
         $catalogTags = in_array($this->tag[0], ['product-detail', 'products', 'products,promotions', 'product-reviews', 'search'], true) ? ['product-catalog'] : [];

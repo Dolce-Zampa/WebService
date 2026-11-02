@@ -6,11 +6,10 @@ namespace PS\Webservice\Traits;
 trait ProductManipulation {
     protected function calculateFullPrice(): void
     {
-        $price = $this->getPrice();
-        // Implement any additional price calculations here (e.g., taxes, discounts)
-        $vat = $price * 0.22; // Example VAT calculation (22%)
-        $price += $vat;
-        $this->data['price'] = $price; // Update the price in the data array
+        // Both prices are calculated by PrestaShop with the applicable tax:
+        // regular_price without reductions, original_price with reductions.
+        // Never apply a fixed VAT rate in this service.
+        $this->data['price'] = (float) ($this->data['regular_price'] ?? $this->data['price']);
     }
 
 }

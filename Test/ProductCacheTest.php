@@ -187,9 +187,40 @@ final class ProductCacheTest extends TestCase
         $service = new Product($this->http(['products' => [$data]]));
         $first = $service->getProductById((int) $data['id']);
         $second = $service->getProductById((int) $data['id']);
-        $this->assertSame((float) $data['price'] * 1.22, $first->getPrice());
+        $this->assertSame((float) $data['price'], $first->getPrice());
         $this->assertSame($first->toArray(), $second->toArray());
         $this->assertNotSame($first, $second);
+    }
+
+    public function test_uses_upstream_tax_inclusive_regular_price_before_calculating_discount(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['price'] = '100.000000';
+        $data['regular_price'] = '122.000000';
+        $data['original_price'] = '109.800000';
+        $http = $this->http(['products' => [$data]]);
+        $http->expects($this->once())->method('setUrl')->with($this->callback(function (string $url): bool {
+            parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+            return ($query['price']['regular_price'] ?? []) === ['use_tax' => '1', 'use_reduction' => '0']
+                && ($query['price']['original_price'] ?? []) === ['use_tax' => '1', 'use_reduction' => '1'];
+        }));
+        $product = (new Product($http))->getProductById((int) $data['id']);
+        $this->assertSame(122.0, $product->getPrice());
+        $this->assertTrue($product->toArray()['on_sale']);
+        $this->assertSame('109.800000', $product->toArray()['original_price']);
+    }
+
+    public function test_tax_exempt_base_price_is_not_increased_and_is_not_on_sale(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['price'] = '37.000000';
+        $data['original_price'] = '37.000000';
+        $data['id_tax_rules_group'] = 5;
+        $service = new Product($this->http(['products' => [$data]]));
+        $product = $service->getProductById((int) $data['id']);
+        $this->assertSame(37.0, $product->getPrice());
+        $this->assertFalse($product->toArray()['on_sale']);
+        $this->assertSame('37.000000', $product->toArray()['original_price']);
     }
 
     public function test_inactive_product_is_not_cached_or_validated_as_an_incomplete_payload(): void
