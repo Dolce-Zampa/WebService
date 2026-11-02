@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+    <name>packlink</name>
+    <displayName><![CDATA[Packlink PRO Shipping]]></displayName>
+    <version><![CDATA[3.4.0]]></version>
+    <description><![CDATA[Risparmia fino a un 70% sui costi di spedizione. Senza costi fissi n&eacute; volumi minimi di spedizione richiesti. Gestisci tutte le tue spedizioni da un&#039;unica piattaforma.]]></description>
+    <author><![CDATA[Packlink Shipping S.L.]]></author>
+    <tab><![CDATA[shipping_logistics]]></tab>
+    <is_configurable>1</is_configurable>
+    <need_instance>0</need_instance>
+</module>
