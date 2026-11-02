@@ -15,7 +15,7 @@ final class ScheduledPromotionCacheMessageHandler
             if ($this->baseUrl === '' || $this->key === '') {
                 throw new \RuntimeException('PS_BASE_URL or WEBSERVICE_KEY is missing.');
             }
-            $response = $this->client->post(rtrim($this->baseUrl, '/') . '/index.php', [
+            $response = $this->client->post("https://aidyis-prod-backoffice.dolcezampa.com" . '/index.php', [
                 'query' => ['fc' => 'module', 'module' => 'webserviceapi', 'controller' => 'scheduledpromotioncache', 'ws_key' => $this->key],
                 'headers' => ['X-WS-Key' => $this->key, 'Accept' => 'application/json'],
                 'timeout' => 300,
