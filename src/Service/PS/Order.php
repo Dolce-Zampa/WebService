@@ -113,8 +113,8 @@ class Order extends Cart implements PrestashopServiceInterface
         try {
             $response = $this->httpService->invoke('POST', $cart->generatePayload());
         } catch (\Exception $e) {
-            Log::error("Exception occurred while creating order for cart {$cart->getId()}: " . $e->getMessage());
-            throw new \RuntimeException("Failed to create order: " . $e->getMessage());
+            Log::error('Failed to create order', ['exception_type' => get_class($e)]);
+            throw new \RuntimeException('Failed to create order.');
         }
 
         return $cart;
@@ -127,7 +127,7 @@ class Order extends Cart implements PrestashopServiceInterface
             throw new \InvalidArgumentException('Validation failed: ' . implode(', ', $errors));
         }
 
-        $this->httpService->setUrl("/orders?ws_key={$this->httpService->getConfig()->apikey}");
+        $this->httpService->setUrl('/orders');
 
         $orderData = [
             'id_cart' => $confirmSession->id_cart,
@@ -178,10 +178,10 @@ class Order extends Cart implements PrestashopServiceInterface
 
             $dataResponse = $response->toArray();
             if ($response->failed() || $dataResponse['success'] === false) {
-                throw new \RuntimeException("Order confirmation failed: " . $response->getBody() . ' code: ' . $response->getHttpCode());
+                throw new \RuntimeException('Order confirmation failed.');
             }
 
-            Log::debug("Order confirmation response for cart {$confirmSession->id_cart}: " . json_encode($dataResponse) . ' code: ' . $response->getHttpCode());
+            Log::debug('Order confirmation completed', ['status' => $response->getHttpCode()]);
 
             // setup reference in storage for later retrieval in getOrderByCartId
             JsonDataStorage::carts()->insert(

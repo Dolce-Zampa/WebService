@@ -11,22 +11,20 @@ $errorMiddleware = $app->addErrorMiddleware(true, true, true, $logger);
 $errorMiddleware->setDefaultErrorHandler(function (\Slim\Http\ServerRequest $request, Throwable $e) use ($logger, $app) {
 
     $procId = uniqid();
-    $logger->error($e, [
-        'request' => $_SERVER['REQUEST_URI'],
-        'procid' => $procId
+    $logger->error('Unhandled request error', [
+        'exception_type' => get_class($e),
+        'procid' => $procId,
     ]);
 
     $statusError = [
         'id' => $procId,
         'status' => empty($e->getCode()) ? 500 : $e->getCode(),
-        'detail' => $e->getMessage()
+        'detail' => $e instanceof \PS\Webservice\Service\PS\PrestashopConnectorException
+            ? $e->getMessage()
+            : ($e instanceof \InvalidArgumentException ? $e->getMessage() : 'An internal error occurred.')
     ];
 
     $payload = ['error' => $statusError];
-    if (env("APP_DEBUG") == "true") {
-        $payload['error']['trace'] = $e->getTrace();
-    }
-
     $code = (int) $e->getCode();
     if ($code < 100 || $code > 599) {
         $code = 500;

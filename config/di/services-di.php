@@ -9,10 +9,9 @@ $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
 	        'Content-Type' => 'application/json',
 	        'Accept' => 'application/json',
 	        'X-WS-Key' => env('WEBSERVICE_KEY'),
-	        'Authorization' => "Bearer ".env('WEBSERVICE_KEY')
+	        'Authorization' => 'Basic ' . base64_encode(env('WEBSERVICE_KEY') . ':')
         ]
     );
-    $webserviceConfig->addQueryParams(['ws_key' => env('WEBSERVICE_KEY') ]);
     return new \PS\Webservice\Service\HttpService($webserviceConfig);
 });
 

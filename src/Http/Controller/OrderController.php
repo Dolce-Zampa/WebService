@@ -153,7 +153,7 @@ class OrderController extends CartController
             return response([
                 'success' => false,
                 'status' => 'error',
-                'error' => 'Failed to verify order: ' . $e->getMessage()
+                'error' => 'Failed to verify order.'
             ], 500);
         }
     }
@@ -226,16 +226,16 @@ class OrderController extends CartController
                 'payment_url' => $checkoutUrl
             ], 201);
         } catch (\InvalidArgumentException $e) {
-            Log::critical("Error on create order" . $e->getMessage());
+            Log::critical('Error on create order', ['exception_type' => get_class($e)]);
             return response([
                 'order' => $cart->toArray(),
                 'error' => $e->getMessage()
             ], 400);
         } catch (\Exception $e) {
-            Log::critical("Error on create order" . $e->getMessage());
+            Log::critical('Error on create order', ['exception_type' => get_class($e)]);
             return response([
                 'order' => $cart->toArray(),
-                'error' => $e->getMessage()
+                'error' => 'Unable to create checkout.'
             ], 500);
         }
     }
@@ -414,7 +414,7 @@ class OrderController extends CartController
 
             return response(['url' => $checkoutUrl], 200);
         } catch (\Exception $e) {
-            return response(['error' => $e->getMessage()], 500);
+            return response(['error' => 'Unable to create checkout.'], 500);
         }
     }
 

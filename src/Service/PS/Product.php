@@ -499,7 +499,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function uploadProductImage(int $productId, string $imageUrl): bool
     {
-        $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 60]); // FIXME: enable verify in production
+        $client = new \GuzzleHttp\Client(['verify' => true, 'timeout' => 60]);
 
         $tmpFile = null;
         $namedTmp = null;
