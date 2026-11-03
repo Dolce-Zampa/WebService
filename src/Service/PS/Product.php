@@ -176,13 +176,13 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return null;
         }
         $data = $snapshot['product'];
+        $promotions = (new ProductPromotionDates())->forProduct($id);
         // A previously cached category may have been built before this detail
         // existed. Refresh it once a new discounted snapshot is available.
-        if (!$wasCached && !env('APP_DISABLE_CACHE', false) && ListingPromotion::fromSnapshot($data) !== null) {
+        if (!$wasCached && !env('APP_DISABLE_CACHE', false) && ListingPromotion::fromSnapshot($data, $promotions) !== null) {
             self::invalidateCacheTags(['product-catalog']);
             Cache::tags(['product-catalog'])->flush();
         }
-        $promotions = (new ProductPromotionDates())->forProduct($id);
         $base = $promotions[0] ?? null;
         $data['promotion'] = $base;
         $data['promotion_start'] = $base['start'] ?? null;
@@ -238,25 +238,41 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function productsList(array $displayOptions = ['display' => 'full'], ?Filter $filter = null): Collection
     {
-        $cacheKey = 'list:' . json_encode([$displayOptions, $filter?->data]);
+        $cacheKey = 'list:v2:' . json_encode([$displayOptions, $filter?->data]);
         $snapshots = $this->cachedProductData($cacheKey, ['product-catalog'], function () use ($displayOptions, $filter) {
             $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
             $displayOptions['sort'] = "[$sorting]";
             $queryString = http_build_query($displayOptions);
             $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&date=1")['products'] ?? [];
             $snapshots = [];
+            $details = [];
+            $needsLookup = [];
             foreach ($products as $productData) {
                 $productFilter = $filter ?? new Filter([]);
                 if (!$productFilter->match($productData)) {
                     continue;
                 }
                 $data = ProductEntity::create($productFilter->productData, $this)->toArray();
-                $detail = $this->cachedCompleteProductSnapshot((int) $data['id']);
-                if ($detail !== null && ($promotion = ListingPromotion::fromSnapshot($detail)) !== null) {
-                    $data['listing_promotion'] = $promotion;
+                $id = (int) $data['id'];
+                $detail = $this->cachedCompleteProductSnapshot($id);
+                if ($detail !== null) {
+                    $details[$id] = $detail;
+                    if (ListingPromotion::needsPromotionLookup($detail)) {
+                        $needsLookup[] = $id;
+                    }
                 }
                 $snapshots[] = $data;
             }
+            // A single batch query for old snapshots, never a PrestaShop API
+            // request per product or combination. Category lists are cached.
+            $promotions = (new ProductPromotionDates())->forProducts($needsLookup);
+            foreach ($snapshots as &$data) {
+                $id = (int) $data['id'];
+                if (isset($details[$id]) && ($promotion = ListingPromotion::fromSnapshot($details[$id], $promotions[$id] ?? [])) !== null) {
+                    $data['listing_promotion'] = $promotion;
+                }
+            }
+            unset($data);
             return $snapshots;
         });
         return new Collection(array_map(fn (array $data) => ProductEntity::fromSnapshot($data, $this), $snapshots));

@@ -106,6 +106,68 @@ final class ProductCacheTest extends TestCase
         $this->assertNull(\PS\Webservice\Service\PS\ListingPromotion::fromSnapshot(['associations' => ['combinations' => [['id' => 2, 'price' => 5, 'original_price' => 10]]]]));
     }
 
+    public function test_legacy_thurdra_uses_an_undiscounted_variant_with_the_same_impact(): void
+    {
+        $fixture = json_decode(file_get_contents(__DIR__ . '/product-245-legacy-pricing.json'), true);
+        $promotions = array_fill_keys($fixture['promoted_ids'], ['start' => null, 'end' => null]);
+        $this->assertTrue(\PS\Webservice\Service\PS\ListingPromotion::needsPromotionLookup($fixture));
+        $this->assertNull(\PS\Webservice\Service\PS\ListingPromotion::fromSnapshot($fixture));
+        $result = \PS\Webservice\Service\PS\ListingPromotion::fromSnapshot($fixture, $promotions);
+        $this->assertSame(2357, $result['combination_id']);
+        $this->assertSame(38.0, $result['regular_price']);
+        $this->assertSame(25.0, $result['sale_price']);
+        $this->assertTrue($result['multiple_combinations']);
+    }
+
+    public function test_legacy_comparison_does_not_use_another_promoted_variant_as_reference(): void
+    {
+        $fixture = ['id_default_combination' => 1, 'price' => 34, 'associations' => ['combinations' => [
+            ['id' => 2, 'price' => '4', 'ecotax' => '0', 'original_price' => '25'],
+            ['id' => 3, 'price' => '4', 'ecotax' => '0', 'original_price' => '28'],
+        ]]];
+        $promotions = [2 => ['start' => null, 'end' => null], 3 => ['start' => null, 'end' => null]];
+        $this->assertNull(\PS\Webservice\Service\PS\ListingPromotion::fromSnapshot($fixture, $promotions));
+    }
+
+    public function test_category_reads_legacy_variant_promotion_with_one_batch_query(): void
+    {
+        $connection = Illuminate\Database\Capsule\Manager::connection();
+        $connection->getSchemaBuilder()->create('specific_price', function ($table): void {
+            $table->increments('id_specific_price');
+            $table->integer('id_product');
+            $table->integer('id_product_attribute')->default(0);
+            $table->integer('id_cart')->default(0);
+            $table->integer('id_customer')->default(0);
+            $table->integer('from_quantity')->default(1);
+            $table->decimal('reduction', 10, 2)->default(0);
+            $table->decimal('price', 10, 2)->default(-1);
+            $table->dateTime('from');
+            $table->dateTime('to');
+        });
+        $fixture = json_decode(file_get_contents(__DIR__ . '/product-245-legacy-pricing.json'), true);
+        foreach ($fixture['promoted_ids'] as $id) {
+            $connection->table('specific_price')->insert([
+                'id_product' => 245, 'id_product_attribute' => $id, 'reduction' => 0.5,
+                'from' => '0000-00-00 00:00:00', 'to' => '0000-00-00 00:00:00',
+            ]);
+        }
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['id'] = 245;
+        $service = $this->getMockBuilder(Product::class)->setConstructorArgs([$this->http(['products' => [$data]], 1)])->onlyMethods(['getProductById'])->getMock();
+        $service->expects($this->once())->method('getProductById')->willReturn(ProductEntity::fromSnapshot($fixture, $service, true));
+        $service->getCompleteProductById(245);
+        $connection->flushQueryLog();
+        $connection->enableQueryLog();
+        $listing = $service->getProductByCategory('17')->first()->toArray();
+        $queries = array_filter($connection->getQueryLog(), fn (array $entry) => str_contains($entry['query'], 'specific_price'));
+        $this->assertCount(1, $queries);
+        $this->assertSame(2357, $listing['listing_promotion']['combination_id']);
+        $this->assertSame(38.0, $listing['listing_promotion']['regular_price']);
+        $this->assertSame(25.0, $listing['listing_promotion']['sale_price']);
+        $service->getProductByCategory('17');
+        $this->assertCount(1, array_filter($connection->getQueryLog(), fn (array $entry) => str_contains($entry['query'], 'specific_price')));
+    }
+
     public function test_filters_without_a_valid_category_do_not_call_prestashop(): void
     {
         $http = $this->http([], 0);

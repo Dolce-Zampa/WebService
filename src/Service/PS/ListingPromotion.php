@@ -6,7 +6,33 @@ namespace PS\Webservice\Service\PS;
 /** Derive a listing offer exclusively from an already cached product snapshot. */
 final class ListingPromotion
 {
-    public static function fromSnapshot(array $product): ?array
+    /** Avoid database lookups when the snapshot cannot need a legacy reference. */
+    public static function needsPromotionLookup(array $product): bool
+    {
+        $pricesByImpact = [];
+        foreach ($product['associations']['combinations'] ?? [] as $combination) {
+            if (!is_numeric($combination['price'] ?? null) || !is_numeric($combination['original_price'] ?? null)) {
+                continue;
+            }
+            $key = (string) (float) $combination['price'] . ':' . (string) (float) ($combination['ecotax'] ?? 0);
+            $pricesByImpact[$key][] = $combination;
+        }
+        foreach ($pricesByImpact as $combinations) {
+            $prices = array_unique(array_map(fn (array $combination) => round((float) $combination['original_price'], 2), $combinations));
+            if (count($prices) < 2) {
+                continue;
+            }
+            foreach ($combinations as $combination) {
+                if (!is_numeric($combination['regular_price'] ?? null)
+                    || (float) $combination['regular_price'] <= (float) $combination['original_price']) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public static function fromSnapshot(array $product, array $promotions = []): ?array
     {
         $combinations = $product['associations']['combinations'] ?? [];
         if (!is_array($combinations) || $combinations === []) {
@@ -33,6 +59,26 @@ final class ListingPromotion
                 && (!is_numeric($regular) || (float) $regular <= $sale)
                 && (float) $baseRegular > $sale) {
                 $regular = $baseRegular;
+            }
+            // Legacy snapshots do not include a regular combination price. For
+            // an active variant promotion, an undiscounted variant with the same
+            // impact and ecotax provides a tax-inclusive reference price.
+            $id = (int) ($combination['id'] ?? 0);
+            if ((!is_numeric($regular) || (float) $regular <= $sale)
+                && isset($promotions[$id]) && !isset($promotions[0])
+                && is_numeric($combination['price'] ?? null)) {
+                foreach ($combinations as $reference) {
+                    $referenceId = (int) ($reference['id'] ?? 0);
+                    if ($referenceId === $id || isset($promotions[$referenceId])
+                        || !is_numeric($reference['price'] ?? null)
+                        || (float) $reference['price'] !== (float) $combination['price']
+                        || (float) ($reference['ecotax'] ?? 0) !== (float) ($combination['ecotax'] ?? 0)
+                        || !is_numeric($reference['original_price'] ?? null)) {
+                        continue;
+                    }
+                    $regular = $reference['original_price'];
+                    break;
+                }
             }
             if (!is_numeric($regular)) {
                 continue;
