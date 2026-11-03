@@ -65,6 +65,47 @@ final class ProductCacheTest extends TestCase
         return $http;
     }
 
+    public function test_listing_uses_cached_combination_without_more_prestashop_requests(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['id'] = 261;
+        $data['price'] = 50;
+        $data['regular_price'] = '50.000000';
+        $data['original_price'] = '50.000000';
+        $data['id_default_combination'] = 2884;
+        $data['associations']['combinations'] = [['id' => 2884, 'price' => '0', 'regular_price' => '25.000000', 'original_price' => '25.000000']];
+        $http = $this->http(['products' => [$data]], 2);
+        $service = $this->getMockBuilder(Product::class)->setConstructorArgs([$http])->onlyMethods(['getProductById'])->getMock();
+        $service->expects($this->once())->method('getProductById')->willReturn(ProductEntity::fromSnapshot($data, $service, true));
+
+        // The first category is cached before the detail exists.
+        $this->assertArrayNotHasKey('listing_promotion', $service->getProductByCategory('17')->first()->toArray());
+        $service->getCompleteProductById(261);
+        $listing = $service->getProductByCategory('17')->first()->toArray();
+        $this->assertSame(2884, $listing['listing_promotion']['combination_id']);
+        $this->assertSame(50.0, $listing['listing_promotion']['regular_price']);
+        $this->assertSame(25.0, $listing['listing_promotion']['sale_price']);
+        $this->assertFalse($listing['listing_promotion']['multiple_combinations']);
+    }
+
+    public function test_listing_selects_lowest_discounted_combination_using_its_own_regular_price(): void
+    {
+        $promotion = \PS\Webservice\Service\PS\ListingPromotion::fromSnapshot([
+            'price' => 50, 'id_default_combination' => 1,
+            'associations' => ['combinations' => [
+                ['id' => 1, 'original_price' => 50],
+                ['id' => 2, 'price' => 10, 'regular_price' => 62, 'original_price' => 30],
+                ['id' => 3, 'price' => -10, 'regular_price' => 40, 'original_price' => 20],
+                ['id' => 4, 'price' => 5, 'original_price' => 10], // no trustworthy regular price
+            ]],
+        ]);
+        $this->assertSame(3, $promotion['combination_id']);
+        $this->assertSame(40.0, $promotion['regular_price']);
+        $this->assertSame(20.0, $promotion['sale_price']);
+        $this->assertTrue($promotion['multiple_combinations']);
+        $this->assertNull(\PS\Webservice\Service\PS\ListingPromotion::fromSnapshot(['associations' => ['combinations' => [['id' => 2, 'price' => 5, 'original_price' => 10]]]]));
+    }
+
     public function test_filters_without_a_valid_category_do_not_call_prestashop(): void
     {
         $http = $this->http([], 0);

@@ -131,6 +131,18 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         return is_array($snapshot) && $this->snapshotIsCurrent($snapshot);
     }
 
+    /** Return the complete snapshot only if it is already cached and current. */
+    private function cachedCompleteProductSnapshot(int $id): ?array
+    {
+        if (env('APP_DISABLE_CACHE', false)) {
+            return null;
+        }
+        $tags = ['product:' . $id];
+        $snapshot = Cache::tags($tags)->get($this->productCacheKey('detail:' . $id, $tags));
+        return is_array($snapshot) && $this->snapshotIsCurrent($snapshot)
+            ? $snapshot['product'] : null;
+    }
+
     public function reserveWarmup(int $id): bool
     {
         return Cache::add('product-warm-pending:' . $this->contextKey() . ':' . $id, true, 86400);
@@ -143,6 +155,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function getCompleteProductById(int $id): ?ProductEntity
     {
+        $wasCached = $this->hasCompleteProductCached($id);
         $snapshot = $this->cachedProductData('detail:' . $id, ['product:' . $id], function () use ($id) {
             $product = $this->getProductById($id);
             if ($product === null) {
@@ -163,6 +176,12 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return null;
         }
         $data = $snapshot['product'];
+        // A previously cached category may have been built before this detail
+        // existed. Refresh it once a new discounted snapshot is available.
+        if (!$wasCached && !env('APP_DISABLE_CACHE', false) && ListingPromotion::fromSnapshot($data) !== null) {
+            self::invalidateCacheTags(['product-catalog']);
+            Cache::tags(['product-catalog'])->flush();
+        }
         $promotions = (new ProductPromotionDates())->forProduct($id);
         $base = $promotions[0] ?? null;
         $data['promotion'] = $base;
@@ -231,7 +250,12 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 if (!$productFilter->match($productData)) {
                     continue;
                 }
-                $snapshots[] = ProductEntity::create($productFilter->productData, $this)->toArray();
+                $data = ProductEntity::create($productFilter->productData, $this)->toArray();
+                $detail = $this->cachedCompleteProductSnapshot((int) $data['id']);
+                if ($detail !== null && ($promotion = ListingPromotion::fromSnapshot($detail)) !== null) {
+                    $data['listing_promotion'] = $promotion;
+                }
+                $snapshots[] = $data;
             }
             return $snapshots;
         });
