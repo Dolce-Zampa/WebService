@@ -177,9 +177,13 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }
         $data = $snapshot['product'];
         $promotions = (new ProductPromotionDates())->forProduct($id);
+        $listingPromotion = ListingPromotion::fromSnapshot($data, $promotions);
+        if ($listingPromotion !== null) {
+            $data['listing_promotion'] = $listingPromotion;
+        }
         // A previously cached category may have been built before this detail
         // existed. Refresh it once a new discounted snapshot is available.
-        if (!$wasCached && !env('APP_DISABLE_CACHE', false) && ListingPromotion::fromSnapshot($data, $promotions) !== null) {
+        if (!$wasCached && !env('APP_DISABLE_CACHE', false) && $listingPromotion !== null) {
             self::invalidateCacheTags(['product-catalog']);
             Cache::tags(['product-catalog'])->flush();
         }
