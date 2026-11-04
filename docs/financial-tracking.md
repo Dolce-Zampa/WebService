@@ -111,4 +111,4 @@ vendor/bin/phpunit Test/FinancialLedgerServiceTest.php Test/CommissionSnapshotSe
 
 Servono le estensioni PHP `sqlite3` e `bcmath`, oltre alle dipendenze bloccate in `composer.lock`. Il bootstrap applicativo richiede anche un `.env` valido; i test di dominio/infrastruttura non necessitano di credenziali reali Stripe.
 
-Restano coperti il rifiuto della firma Stripe non valida nel controller webhook e la whitelist di soli identificativi tecnici nel ledger. I test API verificano anche l'isolamento per artigiano e il rifiuto di identificativi d'ordine manomessi o appartenenti ad altri soggetti.
+Restano coperti il rifiuto della firma Stripe non valida nel controller webhook e la whitelist di soli identificativi tecnici nel ledger. I test API verificano l'isolamento per artigiano, l'accesso amministrativo e il rifiuto di identificativi d'ordine manomessi o appartenenti ad altri soggetti.

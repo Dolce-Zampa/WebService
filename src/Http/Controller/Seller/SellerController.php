@@ -268,12 +268,17 @@ class SellerController
         );
     }
 
-    public function sellerProucts(Request $request, mixed $response = null, array $args = []): ResponseInterface
+    public function sellerProducts(Request $request, mixed $response = null, array $args = []): ResponseInterface
     {
         try {
+            $manufacturer = $this->resolveAuthenticatedManufacturer($request);
             $sellerId = $this->resolveManufacturerIdBySellerIdentifier($args['sellerid'] ?? null);
             if ($sellerId === null) {
                 return response(['success' => false, 'message' => 'Seller ID is required'], 400);
+            }
+
+            if ((int) $manufacturer->id_manufacturer !== $sellerId) {
+                return response(['success' => false, 'message' => 'Forbidden'], 403);
             }
 
             $productList = $this->prestashopRepository->getProductAddToCart($sellerId);
@@ -303,7 +308,7 @@ class SellerController
             return response(['success' => true, 'data' => $products], 200);
 
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -430,7 +435,7 @@ class SellerController
                 'data' => $this->serializeManufacturer($manufacturer->fresh('details')),
             ]);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -458,7 +463,7 @@ class SellerController
                 'active_products' => $totalProducts,
             ]);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -495,7 +500,7 @@ class SellerController
 
             return response(['success' => true, 'data' => $metrics]);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -527,7 +532,7 @@ class SellerController
                 $totalProducts
             ));
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -540,7 +545,7 @@ class SellerController
             $packages = $this->promotionService->getAvailablePackages($position);
             return response(['success' => true, 'data' => $packages->toArray()]);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -573,7 +578,7 @@ class SellerController
 
             return response(['success' => true, 'data' => $promotable]);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -598,7 +603,7 @@ class SellerController
             }
             return response(['success' => false, 'message' => $e->getMessage()], $status);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -635,7 +640,7 @@ class SellerController
             }
             return response(['success' => false, 'message' => $e->getMessage()], $status);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -660,7 +665,7 @@ class SellerController
 
             return response(['success' => true, 'data' => $data]);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -696,7 +701,7 @@ class SellerController
 
             return response(['success' => true, 'message' => 'Product updated']);
         } catch (\Throwable $e) {
-            return response(['success' => false, 'message' => $e->getMessage()], 400);
+            return response(['success' => false, 'message' => $e->getMessage()], in_array($e->getCode(), [401, 403, 404], true) ? $e->getCode() : 400);
         }
     }
 
@@ -778,7 +783,7 @@ class SellerController
             return $manufacturer;
         }
 
-        throw new \RuntimeException('Seller not found', 404);
+        throw new \RuntimeException('Forbidden', 403);
     }
 
     private function upsertManufacturerDetails(int $manufacturerId, array $payload): void

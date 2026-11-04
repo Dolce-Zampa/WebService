@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Cache;
-use Mockery;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
@@ -65,6 +63,28 @@ final class OrderSecurityTest extends TestCase
         parent::tearDown();
     }
 
+    private function createRepositoryMock(int $customerId = 5): PrestashopRepository
+    {
+        $repository = $this->getMockBuilder(PrestashopRepository::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findUserIdFromSub'])
+            ->getMock();
+        $repository->method('findUserIdFromSub')
+            ->with('customer-sub')
+            ->willReturn($customerId);
+
+        return $repository;
+    }
+
+    private function createAuthenticatedRequest(array $payload): ServerRequestInterface
+    {
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn($payload);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
+
+        return $request;
+    }
+
     private function createOrderController(
         Order $orderService,
         ?PaymentGatewayInterface $stripeService = null,
@@ -72,7 +92,7 @@ final class OrderSecurityTest extends TestCase
     ): OrderController
     {
         $stripe = $stripeService ?? $this->createMock(PaymentGatewayInterface::class);
-        return new OrderController($orderService, $stripe, $customerRepository);
+        return new OrderController($orderService, $stripe, $customerRepository ?? $this->createRepositoryMock());
     }
 
     // -------------------------------------------------------- order read ownership
@@ -98,7 +118,7 @@ final class OrderSecurityTest extends TestCase
 
         $result = $controller->orderHistory($request, $response, ['customerId' => 6]);
 
-        $this->assertSame(404, $result->getStatusCode());
+        $this->assertSame(403, $result->getStatusCode());
     }
 
     public function test_order_history_uses_the_authenticated_customers_id(): void
@@ -135,7 +155,7 @@ final class OrderSecurityTest extends TestCase
         $order->method('toArray')->willReturn(['id' => 100, 'id_customer' => 6]);
         $orderService->expects($this->once())
             ->method('orderDetails')
-            ->with('100')
+            ->with('100', '5')
             ->willReturn($order);
 
         $customerRepository = $this->createMock(PrestashopRepository::class);
@@ -164,8 +184,7 @@ final class OrderSecurityTest extends TestCase
 
         $controller = $this->createOrderController($orderService);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn([]);
+        $request = $this->createAuthenticatedRequest([]);
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->confirmOrder($request, $response, []);
@@ -182,13 +201,12 @@ final class OrderSecurityTest extends TestCase
 
         $orderService->expects($this->once())
             ->method('getOrderByCartId')
-            ->with(42)
+            ->with(42, 5, null)
             ->willReturn(null);
 
         $controller = $this->createOrderController($orderService);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $request = $this->createAuthenticatedRequest(['id_cart' => 42]);
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->confirmOrder($request, $response, []);
@@ -215,13 +233,12 @@ final class OrderSecurityTest extends TestCase
 
         $orderService->expects($this->once())
             ->method('getOrderByCartId')
-            ->with(42)
+            ->with(42, 5, null)
             ->willReturn($orderEntity);
 
         $controller = $this->createOrderController($orderService);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $request = $this->createAuthenticatedRequest(['id_cart' => 42]);
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->confirmOrder($request, $response, []);
@@ -247,13 +264,12 @@ final class OrderSecurityTest extends TestCase
 
         $orderService->expects($this->once())
             ->method('getOrderByCartId')
-            ->with(42)
+            ->with(42, 5, null)
             ->willReturn($orderEntity);
 
         $controller = $this->createOrderController($orderService);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $request = $this->createAuthenticatedRequest(['id_cart' => 42]);
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->confirmOrder($request, $response, []);
@@ -261,6 +277,30 @@ final class OrderSecurityTest extends TestCase
         $this->assertSame(200, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
         $this->assertFalse($body['data']['success']);
+    }
+
+    public function test_confirm_order_rejects_untrusted_guest_ownership_context(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getOrderByCartId'])
+            ->getMock();
+
+        $orderService->expects($this->never())->method('getOrderByCartId');
+
+        $controller = $this->createOrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([
+            'id_cart' => 42,
+            'id_guest' => 'guest-42',
+        ]);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->confirmOrder($request, $response, []);
+
+        $this->assertSame(401, $result->getStatusCode());
     }
 
     public function test_confirm_order_returns_500_when_order_state_is_missing(): void
@@ -278,13 +318,12 @@ final class OrderSecurityTest extends TestCase
 
         $orderService->expects($this->once())
             ->method('getOrderByCartId')
-            ->with(42)
+            ->with(42, 5, null)
             ->willReturn($orderEntity);
 
         $controller = $this->createOrderController($orderService);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn(['id_cart' => 42]);
+        $request = $this->createAuthenticatedRequest(['id_cart' => 42]);
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->confirmOrder($request, $response, []);
@@ -296,7 +335,7 @@ final class OrderSecurityTest extends TestCase
 
     // -------------------------------------------------------- createOrder ownership
 
-    public function test_create_order_returns_403_when_no_owner_id_provided(): void
+    public function test_create_order_returns_401_when_request_is_not_authenticated(): void
     {
         $orderService = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
@@ -312,11 +351,13 @@ final class OrderSecurityTest extends TestCase
             'id_cart' => 10,
             'id_carrier' => 2,
         ]);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('');
         $response = $this->createMock(ResponseInterface::class);
 
         $result = $controller->createOrder($request, $response, []);
 
-        $this->assertSame(403, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
         $this->assertArrayHasKey('error', $body['data']);
     }
@@ -335,10 +376,9 @@ final class OrderSecurityTest extends TestCase
 
         $controller = $this->createOrderController($orderService);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn([
+        $request = $this->createAuthenticatedRequest([
             'id_cart' => 10,
-            'id_customer' => 5,
+            'id_customer' => 999,
             'id_carrier' => 2,
         ]);
         $response = $this->createMock(ResponseInterface::class);
@@ -346,6 +386,31 @@ final class OrderSecurityTest extends TestCase
         $result = $controller->createOrder($request, $response, []);
 
         $this->assertSame(404, $result->getStatusCode());
+    }
+
+    public function test_create_order_rejects_untrusted_guest_ownership_context(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId'])
+            ->getMock();
+        $orderService->expects($this->never())->method('getCartFromId');
+
+        $controller = $this->createOrderController($orderService);
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([
+            'id_cart' => 10,
+            'id_guest' => 'guest-7',
+            'id_carrier' => 2,
+        ]);
+        $request->method('getAttribute')->with('user_id')->willReturn(null);
+        $request->method('getHeaderLine')->with('Authorization')->willReturn('');
+        $response = $this->createMock(ResponseInterface::class);
+
+        $result = $controller->createOrder($request, $response, []);
+
+        $this->assertSame(401, $result->getStatusCode());
     }
 
     public function test_create_order_rejects_a_missing_carrier_before_creating_checkout(): void
@@ -357,11 +422,7 @@ final class OrderSecurityTest extends TestCase
         $orderService->expects($this->never())->method('getCartFromId');
 
         $controller = $this->createOrderController($orderService);
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn([
-            'id_cart' => 10,
-            'id_customer' => 5,
-        ]);
+        $request = $this->createAuthenticatedRequest(['id_cart' => 10]);
 
         $result = $controller->createOrder($request, $this->createMock(ResponseInterface::class), []);
 
@@ -459,11 +520,10 @@ final class OrderSecurityTest extends TestCase
             });
         $controller = $this->createOrderController($serviceMock, $stripe);
 
-        $request = $this->createMock(ServerRequestInterface::class);
-        $request->method('getParsedBody')->willReturn([
+        $request = $this->createAuthenticatedRequest([
             'id' => 1,
             'id_cart' => 10,
-            'id_customer' => 5,
+            'id_customer' => 999,
             'id_carrier' => 2,
             'id_lang' => 1,
             'paymentMethod' => 'stripe',
@@ -474,16 +534,16 @@ final class OrderSecurityTest extends TestCase
             'products' => [['id_product' => 7, 'id_product_attribute' => 999, 'quantity' => 1, 'price_wt' => '0.01']],
             'total_paid_tax_incl' => 0.01,
             'total_paid_tax_excl' => 20.00,
-            'delivery_address' => ['address1' => 'Via Main', 'id_country' => 10],
-            'invoice_address' => ['address1' => 'Via Main', 'id_country' => 10],
+            'delivery_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
+            'invoice_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
             'customer' => [
                 'id_customer' => 5,
                 'firstname' => 'Mario',
                 'lastname' => 'Rossi',
                 'email' => 'mario@example.com',
                 'phone' => '123456789',
-                'delivery_address' => ['address1' => 'Via Main', 'id_country' => 10],
-                'invoice_address' => ['address1' => 'Via Main', 'id_country' => 10],
+                'delivery_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
+                'invoice_address' => ['address1' => 'Via Main', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
             ],
         ]);
         $response = $this->createMock(ResponseInterface::class);
@@ -499,7 +559,7 @@ final class OrderSecurityTest extends TestCase
 
     // -------------------------------------------------------- initiatePayment ownership
 
-    public function test_initiate_payment_returns_403_when_no_owner_id_provided(): void
+    public function test_initiate_payment_returns_401_when_unauthenticated(): void
     {
         $orderService = $this->getMockBuilder(Order::class)
             ->disableOriginalConstructor()
@@ -518,7 +578,7 @@ final class OrderSecurityTest extends TestCase
 
         $result = $controller->initiatePayment($request, $response, []);
 
-        $this->assertSame(403, $result->getStatusCode());
+        $this->assertSame(401, $result->getStatusCode());
     }
 
     public function test_initiate_payment_returns_400_when_no_cart_id(): void
@@ -533,6 +593,7 @@ final class OrderSecurityTest extends TestCase
         $controller = $this->createOrderController($orderService);
 
         $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
         $request->method('getParsedBody')->willReturn([
             'id_customer' => 5,
             // no id_cart
@@ -559,6 +620,7 @@ final class OrderSecurityTest extends TestCase
         $controller = $this->createOrderController($orderService);
 
         $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
         $request->method('getParsedBody')->willReturn([
             'id_cart' => 10,
             'id_customer' => 5,

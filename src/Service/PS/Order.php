@@ -29,6 +29,12 @@ class Order extends Cart implements PrestashopServiceInterface
 
     public function getOrderByCartId(int|string $cartId, int|string|null $customerId = null, int|string|null $guestId = null): ?OrderEntity
     {
+        if ($customerId !== null || $guestId !== null) {
+            $cart = $this->getCartFromId($cartId, $customerId, $guestId);
+            if ($cart === null) {
+                return null;
+            }
+        }
 
         // find reference order from cache
         $cachedOrder = JsonDataStorage::carts()->createQuery()->where('id_cart', (string) $cartId)->fetchAll();
@@ -37,9 +43,14 @@ class Order extends Cart implements PrestashopServiceInterface
             throw new \RuntimeException("Order retrieved from cache for cart {$cartId}");
         }
 
-        $queryString = http_build_query([
+        $query = [
             'reference' => $cachedOrder[0]['reference'],
-        ]);
+        ];
+        if ($customerId !== null) {
+            $query['id_customer'] = $customerId;
+        }
+
+        $queryString = http_build_query($query);
 
         $this->httpService->setUrl("/orders?{$queryString}");
 
@@ -86,11 +97,16 @@ class Order extends Cart implements PrestashopServiceInterface
         return $orders;
     }
 
-    public function orderDetails(string $orderId): ?OrderEntity
+    public function orderDetails(string $orderId, int|string|null $customerId = null): ?OrderEntity
     {
-        $queryString = http_build_query([
+        $query = [
             'id_order' => $orderId,
-        ]);
+        ];
+        if ($customerId !== null) {
+            $query['id_customer'] = $customerId;
+        }
+
+        $queryString = http_build_query($query);
         $this->httpService->setUrl("/orders?{$queryString}");
 
         try {
@@ -101,6 +117,10 @@ class Order extends Cart implements PrestashopServiceInterface
         }
 
         $orderData = $response->toArray()['data']['order'] ?? null;
+        if (!is_array($orderData)) {
+            return null;
+        }
+
         $orderData['customer'] = $response->toArray()['data']['customer'] ?? [];
 
         return OrderEntity::create($orderData, $this);

@@ -15,6 +15,7 @@ final class ConfirmOrderSessionTest extends TestCase
             'id_guest' => null,
             'order_state' => 2,
             'amount_paid' => 10,
+            'id_carrier' => 14,
             'payment_module' => $paymentModule,
         ], $this->createMock(PrestashopServiceInterface::class));
     }

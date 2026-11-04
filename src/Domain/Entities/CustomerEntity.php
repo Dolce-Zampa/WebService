@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
+use Illuminate\Support\Facades\DB;
 use PS\Webservice\Domain\Models\PS\State;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
@@ -97,10 +98,10 @@ class CustomerEntity implements ObjectInterface
             throw new \InvalidArgumentException('Address country is required');
         }
         $normalized = [
-            'email' => (string) ($customer['email'] ?? ''),
+            'email' => $customer['email'],
             'password' => $customer['password'] ?? null,
-            'firstname' => (string) ($customer['firstname'] ?? ''),
-            'lastname' => (string) ($customer['lastname'] ?? ''),
+            'firstname' => $customer['firstname'],
+            'lastname' => $customer['lastname'],
             'phone' => is_string($phone) ? $phone : '',
             'newsletter' => (bool) ($customer['newsletter'] ?? false),
         ];
@@ -117,12 +118,18 @@ class CustomerEntity implements ObjectInterface
             }
         }
 
-        if (is_array($customer['delivery_address'] ?? null)) {
-            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($customer['delivery_address'], $phone);
+        if (isset($customer['delivery_address']) && !is_array($deliveryAddress)) {
+            throw new \InvalidArgumentException('Customer delivery_address must be an object');
+        }
+        if (is_array($deliveryAddress)) {
+            $normalized['delivery_address'] = $this->normalizeDeliveryAddress($deliveryAddress, is_string($phone) ? $phone : null);
         }
 
-        if (is_array($customer['invoice_address'] ?? null)) {
-            $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address'], $phone);
+        if (isset($customer['invoice_address'])) {
+            if (!is_array($customer['invoice_address'])) {
+                throw new \InvalidArgumentException('Customer invoice_address must be an object');
+            }
+            $normalized['invoice_address'] = $this->normalizeDeliveryAddress($customer['invoice_address'], is_string($phone) ? $phone : null);
         } else {
             $normalized['invoice_address'] = null;
         }
@@ -136,22 +143,51 @@ class CustomerEntity implements ObjectInterface
      */
     private function normalizeDeliveryAddress(array $deliveryAddress, ?string $fallbackPhone = null): array
     {
-        $countryId = isset($deliveryAddress['id_country'])
-            && is_numeric($deliveryAddress['id_country'])
-            && (int) $deliveryAddress['id_country'] > 0
-            ? (int) $deliveryAddress['id_country']
-            : 10;
+        foreach (['address1', 'city', 'postcode'] as $field) {
+            if (!isset($deliveryAddress[$field]) || !is_string($deliveryAddress[$field]) || trim($deliveryAddress[$field]) === '') {
+                throw new \InvalidArgumentException("Address {$field} is required");
+            }
+        }
+
+        $idCountry = filter_var($deliveryAddress['id_country'] ?? null, FILTER_VALIDATE_INT);
+        if (($idCountry === false || $idCountry <= 0) && !empty($deliveryAddress['country'])) {
+            $idCountry = DB::table('country')
+                ->where('iso_code', strtoupper(trim((string) $deliveryAddress['country'])))
+                ->value('id_country');
+        }
+        if ($idCountry === false || $idCountry <= 0) {
+            throw new \InvalidArgumentException('Address country is required and must match a configured country');
+        }
+
+        $idState = $deliveryAddress['id_state'] ?? null;
+        if ($idState === '' || $idState === 0 || $idState === '0') {
+            $idState = null;
+        }
+        if (($idState === null || $idState === '') && !empty($deliveryAddress['state'])) {
+            $stateCode = trim((string) $deliveryAddress['state']);
+            $idState = State::where('id_country', (int) $idCountry)
+                ->where(function ($query) use ($stateCode) {
+                    $query->where('iso_code', $stateCode)->orWhere('name', $stateCode);
+                })
+                ->value('id_state');
+            if ($idState === null) {
+                throw new \InvalidArgumentException('Address state does not match the configured country');
+            }
+        }
+        if ($idState !== null && $idState !== '' && (!is_numeric($idState) || (int) $idState <= 0)) {
+            throw new \InvalidArgumentException('Address id_state must be a positive integer when provided');
+        }
 
         $normalized = [
-            'alias' => (string) ($deliveryAddress['alias'] ?? 'home'),
-            'firstname' => (string) ($this->data['firstname'] ?? ''),
-            'lastname' => (string) ($this->data['lastname'] ?? ''),
-            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', (string) ($deliveryAddress['address1'] ?? '')))),
-            'city' => (string) ($deliveryAddress['city'] ?? ''),
-            'postcode' => (string) ($deliveryAddress['postcode'] ?? ''),
-            'id_country' => $countryId,
+            'alias' => (string) ($deliveryAddress['alias'] ?? ''),
+            'firstname' => (string) ($deliveryAddress['firstname'] ?? $this->data['firstname']),
+            'lastname' => (string) ($deliveryAddress['lastname'] ?? $this->data['lastname']),
+            'address1' => (string) trim(str_replace("\xc2\xa0", ' ', str_replace(',', ' ', $deliveryAddress['address1']))),
+            'city' => $deliveryAddress['city'],
+            'postcode' => $deliveryAddress['postcode'],
+            'id_country' => (int) $idCountry,
             'phone_mobile' => (string) ($deliveryAddress['phone_mobile'] ?? $deliveryAddress['phone'] ?? $fallbackPhone ?? ''),
-            'id_state' => $this->resolveStateId($deliveryAddress, $countryId),
+            'id_state' => $idState === null || $idState === '' ? null : (int) $idState,
         ];
         foreach (['address2', 'state', 'country'] as $field) {
             if (isset($deliveryAddress[$field]) && is_string($deliveryAddress[$field])) {
@@ -160,36 +196,6 @@ class CustomerEntity implements ObjectInterface
         }
 
         return $normalized;
-    }
-
-    /**
-     * Resolves a province supplied by the checkout without ever falling back
-     * to an unrelated hard-coded state.
-     */
-    private function resolveStateId(array $address, int $countryId): int
-    {
-        if (isset($address['id_state']) && is_numeric($address['id_state']) && (int) $address['id_state'] > 0) {
-            return (int) $address['id_state'];
-        }
-
-        $state = trim((string) ($address['state'] ?? ''));
-        if ($state === '' || $countryId <= 0) {
-            return 0;
-        }
-
-        try {
-            $idState = State::query()
-                ->where('id_country', $countryId)
-                ->where(function ($query) use ($state) {
-                    $query->where('iso_code', strtoupper($state))
-                        ->orWhere('name', $state);
-                })
-                ->value('id_state');
-
-            return is_numeric($idState) && (int) $idState > 0 ? (int) $idState : 0;
-        } catch (\Throwable) {
-            return 0;
-        }
     }
 
     public function generatePayload(): \PS\Webservice\Domain\Object\PayloadServiceData

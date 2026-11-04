@@ -17,7 +17,10 @@ final class CouponCheckoutControllerTest extends TestCase
         $tagged = $this->createMock(\Illuminate\Cache\TaggedCache::class);
         $cache->method('tags')->willReturn($tagged); $tagged->method('tags')->willReturn($tagged);
         \Illuminate\Support\Facades\Facade::clearResolvedInstances();
-        \Illuminate\Support\Facades\Facade::setFacadeApplication(['cache' => $cache]);
+        \Illuminate\Support\Facades\Facade::setFacadeApplication([
+            'cache' => $cache,
+            'log' => $this->createMock(\Psr\Log\LoggerInterface::class),
+        ]);
         $service = $this->getMockBuilder(Order::class)->disableOriginalConstructor()
             ->onlyMethods(['getCartFromId', 'prepareCouponCart', 'createCouponCode', 'getCarrierDetail'])->getMock();
         $data = ['id' => 10, 'currency_iso' => 'EUR', 'products' => [
@@ -44,11 +47,18 @@ final class CouponCheckoutControllerTest extends TestCase
         $payload = ['id' => 1, 'id_cart' => 10, 'id_customer' => 5, 'id_guest' => null, 'id_carrier' => 2, 'id_lang' => 1,
             'reference' => '', 'current_state' => 0, 'date_add' => '', 'total_paid_tax_incl' => 1, 'total_paid_tax_excl' => 1,
             'customer' => ['email' => 'test@example.com', 'firstname' => 'Test', 'lastname' => 'Customer'],
-            'delivery_address' => ['id_country' => 10], 'invoice_address' => ['id_country' => 10],
+            'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
+            'invoice_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'id_country' => 10],
             'cart_rules' => [['code' => 'SAVE10', 'reduction_percent' => 99, 'reduction_amount' => 999]]];
         $request = $this->createMock(ServerRequestInterface::class);
         $request->method('getParsedBody')->willReturn($payload);
-        $controller = new OrderController($service, $gateway);
+        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
+        $repository = $this->getMockBuilder(\PS\Webservice\Repositories\PrestashopRepository::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findUserIdFromSub'])
+            ->getMock();
+        $repository->method('findUserIdFromSub')->with('customer-sub')->willReturn(5);
+        $controller = new OrderController($service, $gateway, $repository);
         $response = $controller->createOrder($request, $this->createMock(ResponseInterface::class), []);
         $this->assertSame(201, $response->getStatusCode());
     }
