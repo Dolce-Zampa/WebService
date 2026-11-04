@@ -85,8 +85,8 @@ abstract class MlabFactoryApiBaseModuleFrontController extends ModuleFrontContro
             return trim($matches[1]);
         }
 
-        if (!empty($headers['X-WS-Key'])) {
-            return trim((string) $headers['X-WS-Key']);
+        if (!empty($headers['X-Ws-Key'])) {
+            return trim((string) $headers['X-Ws-Key']);
         }
 
         return trim((string) Tools::getValue('ws_key'));

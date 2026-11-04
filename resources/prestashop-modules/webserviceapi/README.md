@@ -491,6 +491,12 @@ Un lock sul database impedisce esecuzioni concorrenti. È disponibile anche
 lo script CLI `cron/scheduled-promotion-cache.php` per l'esecuzione manuale
 nel container PrestaShop; non è necessario configurare un cron esterno.
 
+Vengono inoltre rilevati i prezzi specifici attivi inseriti dopo la scansione
+precedente, anche se la loro data `from` è già passata (per esempio una
+promozione inserita oggi con decorrenza da ieri). Il modulo mantiene un
+checkpoint dell'ID massimo esaminato per evitare di reinviare il clear cache a
+ogni esecuzione per tutte le promozioni già attive.
+
 Sono inclusi i prezzi specifici associati a un prodotto, anche per combinazioni
 e negozi; i prezzi specifici globali con `id_product = 0` e le regole carrello
 non sono coperti. Questo controllo rileva il passaggio del tempo: modifiche o
