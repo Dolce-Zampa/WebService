@@ -115,6 +115,7 @@ $app->group('/api/seller', function() use ($app) {
     $app->post('/api/seller/auth/refresh', PS\Webservice\Http\Controller\Seller\SellerController::class . ':refresh');
     $app->get('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':me')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',10));
     $app->patch('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateMe');
+    $app->get('/api/seller/orders', PS\Webservice\Http\Controller\Seller\SellerController::class . ':orders');
     $app->get('/api/seller/dashboard/summary', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardSummary')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
     $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
     $app->post('/api/seller/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':products');

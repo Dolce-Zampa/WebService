@@ -58,6 +58,100 @@ class SellerController
         $this->promotionService = $promotionService;
     }
 
+    public function orders(Request $request): ResponseInterface
+    {
+        try {
+            $manufacturer = $this->resolveAuthenticatedManufacturer($request);
+            $sellerId = (int) $manufacturer->id_manufacturer;
+            $db = $manufacturer->getConnection();
+            $params = $request->getQueryParams();
+            $page = max(1, (int) ($params['page'] ?? 1));
+            $perPage = 20;
+            $statusId = isset($params['status']) ? (int) $params['status'] : null;
+            $base = $db->table('orders as o')
+                ->join('order_detail as d', 'd.id_order', '=', 'o.id_order')
+                ->join('product as p', 'p.id_product', '=', 'd.product_id')
+                ->where('p.id_manufacturer', $sellerId);
+            $states = $this->sellerOrderStatusCounts($db, $base);
+            $statuses = [];
+            foreach ($states as $state) {
+                $id = (int) $state->id;
+                if (!isset($statuses[$id])) $statuses[$id] = ['id' => $id, 'name' => $state->name ?: 'Stato ' . $id, 'count' => 0];
+                $statuses[$id]['count'] += (int) $state->count;
+            }
+            if (($params['preparation'] ?? '') === '1') {
+                $preparationIds = array_column(array_filter($statuses, static fn (array $state): bool => stripos($state['name'], 'preparazion') !== false), 'id');
+                $base->whereIn('o.current_state', $preparationIds);
+            } elseif ($statusId !== null) {
+                $base->where('o.current_state', $statusId);
+            }
+            $total = (clone $base)->distinct()->count('o.id_order');
+            $orders = (clone $base)->leftJoin('currency as currency', 'currency.id_currency', '=', 'o.id_currency')->leftJoin('order_state_lang as sl', function ($join): void {
+                $join->on('sl.id_order_state', '=', 'o.current_state')->on('sl.id_lang', '=', 'o.id_lang');
+            })->select('o.id_order', 'o.id_cart', 'o.id_lang', 'o.reference', 'o.date_add', 'o.current_state', 'sl.name as status', 'currency.iso_code as currency')
+                ->distinct()->orderByDesc('o.id_order')->offset(($page - 1) * $perPage)->limit($perPage)->get();
+            $items = [];
+            foreach ($orders as $order) {
+                $lines = $db->table('order_detail as d')->join('product as p', 'p.id_product', '=', 'd.product_id')
+                    ->where('d.id_order', $order->id_order)->where('p.id_manufacturer', $sellerId)
+                    ->select('d.id_order_detail', 'd.product_id', 'd.product_name', 'd.product_quantity', 'd.product_attribute_id', 'd.id_customization', 'd.unit_price_tax_incl')->get();
+                $images = [];
+                $productIds = $lines->pluck('product_id')->unique()->values()->all();
+                if ($productIds !== []) {
+                    $imageRows = $db->table('image')->whereIn('id_product', $productIds)
+                        ->orderByDesc('cover')->orderBy('position')->orderBy('id_image')
+                        ->get(['id_product', 'id_image']);
+                    foreach ($imageRows as $image) {
+                        $images[(int) $image->id_product] ??= (int) $image->id_image;
+                    }
+                }
+                $products = [];
+                foreach ($lines as $line) {
+                    $details = [];
+                    if ((int) $line->product_attribute_id > 0) {
+                        $variants = $db->table('product_attribute_combination as c')
+                            ->join('attribute as a', 'a.id_attribute', '=', 'c.id_attribute')
+                            ->join('attribute_lang as al', function ($join) use ($order): void {
+                                $join->on('al.id_attribute', '=', 'a.id_attribute')->where('al.id_lang', '=', $order->id_lang);
+                            })->join('attribute_group_lang as agl', function ($join) use ($order): void {
+                                $join->on('agl.id_attribute_group', '=', 'a.id_attribute_group')->where('agl.id_lang', '=', $order->id_lang);
+                            })->where('c.id_product_attribute', $line->product_attribute_id)
+                            ->select('agl.name as label', 'al.name as value')->get();
+                        foreach ($variants as $variant) $details[] = ['label' => (string) $variant->label, 'value' => (string) $variant->value];
+                    }
+                    if ((int) $line->id_customization > 0) {
+                        $customizations = $db->table('customization as c')
+                            ->join('customized_data as cd', 'cd.id_customization', '=', 'c.id_customization')
+                            ->leftJoin('customization_field_lang as fl', function ($join) use ($order): void {
+                                $join->on('fl.id_customization_field', '=', 'cd.index')->where('fl.id_lang', '=', $order->id_lang);
+                            })->where('c.id_customization', $line->id_customization)->where('c.id_cart', $order->id_cart)
+                            ->where('cd.type', 1)->select('fl.name as label', 'cd.value')->distinct()->get();
+                        foreach ($customizations as $customization) {
+                            if (trim((string) $customization->value) !== '') $details[] = ['label' => $customization->label ?: 'Personalizzazione', 'value' => (string) $customization->value];
+                        }
+                    }
+                    $products[] = ['id' => (int) $line->id_order_detail, 'name' => (string) $line->product_name, 'image' => isset($images[(int) $line->product_id]) ? build_product_image_url($images[(int) $line->product_id], (string) $line->product_name, 'small_default') : null, 'quantity' => (int) $line->product_quantity, 'unit_price_tax_incl' => $line->unit_price_tax_incl === null ? null : (float) $line->unit_price_tax_incl, 'details' => $details];
+                }
+                $items[] = ['id' => (int) $order->id_order, 'reference' => (string) $order->reference, 'date' => (string) $order->date_add, 'status_id' => (int) $order->current_state, 'status' => $order->status ?: 'Stato ' . $order->current_state, 'currency' => $order->currency, 'items' => $products];
+            }
+            return response(['items' => $items, 'statuses' => array_values($statuses), 'total' => $total, 'page' => $page, 'per_page' => $perPage]);
+        } catch (\Throwable $e) {
+            Log::error('Unable to load seller orders', ['exception' => $e::class]);
+            return response(['message' => 'Unable to load seller orders'], 500);
+        }
+    }
+
+    /** Count each seller order once per state, including with a PrestaShop table prefix. */
+    private function sellerOrderStatusCounts(\Illuminate\Database\ConnectionInterface $db, \Illuminate\Database\Query\Builder $base): \Illuminate\Support\Collection
+    {
+        $orderId = $db->getQueryGrammar()->wrap('o.id_order');
+        return (clone $base)->leftJoin('order_state_lang as sl', function ($join): void {
+            $join->on('sl.id_order_state', '=', 'o.current_state')->on('sl.id_lang', '=', 'o.id_lang');
+        })->select('o.current_state as id', 'sl.name')
+            ->selectRaw('COUNT(DISTINCT ' . $orderId . ') as count')
+            ->groupBy('o.current_state', 'sl.name')->get();
+    }
+
     public function healthCheck(Request $request): ResponseInterface
     {
         //check connection to DB
