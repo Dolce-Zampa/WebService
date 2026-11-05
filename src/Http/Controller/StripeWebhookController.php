@@ -113,13 +113,13 @@ class StripeWebhookController extends OrderController
         if (in_array($event->type, ['checkout.session.completed', 'checkout.session.async_payment_succeeded'], true)) {
             try {
                 if (!$this->isPaidCheckoutSession($event->data->object)) {
-                    // `checkout.session.completed` is also delivered for
-                    // delayed payment methods. In that case Stripe has
-                    // accepted the Checkout flow, but has not collected the
-                    // money yet. The later async success event is the only
-                    // event that may create the order or seller allocations.
+                    if ($event->type === 'checkout.session.completed'
+                        && !($this->promotionService !== null && $this->promotionService->isPromotionCheckoutSession($event->data->object))
+                        && $this->isBankTransferCheckoutSession($event->data->object)) {
+                        $this->handleCheckoutSessionCompleted($event->data->object, true);
+                    }
                     $this->recordFinancialWebhook($event);
-                    Log::info('Stripe webhook: checkout payment is not yet paid; confirmation deferred.', [
+                    Log::info('Stripe webhook: checkout payment is not yet paid.', [
                         'event_type' => (string) $event->type,
                         'event_id' => (string) ($event->id ?? ''),
                     ]);
@@ -136,6 +136,13 @@ class StripeWebhookController extends OrderController
                 // retry must still be able to allocate the verified payment.
                 $this->queueStripeConnectTransferAllocation($event->data->object, $event);
                 $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                if ($cartId !== null && $event->type === 'checkout.session.async_payment_succeeded') {
+                    $paymentIntentId = $this->stripeTransactionId($event->data->object, (string) $event->type, null);
+                    if ($paymentIntentId === null) {
+                        throw new \RuntimeException('Paid checkout is missing its payment intent.');
+                    }
+                    $this->orderService->settleStripeBankTransfer($cartId, $paymentIntentId);
+                }
                 if ($cartId !== null && $this->sellerSaleNotifications !== null) {
                     // This happens only after Stripe's signature has been
                     // checked and PrestaShop has accepted the confirmation.
@@ -583,6 +590,25 @@ class StripeWebhookController extends OrderController
         return ($session->toArray()['payment_status'] ?? null) === 'paid';
     }
 
+    protected function isBankTransferCheckoutSession(\Stripe\StripeObject $session): bool
+    {
+        $data = $session->toArray();
+        $intentId = $this->stripeOptionalIdentifier($data['payment_intent'] ?? null);
+        if ($intentId === null || !preg_match('/^pi_[A-Za-z0-9]+$/D', $intentId)) {
+            throw new \RuntimeException('Unpaid checkout is missing its payment intent.');
+        }
+        $intent = $this->retrieveCheckoutPaymentIntent($intentId);
+        $intentData = $intent->toArray();
+        $method = $intentData['payment_method'] ?? null;
+        return (is_array($method) && ($method['type'] ?? null) === 'customer_balance')
+            || ($intentData['next_action']['type'] ?? null) === 'display_bank_transfer_instructions';
+    }
+
+    protected function retrieveCheckoutPaymentIntent(string $intentId): \Stripe\PaymentIntent
+    {
+        return \Stripe\PaymentIntent::retrieve(['id' => $intentId, 'expand' => ['payment_method']]);
+    }
+
     private function financialTransactionByProviderTransaction(string $providerTransactionId): ?object
     {
         return $this->financialLedger?->findByProviderTransaction('stripe', $providerTransactionId);
@@ -942,13 +968,12 @@ class StripeWebhookController extends OrderController
     }
 
     /**
-     * Confirms an order for a Checkout Session whose payment was already
-     * verified by handleWebhook(). The session-level lock and marker make a
-     * Stripe retry or the later async success event harmless.
+     * Creates the order after a verified payment, or in the pending bank
+     * transfer state after verification of the selected payment method.
      */
-    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): ?int
+    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session, bool $bankTransferPending = false): ?int
     {
-        if (!$this->isPaidCheckoutSession($session)) {
+        if (!$this->isPaidCheckoutSession($session) && !$bankTransferPending) {
             Log::info('Stripe webhook: unpaid Checkout Session cannot be confirmed.', [
                 'checkout_session_id' => (string) ($session->id ?? ''),
             ]);
@@ -1016,6 +1041,7 @@ class StripeWebhookController extends OrderController
             $metadata,
             $snapshot,
             $snapshotPayload,
+            $bankTransferPending,
         ): int {
             if ($this->checkoutConfirmationIsRecorded($checkoutSessionId)) {
                 Log::info('Stripe webhook: duplicate paid checkout ignored after confirmation.', [
@@ -1053,7 +1079,13 @@ class StripeWebhookController extends OrderController
             $firstname = $customerDetails->firstname;
             $lastname = $customerDetails->lastname;
 
-            if ($snapshot !== null) {
+            if ($bankTransferPending) {
+                $this->orderService->confirmSessionOrder(
+                    $cartId, $customerId, $guestId, $carrierId, $couponCode,
+                    $email, $firstname, $lastname, $customerDetails, $amountPaid,
+                    'Bonifico bancario (Stripe)', $snapshot['id'] ?? null, true,
+                );
+            } elseif ($snapshot !== null) {
                 $this->orderService->confirmSessionOrder(
                     $cartId,
                     $customerId,

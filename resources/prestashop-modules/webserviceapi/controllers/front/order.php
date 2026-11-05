@@ -15,6 +15,10 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         $payload = $this->getJsonPayload();
         MlabFactoryApiHelper::requireFields($payload, array('id_cart'));
 
+        if (isset($payload['action']) && $payload['action'] === 'settle_stripe_bank_transfer') {
+            return $this->settleStripeBankTransfer($payload);
+        }
+
         $cart = new Cart((int) $payload['id_cart']);
         if (!Validate::isLoadedObject($cart)) {
             throw new MlabFactoryApiException('Cart not found.', 404, array('id_cart' => (int) $payload['id_cart']));
@@ -76,6 +80,14 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         $paymentModuleName = (string) MlabFactoryApiHelper::getValue($payload, 'payment_module', Configuration::get(webserviceapi::CONFIG_PAYMENT_MODULE));
         $paymentModule = MlabFactoryApiHelper::resolvePaymentModule($paymentModuleName);
         $orderStateId = (int) MlabFactoryApiHelper::getValue($payload, 'id_order_state');
+        if (!empty($payload['stripe_bank_transfer_pending'])) {
+            $orderStateId = (int) Configuration::get('PS_OS_BANKWIRE');
+            $pendingState = new OrderState($orderStateId);
+            if ($orderStateId <= 0 || $orderStateId === (int) Configuration::get('PS_OS_PAYMENT')
+                || !Validate::isLoadedObject($pendingState) || $pendingState->paid || $pendingState->logable || $pendingState->invoice) {
+                throw new MlabFactoryApiException('Bank transfer pending state is not configured.', 500);
+            }
+        }
         $paymentLabel = (string) MlabFactoryApiHelper::getValue($payload, 'payment_label', $paymentModule->displayName);
         $amountPaid = (float) MlabFactoryApiHelper::getValue($payload, 'amount_paid', $cart->getOrderTotal(true, Cart::BOTH));
 
@@ -158,6 +170,61 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             'cart' => MlabFactoryApiHelper::serializeCart($cart),
             'guest_registered' => $isGuest,
         );
+    }
+
+    private function settleStripeBankTransfer(array $payload)
+    {
+        $cartId = (int) $payload['id_cart'];
+        $paymentIntent = isset($payload['payment_intent']) ? (string) $payload['payment_intent'] : '';
+        if ($cartId <= 0 || !preg_match('/^pi_[A-Za-z0-9]+$/D', $paymentIntent)) {
+            throw new MlabFactoryApiException('Invalid Stripe payment correlation.', 422);
+        }
+        $pendingState = (int) Configuration::get('PS_OS_BANKWIRE');
+        $paidState = (int) Configuration::get('PS_OS_PAYMENT');
+        if ($pendingState <= 0 || $paidState <= 0 || $pendingState === $paidState) {
+            throw new MlabFactoryApiException('Bank transfer order states are not configured.', 500);
+        }
+        $rows = Db::getInstance()->executeS('SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders` WHERE `id_cart` = ' . $cartId);
+        if (empty($rows)) {
+            throw new MlabFactoryApiException('Order not found for cart.', 404);
+        }
+        // PrestaShop shares a payment reference across multishipping orders;
+        // do not guess how to split a single Stripe payment between them.
+        if (count($rows) !== 1) {
+            throw new MlabFactoryApiException('Multiple orders for this cart require manual payment reconciliation.', 409);
+        }
+        foreach ($rows as $row) {
+            $order = new Order((int) $row['id_order']);
+            if (!Validate::isLoadedObject($order) || (string) $order->payment !== 'Bonifico bancario (Stripe)') {
+                continue;
+            }
+            $paymentRecorded = false;
+            foreach ($order->getOrderPayments() as $payment) {
+                if ((string) $payment->transaction_id === $paymentIntent) {
+                    $paymentRecorded = true;
+                    break;
+                }
+            }
+            if ((int) $order->current_state === $paidState || ($paymentRecorded && $order->hasBeenPaid())) {
+                continue;
+            }
+            $outOfStockPending = (int) Configuration::get('PS_OS_OUTOFSTOCK_UNPAID');
+            if ((int) $order->current_state !== $pendingState && ($outOfStockPending <= 0 || (int) $order->current_state !== $outOfStockPending)) {
+                throw new MlabFactoryApiException('Bank transfer order is no longer awaiting payment.', 409);
+            }
+            if ($order->hasInvoice()) {
+                throw new MlabFactoryApiException('Bank transfer order with an existing invoice requires manual payment reconciliation.', 409);
+            }
+            if (!$paymentRecorded && !$order->addOrderPayment((float) $order->total_paid_tax_incl, 'Bonifico bancario (Stripe)', $paymentIntent)) {
+                throw new MlabFactoryApiException('Unable to record Stripe bank transfer payment.', 500);
+            }
+            $order->setCurrentState($paidState);
+            $order = new Order((int) $row['id_order']);
+            if ((int) $order->current_state !== $paidState) {
+                throw new MlabFactoryApiException('Unable to update bank transfer order state.', 500);
+            }
+        }
+        return array('action' => 'settle_stripe_bank_transfer');
     }
 
     /**

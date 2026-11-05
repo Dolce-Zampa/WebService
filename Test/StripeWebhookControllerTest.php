@@ -130,6 +130,11 @@ final class StripeWebhookControllerTest extends TestCase
                 return $this->stubbedEvent;
             }
 
+            protected function isBankTransferCheckoutSession(\Stripe\StripeObject $session): bool
+            {
+                return ($session->toArray()['metadata']['test_bank_transfer'] ?? null) === 'true';
+            }
+
             public function useEvent(\Stripe\Event $event): void
             {
                 $this->stubbedEvent = $event;
@@ -561,6 +566,7 @@ final class StripeWebhookControllerTest extends TestCase
         ]);
         $paidSession = \Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_async_1',
+            'payment_intent' => 'pi_test123',
             'amount_total' => 5000,
             'currency' => 'eur',
             'payment_status' => 'paid',
@@ -586,6 +592,55 @@ final class StripeWebhookControllerTest extends TestCase
         $result = $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), []);
 
         self::assertSame(200, $result->getStatusCode());
+    }
+
+    public function test_bank_transfer_creates_pending_order_and_settles_it_once_paid(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->once())->method('confirmSessionOrder')->with(
+            42, 7, null, 3, null, 'john.doe@example.com', 'Mario', 'Rossi',
+            $this->isType('object'), 50.0, 'Bonifico bancario (Stripe)', null, true,
+        );
+        $orderService->expects($this->once())->method('settleStripeBankTransfer')->with(42, 'pi_test123');
+        $session = [
+            'id' => 'cs_bank_transfer', 'payment_intent' => 'pi_test123',
+            'amount_total' => 5000, 'currency' => 'eur', 'payment_status' => 'unpaid',
+            'metadata' => ['cart_id' => '42', 'id_customer' => '7', 'id_carrier' => '3', 'test_bank_transfer' => 'true'],
+        ];
+        $controller = $this->buildControllerWithEvent(\Stripe\Event::constructFrom([
+            'id' => 'evt_bank_pending', 'type' => 'checkout.session.completed', 'data' => ['object' => $session],
+        ]), $orderService);
+        self::assertSame(200, $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+        $session['payment_status'] = 'paid';
+        $controller->useEvent(\Stripe\Event::constructFrom([
+            'id' => 'evt_bank_paid', 'type' => 'checkout.session.async_payment_succeeded', 'data' => ['object' => $session],
+        ]));
+        self::assertSame(200, $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+    }
+
+    public function test_unpaid_checkout_uses_selected_payment_method_not_available_methods(): void
+    {
+        $controller = new class(
+            $this->createMock(Order::class), $this->createMock(MailjetService::class),
+            $this->createMock(PaymentGatewayInterface::class), $this->createMock(MailerInterface::class),
+        ) extends StripeWebhookController {
+            public array $intentData = [];
+            public function isBank(\Stripe\StripeObject $session): bool { return $this->isBankTransferCheckoutSession($session); }
+            protected function retrieveCheckoutPaymentIntent(string $intentId): \Stripe\PaymentIntent
+            {
+                return \Stripe\PaymentIntent::constructFrom($this->intentData);
+            }
+        };
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'payment_intent' => 'pi_test123', 'payment_method_types' => ['card', 'customer_balance'],
+        ]);
+        $controller->intentData = ['payment_method' => ['type' => 'card']];
+        self::assertFalse($controller->isBank($session));
+        $controller->intentData = ['payment_method' => ['type' => 'customer_balance']];
+        self::assertTrue($controller->isBank($session));
+        $controller->intentData = ['next_action' => ['type' => 'display_bank_transfer_instructions']];
+        self::assertTrue($controller->isBank($session));
     }
 
     public function test_replayed_paid_checkout_does_not_confirm_a_second_order(): void

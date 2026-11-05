@@ -138,6 +138,7 @@ class Order extends Cart implements PrestashopServiceInterface
             'id_carrier' => $confirmSession->id_carrier,
             'coupon_code' => $confirmSession->coupon_code,
             'checkout_snapshot_id' => $confirmSession->checkout_snapshot_id,
+            'stripe_bank_transfer_pending' => $confirmSession->stripe_bank_transfer_pending,
         ];
 
         // Add customer/guest identification
@@ -210,7 +211,7 @@ class Order extends Cart implements PrestashopServiceInterface
         }
     }
 
-    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment', ?string $checkoutSnapshotId = null): void
+    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment', ?string $checkoutSnapshotId = null, bool $stripeBankTransferPending = false): void
     {
         // finalize the order with a "payment_success" state. This will trigger the creation of the order in PrestaShop.
         $confirmSession = ConfirmOrderSession::create(
@@ -218,7 +219,8 @@ class Order extends Cart implements PrestashopServiceInterface
                     'id_cart' => $cartId,
                     'id_customer' => $customerId,
                     'id_guest' => $guestId,
-                    'order_state' => ConfirmOrderSession::ORDER_STATE['confirm'],
+                    'order_state' => $stripeBankTransferPending ? 0 : ConfirmOrderSession::ORDER_STATE['confirm'],
+                    'stripe_bank_transfer_pending' => $stripeBankTransferPending,
                     'amount_paid' => $amountPaid,
                     'payment_module' => $customerDetails->payment_module ?? null,
                     'create_account' => $customerDetails->create_account ?? false,
@@ -250,6 +252,20 @@ class Order extends Cart implements PrestashopServiceInterface
 
 
         $this->confirmOrder($confirmSession);
+    }
+
+    public function settleStripeBankTransfer(int $cartId, string $paymentIntentId): void
+    {
+        $this->httpService->setUrl('/orders');
+        $response = $this->httpService->invoke('POST', [
+            'action' => 'settle_stripe_bank_transfer',
+            'id_cart' => $cartId,
+            'payment_intent' => $paymentIntentId,
+        ]);
+        $data = $response->toArray();
+        if ($response->failed() || ($data['success'] ?? false) !== true || ($data['data']['action'] ?? null) !== 'settle_stripe_bank_transfer') {
+            throw new \RuntimeException('Failed to settle Stripe bank transfer order.');
+        }
     }
 
     public function createCouponCode(Discount $discount): string

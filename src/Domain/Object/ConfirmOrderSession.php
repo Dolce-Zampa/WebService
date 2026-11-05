@@ -90,6 +90,7 @@ class ConfirmOrderSession implements ObjectInterface
             'id_carrier' => isset($data['id_carrier']) ? (int) $data['id_carrier'] : 14,
             'coupon_code' => $data['coupon_code'] ?? null,
             'checkout_snapshot_id' => $this->snapshotId($data['checkout_snapshot_id'] ?? null),
+            'stripe_bank_transfer_pending' => (bool) ($data['stripe_bank_transfer_pending'] ?? false),
         ];
     }
 
@@ -105,7 +106,7 @@ class ConfirmOrderSession implements ObjectInterface
             $errors[] = 'amount_paid is required and must be greater than 0';
         }
 
-        if ($this->data['id_order_state'] <= 0) {
+        if ($this->data['id_order_state'] <= 0 && !$this->data['stripe_bank_transfer_pending']) {
             $errors[] = 'id_order_state is required and must be greater than 0';
         }
 
