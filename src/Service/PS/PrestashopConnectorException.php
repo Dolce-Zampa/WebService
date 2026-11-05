@@ -9,6 +9,9 @@ class PrestashopConnectorException extends \Exception {
 
     public function __construct(HttpServiceInterface  $service, ?\Throwable $previous = null) {
 
+    // Explicitly discard the legacy arguments: upstream details may contain secrets.
+    unset($service, $previous);
+
     // Upstream bodies, URLs, headers and nested exceptions can contain secrets.
     parent::__construct('Unable to communicate with PrestaShop.', 424);
 
