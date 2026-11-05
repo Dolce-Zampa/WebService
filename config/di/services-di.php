@@ -1,5 +1,13 @@
 <?php
 
+$container->set(\PS\Webservice\Service\GiftCard\GiftCardClient::class, function ($c) {
+    return new \PS\Webservice\Service\GiftCard\GiftCardClient(
+        new \GuzzleHttp\Client(),
+        (string) env('GIFT_CARD_API_URL', ''),
+        (string) env('GIFT_CARD_API_KEY', ''),
+    );
+});
+
 $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
     $webserviceConfig = new \PS\Webservice\Domain\Object\WebserviceConfig(
         domain: env('PS_BASE_URL') . '/api',
