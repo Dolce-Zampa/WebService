@@ -81,9 +81,8 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         $paymentModule = MlabFactoryApiHelper::resolvePaymentModule($paymentModuleName);
         $orderStateId = (int) MlabFactoryApiHelper::getValue($payload, 'id_order_state');
         if (!empty($payload['stripe_bank_transfer_pending'])) {
-            $orderStateId = (int) Configuration::get('PS_OS_BANKWIRE');
             $pendingState = new OrderState($orderStateId);
-            if ($orderStateId <= 0 || $orderStateId === (int) Configuration::get('PS_OS_PAYMENT')
+            if ($orderStateId <= 0 || $orderStateId === 2
                 || !Validate::isLoadedObject($pendingState) || $pendingState->paid || $pendingState->logable || $pendingState->invoice) {
                 throw new MlabFactoryApiException('Bank transfer pending state is not configured.', 500);
             }
@@ -179,9 +178,13 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         if ($cartId <= 0 || !preg_match('/^pi_[A-Za-z0-9]+$/D', $paymentIntent)) {
             throw new MlabFactoryApiException('Invalid Stripe payment correlation.', 422);
         }
-        $pendingState = (int) Configuration::get('PS_OS_BANKWIRE');
-        $paidState = (int) Configuration::get('PS_OS_PAYMENT');
-        if ($pendingState <= 0 || $paidState <= 0 || $pendingState === $paidState) {
+        $pendingState = isset($payload['pending_state_id']) ? (int) $payload['pending_state_id'] : 0;
+        $paidState = 2;
+        $state = new OrderState($pendingState);
+        $paidOrderState = new OrderState($paidState);
+        if ($pendingState <= 0 || $paidState <= 0 || $pendingState === $paidState
+            || !Validate::isLoadedObject($state) || $state->paid || $state->logable || $state->invoice
+            || !Validate::isLoadedObject($paidOrderState) || !$paidOrderState->paid || !$paidOrderState->logable) {
             throw new MlabFactoryApiException('Bank transfer order states are not configured.', 500);
         }
         $rows = Db::getInstance()->executeS('SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders` WHERE `id_cart` = ' . $cartId);

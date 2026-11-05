@@ -47,6 +47,7 @@ final class StripeWebhookControllerTest extends TestCase
             'queue-service' => $this->createMock(\PS\Webservice\Service\RedisQueue::class)  
         ]);
         \Illuminate\Support\Facades\Facade::clearResolvedInstance('log');
+        \Illuminate\Support\Facades\Facade::clearResolvedInstance('cache');
 
         $this->cache = $cache;
         $this->taggedCache = $taggedCache;
@@ -134,6 +135,8 @@ final class StripeWebhookControllerTest extends TestCase
             {
                 return ($session->toArray()['metadata']['test_bank_transfer'] ?? null) === 'true';
             }
+
+            protected function sendBankTransferInstructions(\Stripe\StripeObject $session, int $cartId): void {}
 
             public function useEvent(\Stripe\Event $event): void
             {
@@ -641,6 +644,91 @@ final class StripeWebhookControllerTest extends TestCase
         self::assertTrue($controller->isBank($session));
         $controller->intentData = ['next_action' => ['type' => 'display_bank_transfer_instructions']];
         self::assertTrue($controller->isBank($session));
+    }
+
+    public function test_bank_transfer_email_uses_details_from_stripe(): void
+    {
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects($this->once())->method('sendStripeBankTransferInstructions')->with(
+            'buyer@example.test', 'Mario', [
+                'amount' => '95,10 EUR', 'beneficiary' => 'Beneficiario Stripe',
+                'iban' => 'IE00TEST123', 'bic' => 'TESTBIC', 'reference' => 'REF123',
+            ],
+        );
+        $controller = new class(
+            $this->createMock(Order::class), $this->createMock(MailjetService::class),
+            $this->createMock(PaymentGatewayInterface::class), $mailer,
+        ) extends StripeWebhookController {
+            public function sendInstructions(\Stripe\StripeObject $session): void { $this->sendBankTransferInstructions($session, 42); }
+            protected function withCheckoutConfirmationLock(string $id, callable $callback): mixed { return $callback(); }
+            protected function retrieveCheckoutPaymentIntent(string $id): \Stripe\PaymentIntent
+            {
+                return \Stripe\PaymentIntent::constructFrom([
+                    'status' => 'requires_action', 'next_action' => ['display_bank_transfer_instructions' => [
+                        'amount_remaining' => 9510, 'currency' => 'eur', 'reference' => 'REF123',
+                        'financial_addresses' => [['type' => 'iban', 'iban' => [
+                            'iban' => 'IE00TEST123', 'bic' => 'TESTBIC', 'account_holder_name' => 'Beneficiario Stripe',
+                        ]]],
+                    ]],
+                ]);
+            }
+            protected function getCheckoutCustomer(int $cartId, ?int $customerId, ?int $guestId, ?\Stripe\StripeObject $stripeSession = null): object
+            {
+                return (object) ['email' => 'buyer@example.test', 'firstname' => 'Mario'];
+            }
+        };
+        $controller->sendInstructions(\Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test', 'payment_intent' => 'pi_test', 'metadata' => ['id_customer' => '7'],
+        ]));
+    }
+
+    public function test_instruction_email_retries_after_failure_and_skips_already_paid(): void
+    {
+        $mailer = $this->createMock(MailerInterface::class);
+        $attempts = 0;
+        $mailer->expects($this->exactly(2))->method('sendStripeBankTransferInstructions')
+            ->willReturnCallback(function () use (&$attempts): void {
+                if (++$attempts === 1) {
+                    throw new \RuntimeException('mail unavailable');
+                }
+            });
+        $this->cache->expects($this->once())->method('put');
+        $controller = new class(
+            $this->createMock(Order::class), $this->createMock(MailjetService::class),
+            $this->createMock(PaymentGatewayInterface::class), $mailer,
+        ) extends StripeWebhookController {
+            public bool $paid = false;
+            public function sendInstructions(\Stripe\StripeObject $session): void { $this->sendBankTransferInstructions($session, 42); }
+            protected function withCheckoutConfirmationLock(string $id, callable $callback): mixed { return $callback(); }
+            protected function retrieveCheckoutPaymentIntent(string $id): \Stripe\PaymentIntent
+            {
+                return \Stripe\PaymentIntent::constructFrom([
+                    'status' => $this->paid ? 'succeeded' : 'requires_action',
+                    'next_action' => ['display_bank_transfer_instructions' => [
+                        'amount_remaining' => 9510, 'currency' => 'eur',
+                        'financial_addresses' => [['type' => 'iban', 'iban' => [
+                            'iban' => 'IE00TEST123', 'account_holder_name' => 'Beneficiario Stripe',
+                        ]]],
+                    ]],
+                ]);
+            }
+            protected function getCheckoutCustomer(int $cartId, ?int $customerId, ?int $guestId, ?\Stripe\StripeObject $stripeSession = null): object
+            {
+                return (object) ['email' => 'buyer@example.test', 'firstname' => 'Mario'];
+            }
+        };
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_retry', 'payment_intent' => 'pi_test', 'metadata' => ['id_customer' => '7'],
+        ]);
+        try {
+            $controller->sendInstructions($session);
+            self::fail('The first mail attempt must fail.');
+        } catch (\RuntimeException $e) {
+            self::assertSame('mail unavailable', $e->getMessage());
+        }
+        $controller->sendInstructions($session);
+        $controller->paid = true;
+        $controller->sendInstructions($session);
     }
 
     public function test_replayed_paid_checkout_does_not_confirm_a_second_order(): void

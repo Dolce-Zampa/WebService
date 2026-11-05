@@ -7,6 +7,18 @@ class Configuration
     public static function get($key) { return ['PS_OS_BANKWIRE' => 10, 'PS_OS_PAYMENT' => 2, 'PS_OS_OUTOFSTOCK_UNPAID' => 9][$key] ?? null; }
 }
 class Validate { public static function isLoadedObject($object) { return !empty($object->id); } }
+class OrderState
+{
+    public $id;
+    public $paid = false;
+    public $logable = false;
+    public $invoice = false;
+    public function __construct($id) {
+        $this->id = $id;
+        $this->paid = $id === 2;
+        $this->logable = $id === 2;
+    }
+}
 class Db
 {
     public static array $rows = [['id_order' => 7]];
@@ -44,12 +56,12 @@ final class StripeBankTransferSettlementTest extends TestCase
     protected function setUp(): void
     {
         Db::$rows = [['id_order' => 7]];
-        Order::$orders = [7 => ['payment' => 'Bonifico bancario (Stripe)', 'state' => 10, 'total' => 95.10, 'invoice' => false, 'payments' => []]];
+        Order::$orders = [7 => ['payment' => 'Bonifico bancario (Stripe)', 'state' => 21, 'total' => 95.10, 'invoice' => false, 'payments' => []]];
     }
     private function settle(): array
     {
         $method = new ReflectionMethod(webserviceapiorderModuleFrontController::class, 'settleStripeBankTransfer');
-        return $method->invoke(new webserviceapiorderModuleFrontController(), ['id_cart' => 833, 'payment_intent' => 'pi_test123']);
+        return $method->invoke(new webserviceapiorderModuleFrontController(), ['id_cart' => 833, 'payment_intent' => 'pi_test123', 'pending_state_id' => 21]);
     }
     public function test_payment_and_state_are_recorded_once_on_retry(): void
     {

@@ -12,8 +12,11 @@ final class MailTemplateAvailabilityTest extends TestCase
         $mailDirectory = dirname(__DIR__) . '/resources/mails/it';
 
         foreach (TemplateMail::cases() as $template) {
-            $htmlTemplate = $mailDirectory . '/' . $template->value . '.html';
-            $textTemplate = $mailDirectory . '/' . $template->value . '.txt';
+            $directory = $template === TemplateMail::STRIPE_BANK_TRANSFER
+                ? dirname(__DIR__) . '/resources/prestashop-modules/webserviceapi/mails/it'
+                : $mailDirectory;
+            $htmlTemplate = $directory . '/' . $template->value . '.html';
+            $textTemplate = $directory . '/' . $template->value . '.txt';
 
             self::assertTrue(
                 is_file($htmlTemplate) || is_file($textTemplate),

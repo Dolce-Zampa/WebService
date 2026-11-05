@@ -116,7 +116,10 @@ class StripeWebhookController extends OrderController
                     if ($event->type === 'checkout.session.completed'
                         && !($this->promotionService !== null && $this->promotionService->isPromotionCheckoutSession($event->data->object))
                         && $this->isBankTransferCheckoutSession($event->data->object)) {
-                        $this->handleCheckoutSessionCompleted($event->data->object, true);
+                        $cartId = $this->handleCheckoutSessionCompleted($event->data->object, true);
+                        if ($cartId !== null) {
+                            $this->sendBankTransferInstructions($event->data->object, $cartId);
+                        }
                     }
                     $this->recordFinancialWebhook($event);
                     Log::info('Stripe webhook: checkout payment is not yet paid.', [
@@ -136,7 +139,8 @@ class StripeWebhookController extends OrderController
                 // retry must still be able to allocate the verified payment.
                 $this->queueStripeConnectTransferAllocation($event->data->object, $event);
                 $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
-                if ($cartId !== null && $event->type === 'checkout.session.async_payment_succeeded') {
+                if ($cartId !== null && $event->type === 'checkout.session.async_payment_succeeded'
+                    && $this->isBankTransferCheckoutSession($event->data->object)) {
                     $paymentIntentId = $this->stripeTransactionId($event->data->object, (string) $event->type, null);
                     if ($paymentIntentId === null) {
                         throw new \RuntimeException('Paid checkout is missing its payment intent.');
@@ -607,6 +611,55 @@ class StripeWebhookController extends OrderController
     protected function retrieveCheckoutPaymentIntent(string $intentId): \Stripe\PaymentIntent
     {
         return \Stripe\PaymentIntent::retrieve(['id' => $intentId, 'expand' => ['payment_method']]);
+    }
+
+    protected function sendBankTransferInstructions(\Stripe\StripeObject $session, int $cartId): void
+    {
+        $sessionId = $this->checkoutSessionId($session);
+        $marker = 'stripe:bank-instructions:sent:' . hash('sha256', $sessionId);
+        $this->withCheckoutConfirmationLock($sessionId, function () use ($session, $cartId, $marker): void {
+            if (Cache::has($marker)) {
+                return;
+            }
+            $sessionData = $session->toArray();
+            $intentId = $this->stripeIdentifier($sessionData['payment_intent'] ?? null, 'payment intent');
+            $intent = $this->retrieveCheckoutPaymentIntent($intentId)->toArray();
+            if (($intent['status'] ?? null) === 'succeeded') {
+                return;
+            }
+            $details = $intent['next_action']['display_bank_transfer_instructions'] ?? null;
+            if (!is_array($details) || ($details['currency'] ?? null) !== 'eur') {
+                throw new \RuntimeException('Stripe bank transfer instructions are unavailable.');
+            }
+            $ibanDetails = null;
+            foreach ($details['financial_addresses'] ?? [] as $address) {
+                if (($address['type'] ?? null) === 'iban' && is_array($address['iban'] ?? null)) {
+                    $ibanDetails = $address['iban'];
+                    break;
+                }
+            }
+            $remaining = $details['amount_remaining'] ?? null;
+            if (!is_array($ibanDetails) || empty($ibanDetails['iban']) || empty($ibanDetails['account_holder_name'])
+                || !is_int($remaining) || $remaining <= 0) {
+                throw new \RuntimeException('Stripe bank transfer instructions are incomplete.');
+            }
+            $snapshot = $this->checkoutSnapshotForSession($session);
+            $metadata = $this->stripeMetadata($sessionData);
+            $customer = $snapshot !== null
+                ? $this->getCheckoutCustomerFromSnapshot($snapshot['payload'], $session)
+                : $this->getCheckoutCustomer($cartId, $this->positiveInteger($metadata['id_customer'] ?? null), $this->positiveInteger($metadata['id_guest'] ?? null), $session);
+            if (!filter_var($customer->email ?? null, FILTER_VALIDATE_EMAIL)) {
+                throw new \RuntimeException('Checkout customer email is invalid.');
+            }
+            $this->mailer->sendStripeBankTransferInstructions($customer->email, $customer->firstname, [
+                'amount' => number_format($remaining / 100, 2, ',', '.') . ' EUR',
+                'beneficiary' => (string) $ibanDetails['account_holder_name'],
+                'iban' => (string) $ibanDetails['iban'],
+                'bic' => (string) ($ibanDetails['bic'] ?? '-'),
+                'reference' => (string) ($details['reference'] ?? '-'),
+            ]);
+            Cache::put($marker, true, (new DateTimeImmutable('now'))->modify('+' . self::CHECKOUT_CONFIRMATION_MARKER_MINUTES . ' minutes'));
+        });
     }
 
     private function financialTransactionByProviderTransaction(string $providerTransactionId): ?object

@@ -106,7 +106,7 @@ class ConfirmOrderSession implements ObjectInterface
             $errors[] = 'amount_paid is required and must be greater than 0';
         }
 
-        if ($this->data['id_order_state'] <= 0 && !$this->data['stripe_bank_transfer_pending']) {
+        if ($this->data['id_order_state'] <= 0) {
             $errors[] = 'id_order_state is required and must be greater than 0';
         }
 

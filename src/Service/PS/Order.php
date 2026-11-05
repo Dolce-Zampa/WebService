@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Service\PS;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Capsule\Manager as Database;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
@@ -219,7 +220,7 @@ class Order extends Cart implements PrestashopServiceInterface
                     'id_cart' => $cartId,
                     'id_customer' => $customerId,
                     'id_guest' => $guestId,
-                    'order_state' => $stripeBankTransferPending ? 0 : ConfirmOrderSession::ORDER_STATE['confirm'],
+                    'order_state' => $stripeBankTransferPending ? $this->bankTransferPendingStateId() : ConfirmOrderSession::ORDER_STATE['confirm'],
                     'stripe_bank_transfer_pending' => $stripeBankTransferPending,
                     'amount_paid' => $amountPaid,
                     'payment_module' => $customerDetails->payment_module ?? null,
@@ -254,6 +255,19 @@ class Order extends Cart implements PrestashopServiceInterface
         $this->confirmOrder($confirmSession);
     }
 
+    protected function bankTransferPendingStateId(): int
+    {
+        $pendingId = filter_var(env('STRIPE_BANK_TRANSFER_PENDING_STATE_ID', 21), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($pendingId === false || $pendingId === ConfirmOrderSession::ORDER_STATE['confirm']) {
+            throw new \RuntimeException('PrestaShop bank transfer order state is not configured.');
+        }
+        $state = Database::table('order_state')->where('id_order_state', $pendingId)->first(['paid', 'logable', 'invoice']);
+        if ($state === null || (int) $state->paid !== 0 || (int) $state->logable !== 0 || (int) $state->invoice !== 0) {
+            throw new \RuntimeException('PrestaShop bank transfer order state is not a pending payment state.');
+        }
+        return $pendingId;
+    }
+
     public function settleStripeBankTransfer(int $cartId, string $paymentIntentId): void
     {
         $this->httpService->setUrl('/orders');
@@ -261,6 +275,7 @@ class Order extends Cart implements PrestashopServiceInterface
             'action' => 'settle_stripe_bank_transfer',
             'id_cart' => $cartId,
             'payment_intent' => $paymentIntentId,
+            'pending_state_id' => $this->bankTransferPendingStateId(),
         ]);
         $data = $response->toArray();
         if ($response->failed() || ($data['success'] ?? false) !== true || ($data['data']['action'] ?? null) !== 'settle_stripe_bank_transfer') {
