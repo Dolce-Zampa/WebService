@@ -56,9 +56,12 @@ un POST finché non si è verificato l'esito nel pannello Packlink.
 
 ## Lavoro necessario prima del rilascio
 
-- Definire e verificare l'import delle associazioni preesistenti del modulo,
-  inclusi gli ordini già inviati, prima di attivare nuove creazioni. La
-  sola unicità nel nuovo database non impedisce duplicati con il vecchio modulo.
+- Completare e verificare l'import delle associazioni preesistenti del modulo,
+  inclusi gli ordini già inviati, prima di attivare nuove creazioni. È stato
+  predisposto un importer per i record `OrderShipmentDetails` nella tabella
+  `packlink_entity`, ma non è ancora collegato a un comando operativo né
+  verificato sui dati del negozio. Fermare prima tutte le scritture del vecchio
+  modulo: la sola unicità nel nuovo database non impedisce duplicati tra sistemi.
 - Verificare il recupero del punto di ritiro e degli indirizzi di partenza,
   inclusi quelli degli artigiani, e il mapping corriere/servizio effettivo.
 - Implementare acquisizione degli ordini idonei, preparazione della bozza,
