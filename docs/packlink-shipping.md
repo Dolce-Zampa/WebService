@@ -1,5 +1,9 @@
 # Spedizioni Packlink dirette
 
+**Stato: integrazione non verificata con l’account.** Le interfacce HTTP sono
+ricavate dal codice del modulo e non è accertato che siano pubbliche o supportate.
+Prima dell’attivazione leggere [l’analisi delle differenze](packlink-integration-investigation.md).
+
 Il worker crea una **bozza** Packlink solo per ordini creati dalla data di
 attivazione inclusa. Il completamento e il pagamento restano manuali in
 Packlink PRO; tracking ed etichette arrivano successivamente. L'ordine viene
@@ -28,15 +32,15 @@ valori predefiniti di produzione.
   "eligible_states": [101, 102],
   "carriers": {"123": {"service_id": "SERVICE_ID", "pickup": false}},
   "draft": {
-    "user_id": "USER_ID", "client_id": "CLIENT_ID", "platform": "PL",
-    "platform_country": "IT", "source": "prestashop",
+    "user_id": "USER_ID", "client_id": "CLIENT_ID", "platform": "PRO",
+    "platform_country": "IT", "source": "module_prestashop",
     "integration_id": "INTEGRATION_ID"
   },
   "package": {"weight": 1, "width": 10, "height": 10, "length": 10},
   "content": "Prodotti", "sync_interval_seconds": 900,
   "states": {
-    "PENDING": {"order_state_id": 101, "rank": 0, "labels": false},
-    "READY": {"order_state_id": 103, "rank": 1, "labels": true},
+    "AWAITING_COMPLETION": {"order_state_id": 101, "rank": 0, "labels": false},
+    "READY_TO_PRINT": {"order_state_id": 103, "rank": 1, "labels": true},
     "DELIVERED": {"order_state_id": 104, "rank": 2, "labels": true}
   }
 }
