@@ -156,9 +156,6 @@ $app->get('/api/admin/financial-analytics', PS\Webservice\Http\Controller\Financ
 $app->post('/api/admin/financial-expenses', PS\Webservice\Http\Controller\FinancialExpenseController::class . ':create')
     ->add($financialEmployeeAuthentication);
 
-/** tutte le url le mandiamo su prestashop */
-$app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
-
 /** Stripe webhook */
 $app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
 
