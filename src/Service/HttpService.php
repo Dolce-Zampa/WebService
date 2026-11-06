@@ -4,6 +4,9 @@ declare(strict_types=1);
 namespace PS\Webservice\Service;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\TransferException;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Object\PayloadServiceData;
 use PS\Webservice\Domain\Object\WebserviceConfig;
@@ -21,7 +24,7 @@ class HttpService implements HttpServiceInterface
     private array $multipartData = [];
 
 
-    public function __construct(WebserviceConfig $config)
+    public function __construct(WebserviceConfig $config, private ?ClientInterface $client = null)
     {
         $this->config = $config;
     }
@@ -52,7 +55,7 @@ class HttpService implements HttpServiceInterface
         
         try {
             $config = $this->config;
-            $stream = new Client($config->toArray());
+            $stream = $this->client ?? new Client($config->toArray());
 
             $options = [
                 'verify' => true,
@@ -82,22 +85,54 @@ class HttpService implements HttpServiceInterface
             $this->body = $response->getBody()->getContents();
             $this->httpCode = $response->getStatusCode();   
 
-        } catch (\GuzzleHttp\Exception\RequestException $e) {
-            $response = $e->getResponse();
-            $resp = $response ? $response->getBody()->getContents() : '';
-            $uri = $e->getRequest()->getUri()->withUserInfo('')->withQuery('')->withFragment('');
-            Log::critical('Outgoing HTTP request failed', [
-                'method' => $e->getRequest()->getMethod(),
-                'url' => (string) $uri,
-                'status' => $response?->getStatusCode(),
-                'response' => $resp,
-            ]);
+        } catch (TransferException $e) {
+            $response = $e instanceof RequestException ? $e->getResponse() : null;
+            $resp = $response !== null ? (string) $response->getBody() : '';
             $this->httpCode = $response?->getStatusCode() ?? 500;
             $this->response = $response;
             $this->body = $resp;
+            Log::critical('Outgoing HTTP request failed', [
+                'method' => $e instanceof RequestException ? $e->getRequest()->getMethod() : $method,
+                'url' => $e instanceof RequestException
+                    ? (string) $e->getRequest()->getUri()->withUserInfo('')->withQuery('')->withFragment('')
+                    : $this->safeUrl($this->api),
+                'status' => $response?->getStatusCode(),
+                'response' => $resp,
+                'exception_type' => $e::class,
+                'execution' => PHP_SAPI,
+                'incoming_method' => $_SERVER['REQUEST_METHOD'] ?? null,
+                'incoming_path' => isset($_SERVER['REQUEST_URI']) ? parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) : null,
+                'script' => isset($_SERVER['SCRIPT_FILENAME']) ? basename($_SERVER['SCRIPT_FILENAME']) : null,
+                'stack' => $this->callStack(),
+            ]);
         }
 
         return $this;
+    }
+
+    /** Omit userinfo, query and fragment: they may contain credentials or personal data. */
+    private function safeUrl(string $url): string
+    {
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return '[invalid URL]';
+        }
+        return (isset($parts['scheme']) ? $parts['scheme'] . '://' : '')
+            . ($parts['host'] ?? '')
+            . (isset($parts['port']) ? ':' . $parts['port'] : '')
+            . ($parts['path'] ?? '');
+    }
+
+    /** Stack frames contain no argument values, request bodies or exception messages. */
+    private function callStack(): array
+    {
+        $frames = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 30);
+        array_shift($frames);
+        return array_map(static fn (array $frame): array => array_filter([
+            'call' => ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'],
+            'file' => $frame['file'] ?? null,
+            'line' => $frame['line'] ?? null,
+        ], static fn ($value): bool => $value !== null), $frames);
     }
 
     /**
