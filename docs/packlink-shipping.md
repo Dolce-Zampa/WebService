@@ -70,36 +70,39 @@ manualmente al di fuori della sequenza prevista, l'aggiornamento è sospeso.
 
 ## Attivazione e passaggio dal vecchio modulo
 
+Il modulo Packlink non viene modificato. Per evitare che il vecchio e il nuovo
+flusso creino spedizioni per lo stesso ordine, il nuovo worker non crea bozze
+mentre il modulo Packlink è abilitato in PrestaShop. Quando il modulo è
+abilitato, i suoi hook e il suo comportamento rimangono quelli originali;
+l'isolamento dagli errori Packlink riguarda il nuovo flusso asincrono.
+
 1. Distribuire il webservice e applicare le migrazioni Phinx. Distribuire la
    nuova versione del modulo `webserviceapi`, eseguire il suo upgrade a
    `1.1.2` e verificare che il pannello Packlink appaia nella pagina ordine.
-2. Se il vecchio modulo Packlink rimane attivo, distribuire anche i suoi file
-   modificati in questa PR. Arrestare e svuotare la sua coda di creazione prima
-   del passaggio. La guardia impedisce nuove bozze legacy per ordini dalla data
-   di attivazione e lascia quelli precedenti al flusso preesistente.
-3. Scegliere un istante **futuro** dopo il rilascio, preciso al secondo, nel
-   fuso usato da `orders.date_add`. Impostare lo stesso valore in `since` e
-   nella configurazione PrestaShop `PACKLINK_EXTERNAL_SHIPMENTS_SINCE`. Ad
-   esempio, dalla radice PrestaShop, dopo aver sostituito la data:
-
-   ```sh
-   php -r 'require "config/config.inc.php"; Configuration::updateValue("PACKLINK_EXTERNAL_SHIPMENTS_SINCE", "2030-01-01 00:00:00");'
-   ```
-
-   Svuotare la cache PrestaShop se necessario. Il controller rifiuta la
-   scansione se le due date non coincidono o se il modulo legacy attivo non
-   espone la guardia. Non anticipare la data dopo l'avvio: un ordine già
-   inviato dal vecchio modulo potrebbe altrimenti essere duplicato.
+2. Prima del passaggio, fermare e svuotare la coda di creazione del modulo
+   Packlink, verificare eventuali bozze già create e disabilitare il modulo in
+   PrestaShop. Non modificare i suoi file. Il nuovo servizio rifiuta la scansione
+   degli ordini finché il modulo risulta abilitato.
+3. Scegliere un istante **futuro** dopo la disabilitazione e il rilascio,
+   preciso al secondo, nel fuso usato da `orders.date_add`; impostarlo in
+   `since`. Non anticiparlo successivamente: si rischierebbe di creare una
+   seconda spedizione per ordini già elaborati dal vecchio modulo.
 4. Configurare e verificare servizi, mittente, pacchi, stati e credenziali;
    impostare `PACKLINK_SHIPPING_ENABLED=true` e riavviare lo scheduler. Gli
-   ordini precedenti al cutover non vengono importati o inviati dal nuovo
-   worker. Verificare con un ordine di prova che l'ordine si concluda anche
-   quando Packlink non è raggiungibile, e che la bozza compaia una sola volta.
+   ordini precedenti al cutover non vengono importati dal nuovo worker.
+   Verificare con un ordine di prova che l'ordine si concluda anche quando
+   Packlink non è raggiungibile, e che la bozza compaia una sola volta.
 
-Per tornare indietro, disabilitare il nuovo worker ma **mantenere la guardia**:
-riattivare la creazione legacy sugli stessi ordini può duplicare spedizioni.
-Riconciliare manualmente i riferimenti già creati prima di modificare il
-cutover o riabilitare la vecchia creazione.
+Disabilitare il modulo può rimuovere dal checkout le funzionalità e i corrieri
+che esso fornisce, inclusa la selezione dei punti di ritiro. Verificare e
+predisporre un checkout compatibile prima del passaggio: la lettura delle
+selezioni storiche non sostituisce la raccolta di nuove selezioni. Fino ad
+allora il cutover non è pronto per la produzione.
+
+Per tornare indietro, fermare il nuovo worker e riconciliare manualmente le
+spedizioni già create prima di riabilitare il modulo: entrambi i sistemi
+potrebbero altrimenti creare bozze per gli stessi ordini. Eventuali ordini
+precedenti al cutover restano da gestire secondo il processo operativo esistente.
 
 ## Webhook e riconciliazione
 

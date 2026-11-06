@@ -35,6 +35,15 @@ final class PacklinkShippingModuleTest extends TestCase
         self::assertSame(['order_ids' => [1]], (new TestPacklinkShippingController())->invoke());
     }
 
+    public function testCandidateScanRefusesToRunWhilePacklinkModuleIsEnabled(): void
+    {
+        Module::$enabled = true;
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['since' => '2026-11-05 12:00:00', 'states' => '2'];
+        $this->expectException(MlabFactoryApiException::class);
+        (new TestPacklinkShippingController())->invoke();
+    }
+
     public function testPickupMappingUsesLiveCarrierIdRatherThanReference(): void
     {
         $json = pSQL(json_encode(['cartId' => '7', 'carrierReferenceId' => '42', 'dropOff' => ['id' => 'POINT']]));

@@ -39,8 +39,6 @@ require_once rtrim(_PS_MODULE_DIR_, '/') . '/packlink/vendor/autoload.php';
  */
 class Packlink extends CarrierModule
 {
-    // The webservice checks this marker before processing post-cutover orders.
-    const EXTERNAL_SHIPPING_GUARD_VERSION = 1;
     const PACKLINK_SHIPPING_TAB = 'views/templates/admin/packlink_shipping_tab/shipping_tab.tpl';
     const PACKLINK_SHIPPING_CONTENT = 'views/templates/admin/packlink_shipping_content/shipping_content.tpl';
     const PRESTASHOP_ORDER_CREATED_STATUS = 0;
@@ -371,56 +369,48 @@ class Packlink extends CarrierModule
      */
     public function hookActionValidateOrder($params)
     {
-        try {
-            \Packlink\PrestaShop\Classes\Bootstrap::init();
+        \Packlink\PrestaShop\Classes\Bootstrap::init();
 
-            /** @var \Order $order */
-            $order = $params['order'];
-            $carrier = new \Carrier($order->id_carrier);
+        /** @var \Order $order */
+        $order = $params['order'];
+        $carrier = new \Carrier($order->id_carrier);
 
-            $offlineService = new \Packlink\PrestaShop\Classes\BusinessLogicServices\OfflinePaymentService();
-            $shippingId = \Packlink\PrestaShop\Classes\Utility\CarrierUtility
-                ::getServiceFromReferenceId(
-                    \Context::getContext()->cart->id_carrier
-                );
+        $offlineService = new \Packlink\PrestaShop\Classes\BusinessLogicServices\OfflinePaymentService();
+        $shippingId = \Packlink\PrestaShop\Classes\Utility\CarrierUtility
+            ::getServiceFromReferenceId(
+                \Context::getContext()->cart->id_carrier
+            );
 
-            if (!$offlineService->isValidPaymentMethod($order->id, $shippingId)) {
-                \Logeecom\Infrastructure\Logger\Logger::logError(
-                    "Payment method is not valid for [{$order->id}]."
-                );
-            }
+        if (!$offlineService->isValidPaymentMethod($order->id, $shippingId)) {
+            \Logeecom\Infrastructure\Logger\Logger::logError(
+                "Payment method is not valid for [{$order->id}]."
+            );
+        }
 
 
-            $isDelayed = false;
+        $isDelayed = false;
 
-            if (\Packlink\PrestaShop\Classes\Utility\CarrierUtility::isDropOff((int)$carrier->id_reference)) {
-                $isDropOffSelected = \Packlink\PrestaShop\Classes\Utility\CheckoutUtility::isDropOffSelected(
-                    (string)$order->id_cart,
-                    (string)$order->id_carrier
-                );
+        if (\Packlink\PrestaShop\Classes\Utility\CarrierUtility::isDropOff((int)$carrier->id_reference)) {
+            $isDropOffSelected = \Packlink\PrestaShop\Classes\Utility\CheckoutUtility::isDropOffSelected(
+                (string)$order->id_cart,
+                (string)$order->id_carrier
+            );
 
-                if ($isDropOffSelected) {
-                    $this->createDropOffAddress($order);
-                } else {
-                    $isDelayed = true;
-                }
-            }
-
-            $offlineService = new \Packlink\PrestaShop\Classes\BusinessLogicServices\OfflinePaymentService();
-
-            if($offlineService->shouldSurchargeApply($order->id)) {
-                $surchargeAmount = $offlineService->calculateFee($order->id);
-                $this->addSurchargeItem($order, $surchargeAmount);
-            }
-
-            $this->createOrderDraft($params['order'], $params['orderStatus'], $isDelayed);
-        } catch (\Throwable $exception) {
-            // Shipping failures must never abort payment/order finalization.
-            try {
-                \PrestaShopLogger::addLog('Packlink order hook failed; shipping requires review for order ' . (int) ($params['order']->id ?? 0), 3);
-            } catch (\Throwable $ignored) {
+            if ($isDropOffSelected) {
+                $this->createDropOffAddress($order);
+            } else {
+                $isDelayed = true;
             }
         }
+
+        $offlineService = new \Packlink\PrestaShop\Classes\BusinessLogicServices\OfflinePaymentService();
+
+        if($offlineService->shouldSurchargeApply($order->id)) {
+            $surchargeAmount = $offlineService->calculateFee($order->id);
+            $this->addSurchargeItem($order, $surchargeAmount);
+        }
+
+        $this->createOrderDraft($params['order'], $params['orderStatus'], $isDelayed);
     }
 
     /**
@@ -438,23 +428,16 @@ class Packlink extends CarrierModule
      */
     public function hookActionOrderStatusUpdate($params)
     {
-        try {
-            \Packlink\PrestaShop\Classes\Bootstrap::init();
+        \Packlink\PrestaShop\Classes\Bootstrap::init();
 
-            $order = new \Order((int)$params['id_order']);
+        $order = new \Order((int)$params['id_order']);
 
-            // If order has just been created, this hook should not handle that event
-            // since it has already been handled by hook for validating order.
-            if ((int)$order->current_state !== self::PRESTASHOP_ORDER_CREATED_STATUS
-                && array_key_exists('newOrderStatus', $params)
-            ) {
-                $this->createOrderDraft($order, $params['newOrderStatus']);
-            }
-        } catch (\Throwable $exception) {
-            try {
-                \PrestaShopLogger::addLog('Packlink status hook failed; shipping requires review for order ' . (int) ($params['id_order'] ?? 0), 3);
-            } catch (\Throwable $ignored) {
-            }
+        // If order has just been created, this hook should not handle that event
+        // since it has already been handled by hook for validating order.
+        if ((int)$order->current_state !== self::PRESTASHOP_ORDER_CREATED_STATUS
+            && array_key_exists('newOrderStatus', $params)
+        ) {
+            $this->createOrderDraft($order, $params['newOrderStatus']);
         }
     }
 
@@ -1457,10 +1440,6 @@ class Packlink extends CarrierModule
      */
     private function createOrderDraft(\Order $order, OrderState $orderState, $isDelayed = false)
     {
-        $cutover = (string) \Configuration::get('PACKLINK_EXTERNAL_SHIPMENTS_SINCE');
-        if ($cutover !== '' && (string) $order->date_add >= $cutover) {
-            return;
-        }
         if ($this->shouldCreateDraft($order, $orderState)) {
             /** @var \Packlink\BusinessLogic\ShipmentDraft\ShipmentDraftService $shipmentDraftService */
             $shipmentDraftService = \Logeecom\Infrastructure\ServiceRegister::getService(

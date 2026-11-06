@@ -2,8 +2,8 @@
 
 define('_DB_PREFIX_', '');
 class ModuleFrontController {}
-class Module { public static function isEnabled($name) { return false; } }
-class Configuration { public static function get($key) { return $key === 'PACKLINK_EXTERNAL_SHIPMENTS_SINCE' ? '2026-11-05 12:00:00' : ''; } }
+class Module { public static $enabled = false; public static function isEnabled($name) { return self::$enabled; } }
+class Configuration { public static function get($key) { return ''; } }
 class Tools { public static function getValue($key, $default = null) { return $_GET[$key] ?? $default; } }
 class PrestaShopDatabaseException extends Exception {}
 class PrestaShopException extends Exception {}

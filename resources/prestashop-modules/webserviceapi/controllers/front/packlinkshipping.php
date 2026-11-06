@@ -200,14 +200,9 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
     private function candidates()
     {
         $since = (string) Tools::getValue('since');
-        if ((string) Configuration::get('PACKLINK_EXTERNAL_SHIPMENTS_SINCE') !== $since) {
-            throw new MlabFactoryApiException('Shipping cutover is not configured consistently.', 409);
-        }
+        // Never run both creators: the third-party module remains untouched.
         if (Module::isEnabled('packlink')) {
-            Module::getInstanceByName('packlink');
-            if (!defined('Packlink::EXTERNAL_SHIPPING_GUARD_VERSION') || Packlink::EXTERNAL_SHIPPING_GUARD_VERSION !== 1) {
-                throw new MlabFactoryApiException('Legacy Packlink creation guard is not installed.', 409);
-            }
+            throw new MlabFactoryApiException('Disable the Packlink module before activating external shipment creation.', 409);
         }
         $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $since);
         if (!$date || $date->format('Y-m-d H:i:s') !== $since) {

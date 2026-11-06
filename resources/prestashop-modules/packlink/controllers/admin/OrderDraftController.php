@@ -48,11 +48,6 @@ class OrderDraftController extends PacklinkBaseController
         $data = PacklinkPrestaShopUtility::getPacklinkPostData();
 
         if ($data['orderId']) {
-            $order = new \Order((int) $data['orderId']);
-            $cutover = (string) \Configuration::get('PACKLINK_EXTERNAL_SHIPMENTS_SINCE');
-            if ($cutover !== '' && \Validate::isLoadedObject($order) && (string) $order->date_add >= $cutover) {
-                PacklinkPrestaShopUtility::die400(array('message' => 'Shipping is managed by the external webservice.'));
-            }
             try {
                 $this->getShipmentDraftService()->enqueueCreateShipmentDraftTask((string)$data['orderId']);
             } catch (\Exception $e) {
