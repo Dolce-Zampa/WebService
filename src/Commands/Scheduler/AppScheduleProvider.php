@@ -17,9 +17,14 @@ final class AppScheduleProvider implements ScheduleProviderInterface
     public function getSchedule(): Schedule
     {
         $financialTimezone = (string) env('FINANCIAL_SUMMARY_TIMEZONE', 'UTC');
+        $shippingCron = (string) env('PACKLINK_SHIPPING_CRON', '*/5 * * * *');
+        if (!\Cron\CronExpression::isValidExpression($shippingCron)) {
+            $shippingCron = '*/5 * * * *';
+        }
 
         return (new Schedule())
             ->add(RecurringMessage::cron('* * * * *', new ScheduledPromotionCacheMessage()))
+            ->add(RecurringMessage::cron($shippingCron, new PacklinkShippingMessage()))
             ->add(RecurringMessage::cron('0 3 * * *', new WarmProductCacheMessage(), 'Europe/Rome'))
             ->add(
                 // Esegue ogni giorno alla mezzanotte (Europe/Rome)

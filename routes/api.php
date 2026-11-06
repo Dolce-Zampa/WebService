@@ -159,6 +159,8 @@ $app->post('/api/admin/financial-expenses', PS\Webservice\Http\Controller\Financ
 /** tutte le url le mandiamo su prestashop */
 $app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
 
+$app->post('/api/webhooks/packlink', PS\Webservice\Http\Controller\PacklinkWebhookController::class . ':handle');
+
 /** Stripe webhook */
 $app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');
 

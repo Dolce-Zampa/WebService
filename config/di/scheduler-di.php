@@ -40,3 +40,7 @@ $container->set(\PS\Webservice\Commands\Scheduler\RetryQueuedStripeConnectTransf
         $c->get(\PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\Scheduler\PacklinkShippingMessageHandler::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Commands\Scheduler\PacklinkShippingMessageHandler($capsule->getConnection(), new \GuzzleHttp\Client());
+});

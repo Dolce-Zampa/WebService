@@ -126,3 +126,9 @@ $container->set(\PS\Webservice\Http\Controller\PrestashopProductWebhookControlle
 $container->set(\PS\Webservice\Http\Controller\PetProfessionalServiceController::class, function ($c) {
     return new \PS\Webservice\Http\Controller\PetProfessionalServiceController();
 });
+
+$container->set(\PS\Webservice\Http\Controller\PacklinkWebhookController::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Http\Controller\PacklinkWebhookController(
+        $capsule->getConnection(), (string) env('PACKLINK_WEBHOOK_SECRET', '')
+    );
+});

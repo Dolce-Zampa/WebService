@@ -1,0 +1,6 @@
+Hello {seller_name},
+
+Attached is the shipping label for order {order_reference}.
+
+Thank you,
+{shop_name}
