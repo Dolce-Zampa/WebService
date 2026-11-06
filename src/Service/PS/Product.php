@@ -67,7 +67,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             $store->forget($key);
         }
         // Also guard loads of products that embed a bundle modified during this request.
-        $revision = self::revisionFor(array_merge($tags, ['product-catalog']));
+        $revision = self::revisionFor(array_merge($tags, ['product-catalog', 'product-catalog-writes']));
         $namespace = $store->getTags()->getNamespace();
         $lock = Cache::lock('product-cache-lock:' . sha1($namespace . $key), 120);
         $deadline = microtime(true) + 30;
@@ -86,7 +86,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 $store->forget($key);
             }
             $data = $loader();
-            if ($data !== null && $store->getTags()->getNamespace() === $namespace && self::revisionFor(array_merge($tags, ['product-catalog'])) === $revision) {
+            if ($data !== null && $store->getTags()->getNamespace() === $namespace && self::revisionFor(array_merge($tags, ['product-catalog', 'product-catalog-writes'])) === $revision) {
                 if ($ttl === 0) {
                     $store->forever($key, $data);
                 } else {
@@ -184,8 +184,16 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         // A previously cached category may have been built before this detail
         // existed. Refresh it once a new discounted snapshot is available.
         if (!$wasCached && !env('APP_DISABLE_CACHE', false) && $listingPromotion !== null) {
-            self::invalidateCacheTags(['product-catalog']);
-            Cache::tags(['product-catalog'])->flush();
+            $ids = array_column($data['associations']['categories'] ?? [], 'id');
+            if (isset($data['id_category_default'])) {
+                $ids[] = $data['id_category_default'];
+            }
+            $ids = array_filter($ids, static fn ($id): bool => is_numeric($id) && (int) $id > 0);
+            $tags = $ids !== []
+                ? array_merge(['product-catalog-unscoped'], array_slice(CatalogCacheTags::forCategories(implode('|', $ids)), 1))
+                : ['product-catalog'];
+            self::invalidateCacheTags($tags);
+            Cache::tags($tags)->flush();
         }
         $base = $promotions[0] ?? null;
         $data['promotion'] = $base;
@@ -230,7 +238,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     public function countProducts(array $filter = []): int
     {
         $queryString = http_build_query(['display' => '[id]'] + $filter);
-        $products = $this->productApiData("/products?{$queryString}")['products'] ?? [];
+        $products = $this->productApiData("/products?{$queryString}", CatalogCacheTags::fromFilter($filter))['products'] ?? [];
         return count($products);
     }
 
@@ -243,11 +251,12 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     public function productsList(array $displayOptions = ['display' => 'full'], ?Filter $filter = null): Collection
     {
         $cacheKey = 'list:v2:' . json_encode([$displayOptions, $filter?->data]);
-        $snapshots = $this->cachedProductData($cacheKey, ['product-catalog'], function () use ($displayOptions, $filter) {
+        $tags = CatalogCacheTags::fromFilter($displayOptions);
+        $snapshots = $this->cachedProductData($cacheKey, $tags, function () use ($displayOptions, $filter, $tags) {
             $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
             $displayOptions['sort'] = "[$sorting]";
             $queryString = http_build_query($displayOptions);
-            $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&date=1")['products'] ?? [];
+            $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&date=1", $tags)['products'] ?? [];
             $snapshots = [];
             $details = [];
             $needsLookup = [];
@@ -411,7 +420,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return null;
         }
 
-        $payload = $this->productApiData("/filters?id_category={$categoryId}");
+        $payload = $this->productApiData("/filters?id_category={$categoryId}", CatalogCacheTags::forCategories((string) $categoryId));
         if (empty($payload['data']['filters'])) {
             Log::warning("No filters found for category ID {$categoryId}");
             return null; // No filters found for the category
@@ -431,15 +440,15 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 return (int) $mapping['id'];
             }
         }
-        $catalogRevision = self::revisionFor(['product-catalog']);
-        $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug))['data'] ?? [];
+        $catalogRevision = self::revisionFor(['product-catalog', 'product-catalog-writes']);
+        $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug), CatalogCacheTags::forCategories(null))['data'] ?? [];
         if (empty($products)) {
             return null; // No product found with the given slug
         }
 
         $id = (int) $products['id_product'];
         $productRevision = self::revisionFor(['product:' . $id]);
-        if (!env('APP_DISABLE_CACHE', false) && self::revisionFor(['product-catalog']) === $catalogRevision) {
+        if (!env('APP_DISABLE_CACHE', false) && self::revisionFor(['product-catalog', 'product-catalog-writes']) === $catalogRevision) {
             Cache::forever($key, ['id' => $id, 'revision' => $productRevision]);
         }
         return $id;

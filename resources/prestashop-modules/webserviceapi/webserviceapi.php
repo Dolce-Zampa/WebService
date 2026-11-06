@@ -14,6 +14,7 @@ class webserviceapi extends PaymentModule
     const CONFIG_CHATGPT_TEXT_PROMPT = 'MLABFACTORYAPI_CHATGPT_TEXT_PROMPT';
     const CONFIG_CHATGPT_IMAGE_PROMPT = 'MLABFACTORYAPI_CHATGPT_IMAGE_PROMPT';
     private static array $productWebhookDispatched = [];
+    private static array $previousProductCategories = [];
     private $configuratorFormBuilt = false;
     public function __construct()
     {
@@ -57,9 +58,9 @@ class webserviceapi extends PaymentModule
             PRIMARY KEY (`id_product`, `id_shop`)
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4')
             && $this->registerHook(array(
-                'displayAdminProductsExtra', 'actionProductFormBuilderModifier',
+                'displayAdminProductsExtra', 'actionProductFormBuilderModifier', 'actionBeforeUpdateProductFormHandler',
                 'actionAfterCreateProductFormHandler', 'actionAfterUpdateProductFormHandler',
-                'actionObjectProductDeleteAfter', 'actionObjectProductAddBefore', 'actionObjectProductUpdateBefore',
+                'actionObjectProductDeleteBefore', 'actionObjectProductDeleteAfter', 'actionObjectProductAddBefore', 'actionObjectProductUpdateBefore',
             ));
     }
 
@@ -121,11 +122,27 @@ class webserviceapi extends PaymentModule
     public function hookActionAfterCreateProductFormHandler($params)
     {
         $this->saveConfiguratorForm($params);
+        if ((int) ($params['id'] ?? 0) > 0) {
+            $this->clearCacheWebhook(new Product((int) $params['id']), []);
+        }
+    }
+
+    public function hookActionBeforeUpdateProductFormHandler($params)
+    {
+        $id = (int) ($params['id'] ?? 0);
+        if ($id > 0 && !array_key_exists($id, self::$previousProductCategories)) {
+            $this->captureProductCategories($id);
+        }
     }
 
     public function hookActionAfterUpdateProductFormHandler($params)
     {
         $this->saveConfiguratorForm($params);
+        $id = (int) ($params['id'] ?? 0);
+        if ($id > 0) {
+            $this->clearCacheWebhook(new Product($id), self::$previousProductCategories[$id] ?? null);
+            unset(self::$previousProductCategories[$id]);
+        }
     }
 
     private function saveConfiguratorForm($params)
@@ -133,7 +150,6 @@ class webserviceapi extends PaymentModule
         $data = $params['form_data']['webserviceapi_configurator'] ?? ($params['form_data']['options'] ?? $params['form_data']);
         if (array_key_exists('configurator_json', $data)) {
             $this->saveProductConfigurator((int) $params['id'], !empty($data['configurator_active']), (string) $data['configurator_json']);
-            $this->clearCacheWebhook(new Product((int) $params['id']));
         }
     }
 
@@ -150,6 +166,32 @@ class webserviceapi extends PaymentModule
     public function hookActionObjectProductUpdateBefore($params)
     {
         $this->validateLegacyConfigurator();
+        $this->rememberProductCategories($params);
+    }
+
+    public function hookActionObjectProductDeleteBefore($params)
+    {
+        $this->rememberProductCategories($params);
+    }
+
+    private function rememberProductCategories(array $params): void
+    {
+        if (isset($params['object']) && $params['object'] instanceof Product && (int) $params['object']->id > 0) {
+            $id = (int) $params['object']->id;
+            if (!array_key_exists($id, self::$previousProductCategories)) {
+                $this->captureProductCategories($id);
+            }
+        }
+    }
+
+    private function captureProductCategories(int $id): void
+    {
+        $categories = Product::getProductCategories($id);
+        $oldProduct = new Product($id);
+        if ((int) ($oldProduct->id_category_default ?? 0) > 0) {
+            $categories[] = (int) $oldProduct->id_category_default;
+        }
+        self::$previousProductCategories[$id] = array_values(array_unique($categories));
     }
 
     private function validateLegacyConfigurator()
@@ -178,7 +220,10 @@ class webserviceapi extends PaymentModule
     {
         if (isset($params['object']) && $params['object'] instanceof Product) {
             Db::getInstance()->delete('webserviceapi_configurator', 'id_product = ' . (int) $params['object']->id);
-            $this->clearCacheWebhook($params['object']);
+            $id = (int) $params['object']->id;
+            $previous = self::$previousProductCategories[$id] ?? null;
+            unset(self::$previousProductCategories[$id]);
+            $this->clearCacheWebhook($params['object'], $previous);
         }
     }
 
@@ -239,7 +284,7 @@ class webserviceapi extends PaymentModule
         }
         $this->saveLegacyConfigurator($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
-        $this->clearCacheWebhook($params['object']);
+        $this->clearCacheWebhook($params['object'], []);
     }
 
     /**
@@ -252,7 +297,9 @@ class webserviceapi extends PaymentModule
         }
         $this->saveLegacyConfigurator($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
-        $this->clearCacheWebhook($params['object']);
+        $id = (int) $params['object']->id;
+        $previous = self::$previousProductCategories[$id] ?? null;
+        $this->clearCacheWebhook($params['object'], $previous);
     }
 
     /**
@@ -336,7 +383,7 @@ class webserviceapi extends PaymentModule
 
     }
 
-    protected function clearCacheWebhook(Product $product)
+    protected function clearCacheWebhook(Product $product, ?array $previousCategories = null)
     {
         $webhookEnabled = (bool) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED);
         if (!$webhookEnabled) {
@@ -360,6 +407,12 @@ class webserviceapi extends PaymentModule
         $link = str_replace("http://aidyis-prod-backoffice.dolcezampa.com", "", $this->context->link->getProductLink($product));
         $productUrl = "api_cache:/api" . $link . "?";
         $categories = Product::getProductCategories((int) $product->id);
+        if ((int) ($product->id_category_default ?? 0) > 0) {
+            $categories[] = (int) $product->id_category_default;
+        }
+        if ($previousCategories !== null) {
+            $categories = array_unique(array_merge($categories, $previousCategories));
+        }
         $brandName = $this->getBrandNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
 
         $tags = [];
@@ -384,7 +437,7 @@ class webserviceapi extends PaymentModule
 
         $url = $webhookBaseUrl . '/api/webhooks/clear-cache';
         $payload = json_encode(
-            ["cache" => $tags]
+            ["cache" => $tags, "category_context_complete" => $previousCategories !== null]
         );
 
         $ch = curl_init($url);

@@ -69,6 +69,7 @@ final class ProductCacheTest extends TestCase
     {
         $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
         $data['id'] = 261;
+        $data['associations']['categories'][] = ['id' => 17];
         $data['price'] = 50;
         $data['regular_price'] = '50.000000';
         $data['original_price'] = '50.000000';
@@ -190,6 +191,89 @@ final class ProductCacheTest extends TestCase
         $service->getProductByCategory('12', ['page' => 1]);
         $service->getProductByCategory('12', ['page' => 1]);
         $service->getProductByCategory('12', ['page' => 2]);
+    }
+
+    public function test_product_change_invalidates_only_affected_category_pages_and_their_data(): void
+    {
+        $db = Illuminate\Database\Capsule\Manager::connection();
+        $db->statement('CREATE TABLE product_bundles (bundled_product_id INTEGER)');
+        $db->statement('CREATE TABLE accessory (id_product_2 INTEGER)');
+        $db->statement('CREATE TABLE pack (id_product_item INTEGER)');
+        $service = new Product($this->http(['products' => []], 7));
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->exactly(7))->method('handle')->willReturnCallback(function ($request) use ($service) {
+            $params = $request->getQueryParams();
+            $service->getProductByCategory($params['category'], ['page' => $params['page'], 'limit' => 12]);
+            return response(['page' => $params['page']]);
+        });
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->expects($this->exactly(2))->method('push');
+        Facade::getFacadeApplication()->instance('queue-service', $queue);
+        $factory = new ServerRequestFactory();
+        $middleware = new CachingMiddleware('products');
+        $requests = [];
+        foreach ([['13|17', 1], ['13|17', 3], ['11', 1], ['32', 1]] as [$category, $page]) {
+            $requests[] = $factory->createServerRequest('GET', '/api/products')->withQueryParams([
+                'category' => $category, 'page' => $page, 'per_page' => 12, 'active' => 1,
+            ]);
+        }
+        foreach ($requests as $request) {
+            $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+            $this->assertSame('HIT', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+        }
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $webhook = $factory->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody([
+            'category_context_complete' => true,
+            'cache' => [['tags' => ['product:7']], ['category' => [17, 32]]],
+        ]);
+        $this->assertSame(200, $controller->clearCache($webhook, new Response(), [])->getStatusCode());
+        $this->assertSame('MISS', $middleware->process($requests[0], $handler)->getHeaderLine('X-Cache'));
+        $this->assertSame('MISS', $middleware->process($requests[1], $handler)->getHeaderLine('X-Cache'));
+        $this->assertSame('HIT', $middleware->process($requests[2], $handler)->getHeaderLine('X-Cache'));
+        $this->assertSame('MISS', $middleware->process($requests[3], $handler)->getHeaderLine('X-Cache'));
+    }
+
+    public function test_incomplete_category_context_invalidates_the_entire_catalog(): void
+    {
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->exactly(2))->method('handle')->willReturn(response(['products' => []]));
+        $queue = $this->createMock(RedisQueue::class);
+        Facade::getFacadeApplication()->instance('queue-service', $queue);
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('GET', '/api/products')->withQueryParams(['category' => '11']);
+        $middleware = new CachingMiddleware('products');
+        $middleware->process($request, $handler);
+        $this->assertSame('HIT', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $clear = $factory->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody([
+            'cache' => [['tags' => ['product:7']], ['category' => [17]]],
+        ]);
+        $controller->clearCache($clear, new Response(), []);
+        $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+    }
+
+    public function test_dependent_bundle_keeps_the_conservative_catalog_invalidation(): void
+    {
+        $db = Illuminate\Database\Capsule\Manager::connection();
+        $db->statement('CREATE TABLE product_bundles (bundled_product_id INTEGER)');
+        $db->statement('CREATE TABLE accessory (id_product_2 INTEGER)');
+        $db->statement('CREATE TABLE pack (id_product_item INTEGER)');
+        $db->table('product_bundles')->insert(['bundled_product_id' => 7]);
+        $factory = new ServerRequestFactory();
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->exactly(2))->method('handle')->willReturn(response(['products' => []]));
+        Facade::getFacadeApplication()->instance('queue-service', $this->createMock(RedisQueue::class));
+        $middleware = new CachingMiddleware('products');
+        $request = $factory->createServerRequest('GET', '/api/products')->withQueryParams(['category' => '11']);
+        $middleware->process($request, $handler);
+        $this->assertSame('HIT', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+        $clear = $factory->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody([
+            'category_context_complete' => true,
+            'cache' => [['tags' => ['product:7']], ['category' => [17]]],
+        ]);
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $controller->clearCache($clear, new Response(), []);
+        $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
     }
 
     public function test_counts_are_cached_and_invalidated_by_catalog_tag(): void
