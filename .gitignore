@@ -5,3 +5,4 @@ vendor/
 .phpunit.cache/
 s
 storage/*
+resources/prestashop-modules/mlabgiftcard/
