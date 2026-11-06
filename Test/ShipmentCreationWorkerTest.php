@@ -31,9 +31,9 @@ final class ShipmentCreationWorkerTest extends TestCase
         $this->db->statement('CREATE TABLE packlink_shipments (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL UNIQUE, status TEXT NOT NULL, provider_reference TEXT UNIQUE, label_seller_id INTEGER, last_error TEXT, attempt_count INTEGER DEFAULT 0, next_attempt_at TEXT, created_at TEXT, updated_at TEXT)');
         $address = ['name' => 'A', 'surname' => 'B', 'street1' => 'Street', 'zip_code' => '00100', 'city' => 'Roma', 'country' => 'IT', 'phone' => '123', 'email' => 'a@example.test'];
         $this->config = ['since' => '2026-11-05 12:00:00', 'eligible_states' => [2], 'carriers' => ['5' => ['service_id' => 'service']],
-            'draft' => ['user_id' => 'user', 'client_id' => 'client', 'platform' => 'PL', 'platform_country' => 'IT', 'source' => 'shop', 'from' => $address],
+            'draft' => ['user_id' => 'user', 'client_id' => 'client', 'platform' => 'PL', 'platform_country' => 'IT', 'source' => 'shop'],
             'package' => ['weight' => 1, 'width' => 10, 'height' => 10, 'length' => 10], 'content' => 'Products'];
-        $this->order = ['id' => 12, 'date_add' => '2026-11-05 12:00:01', 'current_state' => 2, 'is_virtual' => false, 'carrier_reference' => 5, 'to' => $address, 'currency' => 'EUR', 'content_value' => 12.0, 'weight_unit' => 'kg', 'dimension_unit' => 'cm', 'label_seller_id' => 9, 'items' => [['quantity' => 1, 'weight' => 1.5, 'width' => 2, 'height' => 3, 'length' => 4]]];
+        $this->order = ['id' => 12, 'date_add' => '2026-11-05 12:00:01', 'current_state' => 2, 'is_virtual' => false, 'carrier_reference' => 5, 'from' => $address, 'to' => $address, 'currency' => 'EUR', 'content_value' => 12.0, 'weight_unit' => 'kg', 'dimension_unit' => 'cm', 'label_seller_id' => 9, 'items' => [['category' => 'Collari', 'quantity' => 1, 'weight' => 1.5, 'width' => 2, 'height' => 3, 'length' => 4]]];
     }
 
     private function worker(array $order, MockHandler $packlink): ShipmentCreationWorker
@@ -55,7 +55,7 @@ final class ShipmentCreationWorkerTest extends TestCase
         self::assertSame(9, $this->db->table('packlink_shipments')->where('order_id', 12)->value('label_seller_id'));
     }
 
-    public function testMultipleItemsUseTotalWeightAndConfiguredGroupedDimensions(): void
+    public function testMultipleItemsUseProductWeightAndStackedDimensions(): void
     {
         $this->order['items'][0]['quantity'] = 2;
         $sent = null;
@@ -64,7 +64,56 @@ final class ShipmentCreationWorkerTest extends TestCase
             return new Response(200, [], '{"reference":"PL123"}');
         }]);
         self::assertSame(1, $this->worker($this->order, $packlink)->run()['created']);
-        self::assertSame(['weight' => 3, 'width' => 10, 'height' => 10, 'length' => 10], $sent['packages'][0]);
+        self::assertSame(['weight' => 3, 'width' => 2, 'height' => 6, 'length' => 4], $sent['packages'][0]);
+    }
+
+    public function testUsesArtisanAddressAndProductCategory(): void
+    {
+        $this->order['from']['street1'] = 'Via Artigiano 1';
+        $sent = null;
+        $packlink = new MockHandler([static function ($request) use (&$sent): Response {
+            $sent = json_decode((string) $request->getBody(), true);
+            return new Response(200, [], '{"reference":"PL123"}');
+        }]);
+        self::assertSame(1, $this->worker($this->order, $packlink)->run()['created']);
+        self::assertSame('Via Artigiano 1', $sent['from']['street1']);
+        self::assertSame('Collari', $sent['content']);
+        self::assertSame(['weight' => 1.5, 'width' => 2, 'height' => 3, 'length' => 4], $sent['packages'][0]);
+    }
+
+    public function testMissingProductMeasurementsUseDefaultsAndMissingCategoryUsesConfiguredContent(): void
+    {
+        $this->order['items'][0] = ['category' => '', 'quantity' => 2, 'weight' => 0, 'width' => 0, 'height' => 0, 'length' => 0];
+        $sent = null;
+        $packlink = new MockHandler([static function ($request) use (&$sent): Response {
+            $sent = json_decode((string) $request->getBody(), true);
+            return new Response(200, [], '{"reference":"PL123"}');
+        }]);
+        self::assertSame(1, $this->worker($this->order, $packlink)->run()['created']);
+        self::assertSame(['weight' => 2, 'width' => 10, 'height' => 20, 'length' => 10], $sent['packages'][0]);
+        self::assertSame('Products', $sent['content']);
+    }
+
+    public function testMultipleCategoriesAreCombinedOnce(): void
+    {
+        $this->order['items'][] = ['category' => 'Pettorine', 'quantity' => 1, 'weight' => 2, 'width' => 5, 'height' => 6, 'length' => 7];
+        $sent = null;
+        $packlink = new MockHandler([static function ($request) use (&$sent): Response {
+            $sent = json_decode((string) $request->getBody(), true);
+            return new Response(200, [], '{"reference":"PL123"}');
+        }]);
+        self::assertSame(1, $this->worker($this->order, $packlink)->run()['created']);
+        self::assertSame('Collari, Pettorine', $sent['content']);
+        self::assertSame(['weight' => 3.5, 'width' => 5, 'height' => 9, 'length' => 7], $sent['packages'][0]);
+    }
+
+    public function testMissingOrAmbiguousArtisanDoesNotCreateShipment(): void
+    {
+        $this->order['label_seller_id'] = null;
+        $this->order['from'] = null;
+        $packlink = new MockHandler([]);
+        self::assertSame(1, $this->worker($this->order, $packlink)->run()['deferred']);
+        self::assertSame('seller_address_unavailable', $this->db->table('packlink_shipments')->value('last_error'));
     }
 
     public function testProviderFailureLeavesAnAmbiguousShipmentForManualRecovery(): void

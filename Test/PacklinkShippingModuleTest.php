@@ -35,6 +35,54 @@ final class PacklinkShippingModuleTest extends TestCase
         self::assertSame(['order_ids' => [1]], (new TestPacklinkShippingController())->invoke());
     }
 
+    public function testSenderComesFromArtisanProfileAndResolvesCountryIso(): void
+    {
+        $db = Db::getInstance();
+        $db->execute("INSERT INTO manufacturer VALUES (9, 'Bottega', 'seller@example.test')");
+        $db->execute("INSERT INTO manufacturer_details VALUES (9, 'Anna', 'Rossi', 'Via Roma 1', 'Roma', 'Italia', '00100', '123456')");
+        $db->execute("INSERT INTO country VALUES (1, 'IT')");
+        $db->execute("INSERT INTO country_lang VALUES (1, 'Italia')");
+        $method = new ReflectionMethod(webserviceapipacklinkshippingModuleFrontController::class, 'sellerAddress');
+        $address = $method->invoke(new TestPacklinkShippingController(), 9);
+        self::assertSame('Via Roma 1', $address['street1']);
+        self::assertSame('IT', $address['country']);
+        self::assertSame('seller@example.test', $address['email']);
+        $db->execute("UPDATE manufacturer_details SET phone_number = '' WHERE id_manufacturer = 9");
+        self::assertNull($method->invoke(new TestPacklinkShippingController(), 9));
+    }
+
+    public function testSenderWithAmbiguousCountryOrDuplicateProfileIsRejected(): void
+    {
+        $db = Db::getInstance();
+        $db->execute("INSERT INTO manufacturer VALUES (9, 'Bottega', 'seller@example.test')");
+        $db->execute("INSERT INTO manufacturer_details VALUES (9, 'Anna', 'Rossi', 'Via Roma 1', 'Roma', 'Sconosciuto', '00100', '123456')");
+        $method = new ReflectionMethod(webserviceapipacklinkshippingModuleFrontController::class, 'sellerAddress');
+        self::assertNull($method->invoke(new TestPacklinkShippingController(), 9));
+        $db->execute("INSERT INTO manufacturer_details VALUES (9, 'Anna', 'Rossi', 'Via Roma 2', 'Roma', 'IT', '00100', '123456')");
+        self::assertNull($method->invoke(new TestPacklinkShippingController(), 9));
+    }
+
+    public function testOrderDataIncludesSellerAddressAndProductCategory(): void
+    {
+        $db = Db::getInstance();
+        $db->execute("INSERT INTO manufacturer VALUES (9, 'Bottega', 'seller@example.test')");
+        $db->execute("INSERT INTO manufacturer_details VALUES (9, 'Anna', 'Rossi', 'Via Roma 1', 'Roma', 'Italia', '00100', '123456')");
+        $db->execute("INSERT INTO country VALUES (1, 'IT')");
+        $db->execute("INSERT INTO country_lang VALUES (1, 'Italia')");
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_GET = ['id_order' => 1];
+        $order = (new TestPacklinkShippingController())->invoke()['order'];
+        self::assertSame(9, $order['label_seller_id']);
+        self::assertSame('Via Roma 1', $order['from']['street1']);
+        self::assertSame('Collari', $order['items'][0]['category']);
+        self::assertSame(1.5, $order['items'][0]['weight']);
+        $db->execute('INSERT INTO product VALUES (2, 0, 10)');
+        $db->execute('INSERT INTO order_detail VALUES (1, 2)');
+        $order = (new TestPacklinkShippingController())->invoke()['order'];
+        self::assertNull($order['label_seller_id']);
+        self::assertNull($order['from']);
+    }
+
     public function testRepeatedSnapshotAddsHistoryOnceAndStaleRankIsIgnored(): void
     {
         Db::getInstance()->execute("INSERT INTO packlink_shipments (order_id, status, provider_reference) VALUES (1, 'created', 'PL1')");

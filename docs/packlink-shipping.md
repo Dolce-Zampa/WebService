@@ -30,10 +30,7 @@ valori predefiniti di produzione.
   "draft": {
     "user_id": "USER_ID", "client_id": "CLIENT_ID", "platform": "PL",
     "platform_country": "IT", "source": "prestashop",
-    "integration_id": "INTEGRATION_ID",
-    "from": {"name": "Nome", "surname": "Cognome", "company": "Azienda",
-      "street1": "Indirizzo", "street2": "", "zip_code": "00000", "city": "Citta",
-      "country": "IT", "phone": "TELEFONO", "email": "mittente@example.test"}
+    "integration_id": "INTEGRATION_ID"
   },
   "package": {"weight": 1, "width": 10, "height": 10, "length": 10},
   "content": "Prodotti", "sync_interval_seconds": 900,
@@ -54,12 +51,26 @@ checkout. Il worker lascia questi ordini in attesa con errore
 dell'ordine. Non abilitarli finché il checkout non conserva una selezione
 utilizzabile senza il modulo Packlink. I servizi a domicilio usano `pickup: false`.
 
-Le dimensioni predefinite sono in centimetri e il peso in chilogrammi. Il
-worker usa peso e dimensioni del prodotto, con fallback ai valori configurati:
-come nel modulo Packlink, somma i pesi e usa le dimensioni predefinite per più
-pezzi. Le unità PrestaShop riconosciute sono `kg`, `g`, `oz`, `lbs` e `cm`;
-altre unità bloccano la preparazione per verifica. Confermare il pacco nel
-pannello Packlink prima del pagamento.
+Il mittente viene letto dal profilo dell'unico artigiano associato ai prodotti
+dell'ordine (`manufacturer` e `manufacturer_details`), incluso il paese
+convertito nel relativo codice ISO. Non si usa un mittente generale di
+fallback: se ci sono più artigiani oppure mancano dati obbligatori del profilo,
+la bozza resta in attesa (`seller_address_unavailable`). I dati del profilo
+sono l'indirizzo di spedizione scelto da questa integrazione: confermarne la
+correttezza con gli artigiani prima di attivarla.
+
+Il peso viene letto dalla riga ordine o dal prodotto. Le dimensioni vengono
+dal prodotto; per ciascun valore mancante si usano i valori `package`
+configurati, in kg e cm. Per più pezzi si sommano i pesi, si prendono larghezza
+e lunghezza massime e si sommano le altezze, come se i prodotti fossero
+impilati. È una stima del pacco: verificare dimensioni e peso effettivi nel
+pannello Packlink prima del pagamento. Le unità PrestaShop riconosciute sono
+`kg`, `g`, `oz`, `lbs` e `cm`; altre unità sospendono la preparazione.
+
+Il contenuto viene costruito dai nomi delle categorie predefinite dei prodotti
+fisici, nella lingua dell'ordine, senza ripetizioni e limitato a 60 caratteri.
+Se non è disponibile alcuna categoria, viene usato il testo `content`
+configurato.
 
 Mappare ogni stato effettivamente restituito dall'account. `order_state_id` è
 l'ID PrestaShop configurato nel negozio; `rank` stabilisce l'avanzamento e
@@ -82,7 +93,7 @@ modulo `webserviceapi`.
    fuso usato da `orders.date_add`; impostarlo in `since`. Gli ordini precedenti
    non vengono importati dal nuovo worker. Non anticipare la data dopo l'avvio:
    ordini precedenti potrebbero già avere una spedizione sul provider.
-3. Configurare e verificare servizi a domicilio, mittente, pacchi, stati e
+3. Configurare e verificare servizi a domicilio, profili degli artigiani, pacchi, stati e
    credenziali; impostare `PACKLINK_SHIPPING_ENABLED=true` e riavviare lo
    scheduler. Provare la finalizzazione dell'ordine con Packlink non raggiungibile
    e verificare che una bozza venga creata una sola volta.

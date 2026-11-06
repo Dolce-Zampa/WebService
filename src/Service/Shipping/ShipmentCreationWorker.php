@@ -45,26 +45,42 @@ final class ShipmentCreationWorker
             }
         }
         $count = 0;
-        $weight = 0.0;
-        $single = null;
+        $package = ['weight' => 0.0, 'width' => 0.0, 'height' => 0.0, 'length' => 0.0];
         foreach ($items as $item) {
             if (!is_array($item) || !isset($item['quantity']) || !is_int($item['quantity']) || $item['quantity'] <= 0) {
                 throw new \RuntimeException('Product quantity is invalid.');
             }
-            $count += $item['quantity'];
+            $quantity = $item['quantity'];
+            $count += $quantity;
             if ($count > 1000) {
                 throw new \RuntimeException('Product quantity is too large.');
             }
             $itemWeight = (float) ($item['weight'] ?? 0);
-            $weight += $item['quantity'] * ($itemWeight > 0 ? $itemWeight * $units[$weightUnit] : (float) $default['weight']);
-            $single = $item;
-        }
-        $package = ['weight' => $weight];
-        foreach (['width', 'height', 'length'] as $key) {
-            $value = (float) ($single[$key] ?? 0);
-            $package[$key] = $count === 1 && $value > 0 ? $value : (float) $default[$key];
+            $package['weight'] += $quantity * ($itemWeight > 0 ? $itemWeight * $units[$weightUnit] : (float) $default['weight']);
+            foreach (['width', 'height', 'length'] as $key) {
+                $value = (float) ($item[$key] ?? 0);
+                $value = $value > 0 ? $value : (float) $default[$key];
+                // Stack products vertically: preserve each footprint and sum heights.
+                $package[$key] = $key === 'height' ? $package[$key] + $quantity * $value : max($package[$key], $value);
+            }
         }
         return $package;
+    }
+
+    private function content(array $items): string
+    {
+        $categories = [];
+        foreach ($items as $item) {
+            $category = is_array($item) && is_string($item['category'] ?? null) ? trim($item['category']) : '';
+            if ($category !== '') {
+                $categories[] = preg_replace('/\s+/u', ' ', $category) ?? '';
+            }
+        }
+        $content = implode(', ', array_values(array_unique(array_filter($categories))));
+        if ($content === '') {
+            $content = (string) ($this->config['content'] ?? '');
+        }
+        return trim(mb_substr($content, 0, 60));
     }
 
     /** Finds new orders and retries preparation errors. Returns counters only. */
@@ -104,11 +120,15 @@ final class ShipmentCreationWorker
                     $failure = 'pickup_unavailable';
                     throw new \RuntimeException('Pickup checkout selection is not available.');
                 }
+                $failure = 'seller_address_unavailable';
+                if (!is_int($order['label_seller_id'] ?? null) || $order['label_seller_id'] <= 0 || !is_array($order['from'] ?? null)) {
+                    throw new \RuntimeException('Seller or seller address is missing or ambiguous.');
+                }
                 $failure = 'draft_invalid';
                 $config = array_merge($this->config['draft'] ?? [], ['service_id' => $carrier['service_id']]);
                 $data = [
-                    'to' => $order['to'] ?? null, 'packages' => [$this->package($order)],
-                    'content' => $this->config['content'] ?? '', 'content_value' => $order['content_value'] ?? null,
+                    'from' => $order['from'], 'to' => $order['to'] ?? null, 'packages' => [$this->package($order)],
+                    'content' => $this->content($order['items'] ?? []), 'content_value' => $order['content_value'] ?? null,
                     'currency' => $order['currency'] ?? null,
                 ];
                 $draft = $this->factory->build((int) $job->order_id, $data, $config);

@@ -24,6 +24,10 @@ class Db {
         $this->pdo->exec('CREATE TABLE product (id_product INTEGER PRIMARY KEY, is_virtual INTEGER, id_manufacturer INTEGER)');
         $this->pdo->exec('CREATE TABLE order_detail (id_order INTEGER, product_id INTEGER)');
         $this->pdo->exec('CREATE TABLE packlink_shipments (order_id INTEGER PRIMARY KEY, status TEXT, provider_reference TEXT, last_state_rank INTEGER, last_order_state INTEGER, provider_state TEXT, tracking_number TEXT, tracking_url TEXT, labels_json TEXT, label_seller_id INTEGER, label_mail_status TEXT, updated_at TEXT)');
+        $this->pdo->exec('CREATE TABLE manufacturer (id_manufacturer INTEGER PRIMARY KEY, name TEXT, email TEXT)');
+        $this->pdo->exec('CREATE TABLE manufacturer_details (id_manufacturer INTEGER, first_name TEXT, last_name TEXT, address TEXT, city TEXT, country TEXT, zip_code TEXT, phone_number TEXT)');
+        $this->pdo->exec('CREATE TABLE country (id_country INTEGER, iso_code TEXT)');
+        $this->pdo->exec('CREATE TABLE country_lang (id_country INTEGER, name TEXT)');
         $this->pdo->exec('CREATE TABLE history (order_id INTEGER, state INTEGER)');
     }
     public static function getInstance() { return self::$instance; }
@@ -40,12 +44,24 @@ class Manufacturer { public $id; public $name = 'Artigiano'; public $email = 'se
 class Mail { public static $calls = array(); public static function Send(...$args) { self::$calls[] = $args; return true; } }
 class OrderState { public $id; public function __construct($id) { $this->id = $id; } }
 class Order {
-    public $id; public $current_state; public $reference = 'ORDER-1';
+    public $id; public $current_state; public $reference = 'ORDER-1'; public $id_address_delivery = 1; public $id_customer = 1; public $id_carrier = 1; public $id_currency = 1; public $id_lang = 1; public $id_cart = 1; public $total_products_wt = 10; public $date_add = '2026-11-05 12:00:01';
     public function __construct($id) { $this->id = $id; $this->current_state = (int) Db::getInstance()->getRow('SELECT current_state FROM orders WHERE id_order = ' . (int) $id)['current_state']; }
     public function getWsShippingNumber() { return Db::getInstance()->getRow('SELECT tracking_number FROM packlink_shipments WHERE order_id = ' . $this->id)['tracking_number']; }
     public function setWsShippingNumber($number) { return Db::getInstance()->update('packlink_shipments', ['tracking_number' => pSQL($number)], 'order_id = ' . $this->id); }
     public function hasInvoice() { return false; }
+    public function isVirtual() { return false; }
+    public function getOrderDetailList() { $rows = Db::getInstance()->executeS('SELECT product_id FROM order_detail WHERE id_order = ' . (int) $this->id); return array_map(function ($row) { return $row + ['product_quantity' => 1, 'product_weight' => 1.5]; }, $rows); }
 }
+class Product {
+    public $id; public $id_manufacturer; public $is_virtual = 0; public $id_category_default = 3; public $weight = 1; public $width = 2; public $height = 3; public $depth = 4;
+    public function __construct($id) { $this->id = $id; $row = Db::getInstance()->getRow('SELECT id_manufacturer FROM product WHERE id_product = ' . (int) $id); $this->id_manufacturer = $row['id_manufacturer'] ?? 0; }
+}
+class Category { public $id; public $name = 'Collari'; public function __construct($id, $lang) { $this->id = $id; } }
+class Address { public $id; public $firstname = 'Cliente'; public $lastname = 'Test'; public $company = ''; public $address1 = 'Via cliente'; public $address2 = ''; public $postcode = '00100'; public $city = 'Roma'; public $id_country = 1; public $phone = '123'; public $phone_mobile = ''; public function __construct($id) { $this->id = $id; } }
+class Customer { public $id; public $email = 'buyer@example.test'; public function __construct($id) { $this->id = $id; } }
+class Carrier { public $id; public $id_reference = 5; public function __construct($id) { $this->id = $id; } }
+class Currency { public $id; public $iso_code = 'EUR'; public function __construct($id) { $this->id = $id; } }
+class Country { public static function getIsoById($id) { return 'IT'; } }
 class OrderHistory {
     public $id_order; private $state;
     public function changeIdOrderState($state, $order, $existing) { $this->state = $state; Db::getInstance()->execute('UPDATE orders SET current_state = ' . (int) $state . ' WHERE id_order = ' . (int) $order->id); }

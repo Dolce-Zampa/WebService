@@ -17,7 +17,7 @@ final class PacklinkDraftFactory
                 throw new \InvalidArgumentException('Missing Packlink draft configuration: ' . $key);
             }
         }
-        $from = $this->address($configuration['from'] ?? null);
+        $from = $this->address($order['from'] ?? null);
         $to = $this->address($order['to'] ?? null);
         $parcels = $order['packages'] ?? null;
         if (!is_array($parcels) || !array_is_list($parcels) || $parcels === []) {

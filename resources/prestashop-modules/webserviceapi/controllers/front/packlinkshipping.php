@@ -230,6 +230,51 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
         return array('order_ids' => array_map('intval', array_column($rows, 'id_order')));
     }
 
+    /** Resolve an unambiguous seller address; missing details are never replaced with another sender. */
+    private function sellerAddress($sellerId)
+    {
+        if ($sellerId < 1) {
+            return null;
+        }
+        $db = Db::getInstance();
+        $rows = $db->executeS('SELECT m.`name` AS company, m.`email`, d.`first_name`, d.`last_name`,'
+            . ' d.`address`, d.`city`, d.`country`, d.`zip_code`, d.`phone_number`'
+            . ' FROM `' . _DB_PREFIX_ . 'manufacturer` m INNER JOIN `' . _DB_PREFIX_ . 'manufacturer_details` d'
+            . ' ON d.`id_manufacturer` = m.`id_manufacturer` WHERE m.`id_manufacturer` = ' . (int) $sellerId, true, false);
+        if (!is_array($rows) || count($rows) !== 1) {
+            return null;
+        }
+        $row = $rows[0];
+        $country = trim((string) ($row['country'] ?? ''));
+        if ($country === '') {
+            return null;
+        }
+        $countries = $db->executeS('SELECT DISTINCT c.`iso_code` FROM `' . _DB_PREFIX_ . 'country` c'
+            . ' LEFT JOIN `' . _DB_PREFIX_ . 'country_lang` cl ON cl.`id_country` = c.`id_country`'
+            . " WHERE UPPER(c.`iso_code`) = UPPER('" . pSQL($country) . "')"
+            . " OR LOWER(cl.`name`) = LOWER('" . pSQL($country) . "')", true, false);
+        if (!is_array($countries) || count($countries) !== 1) {
+            return null;
+        }
+        $result = array(
+            'name' => trim((string) ($row['first_name'] ?? '')),
+            'surname' => trim((string) ($row['last_name'] ?? '')),
+            'company' => trim((string) ($row['company'] ?? '')),
+            'street1' => trim((string) ($row['address'] ?? '')),
+            'zip_code' => trim((string) ($row['zip_code'] ?? '')),
+            'city' => trim((string) ($row['city'] ?? '')),
+            'country' => strtoupper((string) $countries[0]['iso_code']),
+            'phone' => trim((string) ($row['phone_number'] ?? '')),
+            'email' => trim((string) ($row['email'] ?? '')),
+        );
+        foreach (array('name', 'surname', 'street1', 'zip_code', 'city', 'country', 'phone', 'email') as $field) {
+            if ($result[$field] === '') {
+                return null;
+            }
+        }
+        return Validate::isEmail($result['email']) ? $result : null;
+    }
+
     private function orderData($idOrder)
     {
         $order = new Order($idOrder);
@@ -255,7 +300,10 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
             if ((bool) $product->is_virtual) {
                 continue;
             }
+            $category = new Category((int) $product->id_category_default, (int) $order->id_lang);
+            $categoryName = Validate::isLoadedObject($category) && is_string($category->name) ? trim($category->name) : '';
             $items[] = array(
+                'category' => $categoryName,
                 'quantity' => (int) $line['product_quantity'],
                 'weight' => (float) ($line['product_weight'] ?: $product->weight),
                 'width' => (float) $product->width,
@@ -263,6 +311,7 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
                 'length' => (float) $product->depth,
             );
         }
+        $sellerId = count(array_unique($sellers)) === 1 && $sellers[0] > 0 ? $sellers[0] : null;
         return array('order' => array(
             'id' => (int) $order->id,
             'date_add' => (string) $order->date_add,
@@ -279,7 +328,8 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
                 'phone' => (string) ($address->phone ?: $address->phone_mobile), 'email' => (string) $customer->email,
             ),
             'items' => $items,
-            'label_seller_id' => count(array_unique($sellers)) === 1 && $sellers[0] > 0 ? $sellers[0] : null,
+            'label_seller_id' => $sellerId,
+            'from' => $sellerId === null ? null : $this->sellerAddress($sellerId),
             'weight_unit' => (string) Configuration::get('PS_WEIGHT_UNIT'),
             'dimension_unit' => (string) Configuration::get('PS_DIMENSION_UNIT'),
         ));

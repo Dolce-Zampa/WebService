@@ -16,12 +16,12 @@ final class PacklinkDraftFactoryTest extends TestCase
 
     private function configuration(): array
     {
-        return ['user_id' => 'user', 'client_id' => 'client', 'platform' => 'PL', 'platform_country' => 'IT', 'source' => 'shop', 'service_id' => 'service', 'from' => $this->address()];
+        return ['user_id' => 'user', 'client_id' => 'client', 'platform' => 'PL', 'platform_country' => 'IT', 'source' => 'shop', 'service_id' => 'service'];
     }
 
     private function order(): array
     {
-        return ['to' => $this->address(), 'packages' => [['weight' => 1.25, 'width' => 3.2, 'length' => 8, 'height' => 2]], 'content' => 'Products', 'content_value' => 20.55, 'currency' => 'EUR', 'dropoff_point_id' => 'P123'];
+        return ['from' => $this->address(), 'to' => $this->address(), 'packages' => [['weight' => 1.25, 'width' => 3.2, 'length' => 8, 'height' => 2]], 'content' => 'Products', 'content_value' => 20.55, 'currency' => 'EUR', 'dropoff_point_id' => 'P123'];
     }
 
     public function testProducesPacklinkDraftWithoutInventingPointOrMeasurements(): void
