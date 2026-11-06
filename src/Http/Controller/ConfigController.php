@@ -85,19 +85,51 @@ class ConfigController extends CartController
         // Bump only affected tag revisions so other forever product snapshots remain usable.
         $productIds = [];
         $tagsToInvalidate = [];
+        $categoryIds = [];
         foreach ($payload['cache'] as $entry) {
             $tagsToInvalidate = array_merge($tagsToInvalidate, $entry['tags'] ?? []);
-        }
-        if (array_filter($tagsToInvalidate, fn (string $tag) => str_starts_with($tag, 'product:'))) {
-            $tagsToInvalidate[] = 'product-catalog';
-        }
-        \PS\Webservice\Service\PS\Product::invalidateCacheTags($tagsToInvalidate);
-        foreach ($payload['cache'] as $key => $value) {
-            foreach ($value['tags'] ?? [] as $tag) {
-                if (is_string($tag) && preg_match('/^product:(\d+)$/', $tag, $matches)) {
+            foreach ($entry['tags'] ?? [] as $tag) {
+                if (preg_match('/^product:(\d+)$/', $tag, $matches)) {
                     $productIds[] = (int) $matches[1];
                 }
             }
+            foreach ($entry['category'] ?? [] as $category) {
+                if (!is_scalar($category) || !ctype_digit((string) $category) || (int) $category <= 0) {
+                    return response(['error' => 'Invalid category ID'], 400);
+                }
+                $categoryIds[] = (int) $category;
+            }
+        }
+        $productIds = array_values(array_unique($productIds));
+        $scoped = count($productIds) === 1 && ($payload['category_context_complete'] ?? false) === true && $categoryIds !== [];
+        if ($scoped) {
+            // Without a reliable answer about parent products, preserve the existing
+            // broad invalidation: their category pages could embed this product.
+            try {
+                $db = \Illuminate\Database\Capsule\Manager::connection();
+                $scoped = !$db->table('product_bundles')->whereIn('bundled_product_id', $productIds)->exists()
+                    && !$db->table('accessory')->whereIn('id_product_2', $productIds)->exists()
+                    && !$db->table('pack')->whereIn('id_product_item', $productIds)->exists();
+            } catch (\Throwable $e) {
+                $scoped = false;
+                Log::warning('Unable to resolve catalog dependencies; invalidating the full catalog.', ['exception' => $e]);
+            }
+        }
+        $catalogTags = [];
+        if ($productIds !== [] && $scoped) {
+            $catalogTags = array_merge(['product-catalog-unscoped'], array_map(
+                static fn (int $id): string => 'catalog-category:' . $id,
+                array_values(array_unique($categoryIds))
+            ));
+        } elseif ($productIds !== [] || $categoryIds !== []) {
+            $catalogTags = ['product-catalog'];
+        }
+        if ($productIds !== [] || $categoryIds !== []) {
+            $tagsToInvalidate[] = 'product-catalog-writes';
+            $tagsToInvalidate = array_merge($tagsToInvalidate, $catalogTags);
+        }
+        \PS\Webservice\Service\PS\Product::invalidateCacheTags($tagsToInvalidate);
+        foreach ($payload['cache'] as $key => $value) {
             $params = [
                 "tags" => $value['tags'] ?? null,
                 "key" => $value['key'] ?? null
@@ -110,7 +142,7 @@ class ConfigController extends CartController
                 $this->tags($params['tags'])->removeFromCache($params['key']);
             }
 
-            if(isset($value['category']) && !empty($value['category'])) {
+            if (!$scoped && isset($value['category']) && !empty($value['category'])) {
                 foreach($value['category'] as $category) {
                     $categoryTag = CategoriesMap::getCategory((int) $category);
                     $this->tags([$categoryTag])->flushTag();
@@ -119,9 +151,12 @@ class ConfigController extends CartController
     
         }
 
+        if ($catalogTags !== []) {
+            $this->tags($catalogTags)->flushTag();
+        }
         if ($productIds !== []) {
             // Catalog pages may embed the changed product, including accessories and bundles.
-            $this->tags(['product-catalog', 'product-detail'])->flushTag();
+            $this->tags(['product-detail'])->flushTag();
             \PS\Webservice\Facades\Queue::push(\PS\Webservice\Service\ElkService::QUEUE_NAME, ['product_ids' => array_values(array_unique($productIds))]);
             foreach (array_unique($productIds) as $productId) {
                 \PS\Webservice\Facades\Queue::push(\PS\Webservice\Service\PS\Product::CACHE_QUEUE, ['product_id' => $productId]);
