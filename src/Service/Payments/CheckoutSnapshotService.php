@@ -103,8 +103,9 @@ final class CheckoutSnapshotService
 
         $currency = strtoupper((string) ($data['currency'] ?? ''));
         $amountTotal = $data['amount_total'] ?? null;
+        $expectedStripeCents = $payload['gift_card']['stripe_cents'] ?? $payload['totals']['grand_total_cents'];
         if ($currency !== $payload['currency'] || !is_int($amountTotal) && !(is_string($amountTotal) && ctype_digit($amountTotal))
-            || (int) $amountTotal !== $payload['totals']['grand_total_cents']) {
+            || (int) $amountTotal !== $expectedStripeCents) {
             throw new \RuntimeException('Stripe Checkout Session does not match its immutable checkout snapshot.');
         }
 
@@ -199,7 +200,7 @@ final class CheckoutSnapshotService
         }
         ksort($sellerTotals, SORT_NUMERIC);
 
-        return [
+        $payload = [
             'version' => self::VERSION,
             'cart_id' => $cartId,
             'customer_id' => $this->optionalPositiveInteger($metadata['id_customer'] ?? null),
@@ -220,6 +221,14 @@ final class CheckoutSnapshotService
                 'grand_total_cents' => $grandTotalCents,
             ],
         ];
+        $tender = $session->giftCardTender();
+        if ($tender !== null) {
+            if ($tender->cartId !== $cartId || $tender->totalCents !== $grandTotalCents) {
+                throw new \RuntimeException('Gift card reservation does not match the checkout snapshot.');
+            }
+            $payload['gift_card'] = $tender->toArray();
+        }
+        return $payload;
     }
 
     /** @param array<int, mixed> $products @return array<int, int> */
@@ -251,7 +260,7 @@ final class CheckoutSnapshotService
     /** @param array<string, mixed> $payload @return array<string, mixed> */
     private function verificationPayload(array $payload): array
     {
-        return [
+        $verification = [
             'version' => $payload['version'],
             'cart_id' => $payload['cart_id'],
             'carrier_id' => $payload['carrier_id'],
@@ -266,6 +275,10 @@ final class CheckoutSnapshotService
                 'total_amount_tax_incl_cents' => $line['total_amount_tax_incl_cents'],
             ], $payload['lines']),
         ];
+        if (isset($payload['gift_card'])) {
+            $verification['gift_card'] = $payload['gift_card'];
+        }
+        return $verification;
     }
 
     /** @return array<string, mixed> */

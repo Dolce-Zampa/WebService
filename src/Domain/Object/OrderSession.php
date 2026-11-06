@@ -9,6 +9,7 @@ use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Service\GiftCard\GiftCardTender;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
 
@@ -17,6 +18,7 @@ class OrderSession implements ObjectInterface
     use UuidGenerator;
     protected array $data;
     private ?float $payableTotal = null;
+    private ?GiftCardTender $giftCardTender = null;
     private Order $service;
 
     private CustomerEntity $customer;
@@ -239,6 +241,44 @@ class OrderSession implements ObjectInterface
         return $this->payableTotal ?? $this->total();
     }
 
+    public function attachGiftCardTender(GiftCardTender $tender): void
+    {
+        if ($tender->cartId !== (int) ($this->data['metadata']['cart_id'] ?? 0)
+            || $tender->totalCents !== (int) round($this->payableTotal() * 100)
+            || $this->giftCardTender !== null) {
+            throw new \InvalidArgumentException('Gift card reservation does not match the order.');
+        }
+        $this->giftCardTender = $tender;
+    }
+
+    public function giftCardTender(): ?GiftCardTender
+    {
+        return $this->giftCardTender;
+    }
+
+    /** Stripe collects only the residual; the snapshot retains the complete cart and discounts. */
+    public function toStripePaymentArray(): array
+    {
+        $payload = $this->toArray();
+        if ($this->giftCardTender === null) {
+            return $payload;
+        }
+        if ($this->giftCardTender->stripeCents <= 0) {
+            throw new \InvalidArgumentException('A fully covered order must not create a Stripe Checkout Session.');
+        }
+        $payload['line_items'] = [[
+            'price_data' => [
+                'currency' => 'eur',
+                'product_data' => ['name' => 'Saldo ordine'],
+                'unit_amount' => $this->giftCardTender->stripeCents,
+            ],
+            'quantity' => 1,
+        ]];
+        // The residual already includes all commercial discounts and shipping.
+        unset($payload['discounts'], $payload['shipping_options']);
+        return $payload;
+    }
+
     public function addDiscount(Discount $discount): void
     {
         $existingCoupon = $discount->type === 'amount' ? null : $this->service->findExistingStripeCoupon($discount->code);
@@ -364,6 +404,10 @@ class OrderSession implements ObjectInterface
         $payload = $this->data;
         unset($payload['expires_at']);
         unset($payload['metadata']['checkout_attempt_key']);
+
+        if ($this->giftCardTender !== null) {
+            $payload['gift_card_tender'] = $this->giftCardTender->toArray();
+        }
 
         return hash('sha256', json_encode($this->sortCheckoutPayload($payload), JSON_THROW_ON_ERROR));
     }

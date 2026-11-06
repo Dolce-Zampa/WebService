@@ -45,7 +45,7 @@ class PaymentService implements PaymentGatewayInterface
                 throw new \RuntimeException('Stripe checkout idempotency key is invalid.');
             }
 
-            $params = $orderSession->toArray();
+            $params = $orderSession->toStripePaymentArray();
             if ($this->checkoutCustomers !== null) {
                 // Bank transfers in Checkout require an existing Customer.
                 // Resolve it before creating the Session so retries always

@@ -165,6 +165,12 @@ class OrderController extends CartController
             throw new \InvalidArgumentException('Invalid payload format', 400);
         }
 
+        // Until gift card redemption is available, never silently ignore a code
+        // and create a checkout charging the full amount.
+        if (array_key_exists('gift_card', $payload)) {
+            return response(['error' => 'Gift card redemption is not available.'], 503);
+        }
+
         // Ownership check: require customer or guest identification — never trust anonymous cart access
         $customerId = isset($payload['id_customer']) ? $payload['id_customer'] : null;
         $guestId = isset($payload['id_guest']) ? $payload['id_guest'] : null;

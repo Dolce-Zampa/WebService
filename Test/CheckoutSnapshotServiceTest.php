@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\Payments\CheckoutSnapshotService;
+use PS\Webservice\Service\GiftCard\GiftCardTender;
 use PS\Webservice\Service\PS\Order;
 
 final class CheckoutSnapshotServiceTest extends TestCase
@@ -105,6 +106,39 @@ final class CheckoutSnapshotServiceTest extends TestCase
             'id' => 'cs_wrong_total', 'amount_total' => 999, 'currency' => 'eur',
             'metadata' => ['checkout_snapshot_id' => $snapshot['id']],
         ]));
+    }
+
+    public function test_snapshot_preserves_order_total_and_verifies_only_the_stripe_residual(): void
+    {
+        $db = $this->database();
+        $order = $this->createMock(Order::class);
+        $session = OrderSession::create([
+            'cart_id' => 42, 'id_customer' => 9, 'id_carrier' => 3,
+            'customer' => CustomerEntity::create(['email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Example'], $order),
+        ], $order);
+        $product = ['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '75.00', 'quantity' => 1];
+        $session->addCartLineItem($product);
+        $session->attachGiftCardTender(GiftCardTender::fromReservation([
+            'reservation' => ['id' => str_repeat('a', 32), 'card_id' => str_repeat('b', 32), 'cart_id' => 42, 'customer_id' => 9,
+                'amount_cents' => 5000, 'status' => 'held', 'expires_at' => '2099-01-01T00:00:00Z'],
+            'card' => ['id' => str_repeat('b', 32), 'status' => 'active', 'currency' => 'EUR'],
+        ], 42, 9, 7500, time()));
+        $stripePayload = $session->toStripePaymentArray();
+        self::assertSame(2500, $stripePayload['line_items'][0]['price_data']['unit_amount']);
+        self::assertArrayNotHasKey('gift_card', $stripePayload);
+        $service = new CheckoutSnapshotService($db);
+        $snapshot = $service->create($session, [
+            'currency_iso' => 'EUR', 'products' => [$product], 'totals' => ['shipping_tax_incl' => '0.00'],
+        ]);
+
+        $resolved = $service->resolveForStripeSession($snapshot['id'], \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_gift_split', 'amount_total' => 2500, 'currency' => 'eur',
+            'metadata' => ['checkout_snapshot_id' => $snapshot['id']],
+        ]));
+        self::assertSame(7500, $resolved['payload']['totals']['grand_total_cents']);
+        self::assertSame(5000, $resolved['payload']['gift_card']['gift_card_cents']);
+        self::assertSame(2500, $resolved['payload']['gift_card']['stripe_cents']);
+        self::assertArrayNotHasKey('code', $resolved['payload']['gift_card']);
     }
 
     private function database(): Manager
