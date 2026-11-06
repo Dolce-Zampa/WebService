@@ -23,7 +23,7 @@ final class ShipmentDraftCreatorTest extends TestCase
         $capsule = new Manager();
         $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         $this->db = $capsule->getConnection();
-        $this->db->statement('CREATE TABLE packlink_shipments (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL UNIQUE, status TEXT NOT NULL, provider_reference TEXT UNIQUE, last_error TEXT, created_at TEXT, updated_at TEXT)');
+        $this->db->statement('CREATE TABLE packlink_shipments (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL UNIQUE, status TEXT NOT NULL, provider_reference TEXT UNIQUE, label_seller_id INTEGER, last_error TEXT, created_at TEXT, updated_at TEXT)');
     }
 
     public function testOnlyOneCreateIsSentForRepeatedOrder(): void

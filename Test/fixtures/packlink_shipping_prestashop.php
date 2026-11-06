@@ -10,6 +10,7 @@ class PrestaShopException extends Exception {}
 function pSQL($value, $htmlOK = false) { return str_replace("'", "''", (string) $value); }
 class Validate {
     public static function isLoadedObject($object) { return $object && $object->id > 0; }
+    public static function isEmail($value) { return (bool) filter_var($value, FILTER_VALIDATE_EMAIL); }
     public static function isTrackingNumber($value) { return is_string($value) && !preg_match('/[\\r\\n]/', $value); }
 }
 class Db {
@@ -21,9 +22,9 @@ class Db {
         $this->pdo->exec('CREATE TABLE webservice_account (`key` TEXT, active INTEGER)');
         $this->pdo->exec("INSERT INTO webservice_account VALUES ('test-key', 1)");
         $this->pdo->exec('CREATE TABLE orders (id_order INTEGER PRIMARY KEY, current_state INTEGER, date_add TEXT)');
-        $this->pdo->exec('CREATE TABLE product (id_product INTEGER PRIMARY KEY, is_virtual INTEGER)');
+        $this->pdo->exec('CREATE TABLE product (id_product INTEGER PRIMARY KEY, is_virtual INTEGER, id_manufacturer INTEGER)');
         $this->pdo->exec('CREATE TABLE order_detail (id_order INTEGER, product_id INTEGER)');
-        $this->pdo->exec('CREATE TABLE packlink_shipments (order_id INTEGER PRIMARY KEY, status TEXT, provider_reference TEXT, last_state_rank INTEGER, last_order_state INTEGER, provider_state TEXT, tracking_number TEXT, tracking_url TEXT, labels_json TEXT, updated_at TEXT)');
+        $this->pdo->exec('CREATE TABLE packlink_shipments (order_id INTEGER PRIMARY KEY, status TEXT, provider_reference TEXT, last_state_rank INTEGER, last_order_state INTEGER, provider_state TEXT, tracking_number TEXT, tracking_url TEXT, labels_json TEXT, label_seller_id INTEGER, label_mail_status TEXT, updated_at TEXT)');
         $this->pdo->exec('CREATE TABLE packlink_entity (type TEXT, index_1 TEXT, index_2 TEXT, data TEXT)');
         $this->pdo->exec('CREATE TABLE history (order_id INTEGER, state INTEGER)');
     }
@@ -37,9 +38,11 @@ class Db {
         return $this->pdo->exec('UPDATE `' . $table . '` SET ' . implode(', ', $parts) . ' WHERE ' . $where) !== false;
     }
 }
+class Manufacturer { public $id; public $name = 'Artigiano'; public $email = 'seller@example.test'; public function __construct($id) { $this->id = $id; } }
+class Mail { public static $calls = array(); public static function Send(...$args) { self::$calls[] = $args; return true; } }
 class OrderState { public $id; public function __construct($id) { $this->id = $id; } }
 class Order {
-    public $id; public $current_state;
+    public $id; public $current_state; public $reference = 'ORDER-1';
     public function __construct($id) { $this->id = $id; $this->current_state = (int) Db::getInstance()->getRow('SELECT current_state FROM orders WHERE id_order = ' . (int) $id)['current_state']; }
     public function getWsShippingNumber() { return Db::getInstance()->getRow('SELECT tracking_number FROM packlink_shipments WHERE order_id = ' . $this->id)['tracking_number']; }
     public function setWsShippingNumber($number) { return Db::getInstance()->update('packlink_shipments', ['tracking_number' => pSQL($number)], 'order_id = ' . $this->id); }

@@ -13,6 +13,7 @@ use PS\Webservice\Service\Shipping\PrestashopShippingClient;
 use PS\Webservice\Service\Shipping\ShipmentCreationWorker;
 use PS\Webservice\Service\Shipping\ShipmentDraftCreator;
 use PS\Webservice\Service\Shipping\ShipmentSyncWorker;
+use PS\Webservice\Service\Shipping\ShipmentLabelNotificationWorker;
 
 final class PacklinkShippingMessageHandler
 {
@@ -48,6 +49,15 @@ final class PacklinkShippingMessageHandler
             Log::info('Packlink synchronization worker completed.', $sync->run());
         } catch (\Throwable $exception) {
             Log::error('Packlink synchronization worker failed.');
+        }
+        if (($settings['label_email']['enabled'] ?? false) === true) {
+            try {
+                $mail = $settings['label_email'];
+                $worker = new ShipmentLabelNotificationWorker($this->db, $provider, $shop, $this->http, $mail['paid_states'] ?? [], $mail['allowed_hosts'] ?? []);
+                Log::info('Packlink label notification worker completed.', $worker->run());
+            } catch (\Throwable $exception) {
+                Log::error('Packlink label notification worker failed.');
+            }
         }
     }
 }

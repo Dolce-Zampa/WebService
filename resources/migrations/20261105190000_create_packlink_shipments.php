@@ -19,6 +19,11 @@ final class CreatePacklinkShipments extends AbstractMigration
             ->addColumn('tracking_number', 'string', ['limit' => 191, 'null' => true])
             ->addColumn('tracking_url', 'text', ['null' => true])
             ->addColumn('labels_json', 'text', ['null' => true])
+            ->addColumn('label_seller_id', 'biginteger', ['signed' => false, 'null' => true])
+            ->addColumn('label_mail_status', 'string', ['limit' => 32, 'default' => 'pending'])
+            ->addColumn('label_mail_error', 'string', ['limit' => 64, 'null' => true])
+            ->addColumn('label_mail_due_at', 'datetime', ['null' => true])
+            ->addColumn('label_mail_sent_at', 'datetime', ['null' => true])
             ->addColumn('last_state_rank', 'integer', ['null' => true])
             ->addColumn('last_order_state', 'integer', ['null' => true])
             ->addColumn('sync_state', 'string', ['limit' => 32, 'default' => 'idle'])
@@ -31,6 +36,7 @@ final class CreatePacklinkShipments extends AbstractMigration
             ->addIndex(['provider_reference'], ['unique' => true, 'name' => 'uniq_packlink_reference'])
             ->addIndex(['status', 'id'], ['name' => 'idx_packlink_status'])
             ->addIndex(['sync_state', 'sync_due_at', 'id'], ['name' => 'idx_packlink_sync'])
+            ->addIndex(['label_mail_status', 'label_mail_due_at', 'id'], ['name' => 'idx_packlink_label_mail'])
             ->create();
     }
 

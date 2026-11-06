@@ -122,8 +122,9 @@ final class ShipmentCreationWorker
                     $data['dropoff_point_id'] = $order['dropoff_point_id'];
                 }
                 $draft = $this->factory->build((int) $job->order_id, $data, $config);
+                $seller = $order['label_seller_id'] ?? null;
                 $failure = 'creation_storage_failed';
-                $result = $this->creator->create((int) $job->order_id, $draft);
+                $result = $this->creator->create((int) $job->order_id, $draft, is_int($seller) && $seller > 0 ? $seller : null);
                 if ($result === 'created') {
                     ++$counts['created'];
                 } elseif ($result === 'unknown' || $result === 'creating') {

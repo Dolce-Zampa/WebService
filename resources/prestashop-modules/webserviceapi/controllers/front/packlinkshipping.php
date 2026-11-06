@@ -19,7 +19,11 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
     {
         $this->assertRequestMethod(array('GET', 'POST'));
         if (strtoupper((string) $_SERVER['REQUEST_METHOD']) === 'POST') {
-            return $this->applySnapshot($this->getJsonPayload());
+            $payload = $this->getJsonPayload();
+            if (($payload['action'] ?? null) === 'send_label') {
+                return $this->sendLabel($payload);
+            }
+            return $this->applySnapshot($payload);
         }
         $idOrder = (int) Tools::getValue('id_order');
         if ($idOrder > 0) {
@@ -133,6 +137,60 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
         }
     }
 
+    /** Recheck the recipient immediately before sending the verified PDF attachments. */
+    private function sendLabel(array $payload)
+    {
+        $id = (int) ($payload['order_id'] ?? 0);
+        $seller = (int) ($payload['seller_id'] ?? 0);
+        $files = $payload['attachments'] ?? null;
+        if ($id < 1 || $seller < 1 || !is_array($files) || count($files) < 1 || count($files) > 20) {
+            throw new MlabFactoryApiException('Invalid label notification.', 422);
+        }
+        $db = Db::getInstance();
+        $rows = $db->executeS('SELECT p.`id_manufacturer` FROM `' . _DB_PREFIX_ . 'order_detail` od'
+            . ' LEFT JOIN `' . _DB_PREFIX_ . 'product` p ON p.`id_product` = od.`product_id`'
+            . ' WHERE od.`id_order` = ' . $id, true, false);
+        if (!is_array($rows) || !$rows) {
+            throw new MlabFactoryApiException('Order seller unavailable.', 409);
+        }
+        foreach ($rows as $row) {
+            if ((int) ($row['id_manufacturer'] ?? 0) !== $seller) {
+                throw new MlabFactoryApiException('Order seller changed or is ambiguous.', 409);
+            }
+        }
+        $record = $db->getRow('SELECT `label_seller_id`, `label_mail_status` FROM `' . _DB_PREFIX_ . 'packlink_shipments` WHERE `order_id` = ' . $id);
+        $manufacturer = new Manufacturer($seller);
+        $order = new Order($id);
+        if (!$record || (int) $record['label_seller_id'] !== $seller || $record['label_mail_status'] !== 'sending'
+            || !Validate::isLoadedObject($manufacturer) || !Validate::isEmail((string) $manufacturer->email)
+            || !Validate::isLoadedObject($order)) {
+            throw new MlabFactoryApiException('Label notification recipient is invalid.', 409);
+        }
+        $attachments = array();
+        $total = 0;
+        foreach ($files as $index => $encoded) {
+            $pdf = is_string($encoded) ? base64_decode($encoded, true) : false;
+            $total += is_string($pdf) ? strlen($pdf) : 0;
+            if ($pdf === false || strlen($pdf) > 5242880 || $total > 4194304 || substr($pdf, 0, 5) !== '%PDF-') {
+                throw new MlabFactoryApiException('Invalid label PDF.', 422);
+            }
+            $attachments[] = array('content' => $pdf, 'name' => 'etichetta-' . ($index + 1) . '.pdf', 'mime' => 'application/pdf');
+        }
+        if ((int) Configuration::get('PS_MAIL_METHOD') === 3) {
+            throw new MlabFactoryApiException('Email is disabled.', 503);
+        }
+        $lang = (int) Configuration::get('PS_LANG_DEFAULT');
+        $vars = array('{seller_name}' => htmlspecialchars((string) $manufacturer->name, ENT_QUOTES, 'UTF-8'),
+            '{order_reference}' => htmlspecialchars((string) $order->reference, ENT_QUOTES, 'UTF-8'),
+            '{shop_name}' => Configuration::get('PS_SHOP_NAME'));
+        if (!Mail::Send($lang, 'packlink_label', 'Etichetta di spedizione ordine ' . $order->reference,
+            $vars, $manufacturer->email, $manufacturer->name, null, null, $attachments, null,
+            dirname(__FILE__) . '/../../mails/')) {
+            throw new MlabFactoryApiException('Unable to send label.', 500);
+        }
+        return array('sent' => true);
+    }
+
     private function validUrl($url)
     {
         return is_string($url) && strlen($url) <= 2048 && filter_var($url, FILTER_VALIDATE_URL)
@@ -223,11 +281,13 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
             throw new MlabFactoryApiException('Order shipping data is incomplete.', 422);
         }
         $items = array();
+        $sellers = array();
         foreach ($order->getOrderDetailList() as $line) {
             $product = new Product((int) $line['product_id']);
             if (!Validate::isLoadedObject($product)) {
                 throw new MlabFactoryApiException('Order product is unavailable.', 422);
             }
+            $sellers[] = (int) $product->id_manufacturer;
             if ((bool) $product->is_virtual) {
                 continue;
             }
@@ -259,6 +319,7 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
                 'phone' => (string) ($address->phone ?: $address->phone_mobile), 'email' => (string) $customer->email,
             ),
             'items' => $items,
+            'label_seller_id' => count(array_unique($sellers)) === 1 && $sellers[0] > 0 ? $sellers[0] : null,
             'dropoff_point_id' => $dropOff,
             'weight_unit' => (string) Configuration::get('PS_WEIGHT_UNIT'),
             'dimension_unit' => (string) Configuration::get('PS_DIMENSION_UNIT'),

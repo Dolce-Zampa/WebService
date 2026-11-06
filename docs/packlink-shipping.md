@@ -120,6 +120,47 @@ autenticato. Il webhook verifica `X-Packlink-Webhook-Secret`, valida l'evento
 e anticipa la rilettura dello stato corrente; i dati dell'evento non vengono
 applicati direttamente. Polling e webhook possono essere usati insieme.
 
+## Invio dell'etichetta all'artigiano
+
+L'invio è disabilitato finché non viene configurato esplicitamente, dopo una
+prova con l'account reale. Aggiungere all'oggetto `PACKLINK_SHIPPING_SETTINGS`:
+
+```json
+"label_email": {
+  "enabled": true,
+  "paid_states": ["STATO_PACKLINK_CON_PAGAMENTO_CONFERMATO"],
+  "allowed_hosts": ["host-etichette-verificato.example"]
+}
+```
+
+Sostituire i segnaposto con stati e host HTTPS effettivamente verificati sul
+proprio account. Gli stati devono anche avere `labels: true` nella mappatura
+`states`. Non includere bozze, pagamenti in sospeso o stati annullati.
+Consentire solo hostname di distribuzione delle etichette controllati e attendibili:
+i redirect non vengono seguiti e solo i PDF validi fino a 4 MiB complessivi
+vengono allegati. L'account e il server devono poter raggiungere gli host e
+PrestaShop deve avere l'invio email attivo e i template del modulo distribuiti.
+
+L'evento `shipment.label.ready` anticipa la sincronizzazione; anche il polling
+recupera i webhook persi. Prima dell'invio vengono riletti stato e link freschi
+dal provider. L'indirizzo email è quello del produttore PrestaShop associato
+all'ordine. Il destinatario viene acquisito alla creazione della spedizione e
+ricontrollato subito prima dell'invio: se l'ordine comprende più artigiani, un
+prodotto è mancante o la sua associazione cambia, l'invio è sospeso (`held`).
+La verifica usa le associazioni prodotto-produttore presenti nel catalogo al
+momento della creazione; non ricostruisce una titolarità storica del prodotto.
+Gestire manualmente questi ordini usando l'etichetta nel pannello ordine.
+
+`label_mail_status=sent` indica che PrestaShop ha accettato la richiesta di
+invio, non garantisce la consegna nella casella. `preparing` indica preparazione
+interrotta; `sending` o `unknown` indicano una consegna potenzialmente già
+avvenuta. Non si ritenta automaticamente un invio ambiguo. Per ripristinare un
+tentativo, fermare tutti i worker, verificare i log del sistema email e
+accertare che il messaggio non sia stato inviato. Solo allora un operatore può
+riportare manualmente lo stato a `pending` e azzerare `label_mail_due_at` nella
+tabella `packlink_shipments`; riavviare poi i worker. Monitorare anche `held`,
+`preparing`, `sending` e `unknown`: richiedono intervento umano.
+
 ## Diagnosi e recupero
 
 La tabella `packlink_shipments` contiene ID ordine, riferimento, checkpoint,

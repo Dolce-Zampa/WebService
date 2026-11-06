@@ -57,6 +57,15 @@ final class PrestashopShippingClient
         return $this->request('POST', [], $snapshot);
     }
 
+    public function sendLabel(int $orderId, int $sellerId, array $attachments): void
+    {
+        $result = $this->request('POST', [], ['action' => 'send_label', 'order_id' => $orderId,
+            'seller_id' => $sellerId, 'attachments' => $attachments]);
+        if (($result['sent'] ?? false) !== true) {
+            throw new \RuntimeException('Label notification was not confirmed.');
+        }
+    }
+
     private function request(string $method, array $query, ?array $body = null): array
     {
         $options = [

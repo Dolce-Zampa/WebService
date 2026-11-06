@@ -15,7 +15,7 @@ final class PacklinkShippingModuleTest extends TestCase
         require __DIR__ . '/fixtures/packlink_shipping_prestashop.php';
         Db::$instance = new Db();
         Db::getInstance()->execute("INSERT INTO orders VALUES (1, 2, '2026-11-05 12:00:01'), (2, 2, '2026-11-05 11:59:59')");
-        Db::getInstance()->execute('INSERT INTO product VALUES (1, 0)');
+        Db::getInstance()->execute('INSERT INTO product VALUES (1, 0, 9)');
         Db::getInstance()->execute('INSERT INTO order_detail VALUES (1, 1), (2, 1)');
     }
 
@@ -68,4 +68,28 @@ final class PacklinkShippingModuleTest extends TestCase
         $this->expectException(MlabFactoryApiException::class);
         $controller->invoke();
     }
+    public function testLabelMailContainsPdfAndRechecksSeller(): void
+    {
+        Db::getInstance()->execute("INSERT INTO packlink_shipments (order_id, status, provider_reference, label_seller_id, label_mail_status) VALUES (1, 'created', 'PL1', 9, 'sending')");
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $controller = new TestPacklinkShippingController();
+        $controller->payload = ['action' => 'send_label', 'order_id' => 1, 'seller_id' => 9, 'attachments' => [base64_encode('%PDF-1.4 test')]];
+        self::assertTrue($controller->invoke()['sent']);
+        self::assertSame('seller@example.test', Mail::$calls[0][4]);
+        self::assertSame('%PDF-1.4 test', Mail::$calls[0][8][0]['content']);
+        Db::getInstance()->execute('UPDATE product SET id_manufacturer = 10 WHERE id_product = 1');
+        $this->expectException(MlabFactoryApiException::class);
+        $controller->invoke();
+    }
+
+    public function testLabelMailRejectsNonPdf(): void
+    {
+        Db::getInstance()->execute("INSERT INTO packlink_shipments (order_id, status, provider_reference, label_seller_id, label_mail_status) VALUES (1, 'created', 'PL1', 9, 'sending')");
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $controller = new TestPacklinkShippingController();
+        $controller->payload = ['action' => 'send_label', 'order_id' => 1, 'seller_id' => 9, 'attachments' => [base64_encode('not a PDF')]];
+        $this->expectException(MlabFactoryApiException::class);
+        $controller->invoke();
+    }
+
 }

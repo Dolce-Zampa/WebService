@@ -1,0 +1,6 @@
+Ciao {seller_name},
+
+in allegato trovi l’etichetta di spedizione per l’ordine {order_reference}.
+
+Grazie,
+{shop_name}

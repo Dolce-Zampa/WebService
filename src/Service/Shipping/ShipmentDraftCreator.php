@@ -18,7 +18,7 @@ final class ShipmentDraftCreator
      * A worker interrupted after claiming the order stays in 'creating': the outcome
      * must be resolved manually because Packlink does not document POST idempotency.
      */
-    public function create(int $orderId, array $draft): string
+    public function create(int $orderId, array $draft, ?int $labelSellerId = null): string
     {
         if ($orderId <= 0) {
             throw new \InvalidArgumentException('Invalid order ID.');
@@ -28,7 +28,7 @@ final class ShipmentDraftCreator
             'order_id' => $orderId, 'status' => 'pending', 'created_at' => $now, 'updated_at' => $now,
         ]);
         $claimed = $this->db->table('packlink_shipments')->where('order_id', $orderId)->where('status', 'pending')
-            ->update(['status' => 'creating', 'updated_at' => $now]);
+            ->update(['status' => 'creating', 'label_seller_id' => $labelSellerId, 'updated_at' => $now]);
         if ($claimed !== 1) {
             return (string) $this->db->table('packlink_shipments')->where('order_id', $orderId)->value('status');
         }

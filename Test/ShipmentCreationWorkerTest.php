@@ -28,12 +28,12 @@ final class ShipmentCreationWorkerTest extends TestCase
         $capsule = new Manager();
         $capsule->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         $this->db = $capsule->getConnection();
-        $this->db->statement('CREATE TABLE packlink_shipments (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL UNIQUE, status TEXT NOT NULL, provider_reference TEXT UNIQUE, last_error TEXT, attempt_count INTEGER DEFAULT 0, next_attempt_at TEXT, created_at TEXT, updated_at TEXT)');
+        $this->db->statement('CREATE TABLE packlink_shipments (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL UNIQUE, status TEXT NOT NULL, provider_reference TEXT UNIQUE, label_seller_id INTEGER, last_error TEXT, attempt_count INTEGER DEFAULT 0, next_attempt_at TEXT, created_at TEXT, updated_at TEXT)');
         $address = ['name' => 'A', 'surname' => 'B', 'street1' => 'Street', 'zip_code' => '00100', 'city' => 'Roma', 'country' => 'IT', 'phone' => '123', 'email' => 'a@example.test'];
         $this->config = ['since' => '2026-11-05 12:00:00', 'eligible_states' => [2], 'carriers' => ['5' => ['service_id' => 'service']],
             'draft' => ['user_id' => 'user', 'client_id' => 'client', 'platform' => 'PL', 'platform_country' => 'IT', 'source' => 'shop', 'from' => $address],
             'package' => ['weight' => 1, 'width' => 10, 'height' => 10, 'length' => 10], 'content' => 'Products'];
-        $this->order = ['id' => 12, 'date_add' => '2026-11-05 12:00:01', 'current_state' => 2, 'is_virtual' => false, 'carrier_reference' => 5, 'to' => $address, 'currency' => 'EUR', 'content_value' => 12.0, 'weight_unit' => 'kg', 'dimension_unit' => 'cm', 'items' => [['quantity' => 1, 'weight' => 1.5, 'width' => 2, 'height' => 3, 'length' => 4]]];
+        $this->order = ['id' => 12, 'date_add' => '2026-11-05 12:00:01', 'current_state' => 2, 'is_virtual' => false, 'carrier_reference' => 5, 'to' => $address, 'currency' => 'EUR', 'content_value' => 12.0, 'weight_unit' => 'kg', 'dimension_unit' => 'cm', 'label_seller_id' => 9, 'items' => [['quantity' => 1, 'weight' => 1.5, 'width' => 2, 'height' => 3, 'length' => 4]]];
     }
 
     private function worker(array $order, MockHandler $packlink): ShipmentCreationWorker
@@ -52,6 +52,7 @@ final class ShipmentCreationWorkerTest extends TestCase
         $result = $this->worker($this->order, $packlink)->run();
         self::assertSame(1, $result['created']);
         self::assertSame('PL123', $this->db->table('packlink_shipments')->where('order_id', 12)->value('provider_reference'));
+        self::assertSame(9, $this->db->table('packlink_shipments')->where('order_id', 12)->value('label_seller_id'));
     }
 
     public function testMultipleItemsUseTotalWeightAndConfiguredGroupedDimensions(): void
