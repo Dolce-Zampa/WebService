@@ -200,10 +200,6 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
     private function candidates()
     {
         $since = (string) Tools::getValue('since');
-        // Never run both creators: the third-party module remains untouched.
-        if (Module::isEnabled('packlink')) {
-            throw new MlabFactoryApiException('Disable the Packlink module before activating external shipment creation.', 409);
-        }
         $date = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $since);
         if (!$date || $date->format('Y-m-d H:i:s') !== $since) {
             throw new MlabFactoryApiException('A valid activation date is required.', 422);
@@ -232,33 +228,6 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
             throw new MlabFactoryApiException('Unable to read shipping candidates.', 500);
         }
         return array('order_ids' => array_map('intval', array_column($rows, 'id_order')));
-    }
-
-    /** Read and validate the existing checkout selection without loading the legacy module. */
-    private function getDropOffId($cartId, $carrierId)
-    {
-        $rows = Db::getInstance()->executeS(
-            "SELECT `data` FROM `" . _DB_PREFIX_ . "packlink_entity` WHERE `type` = 'CartCarrierDropOffMapping'"
-            . " AND (`index_1` = '" . (int) $cartId . "' OR `index_2` = '" . (int) $cartId . "')", true, false
-        );
-        if (!is_array($rows)) {
-            throw new MlabFactoryApiException('Unable to read pickup selection.', 500);
-        }
-        $matches = array();
-        foreach ($rows as $row) {
-            $data = json_decode($row['data'], true);
-            if (is_array($data) && (int) ($data['cartId'] ?? 0) === $cartId
-                && (int) ($data['carrierReferenceId'] ?? 0) === $carrierId
-                && isset($data['dropOff']['id']) && is_scalar($data['dropOff']['id'])
-                && trim((string) $data['dropOff']['id']) !== '') {
-                $matches[] = (string) $data['dropOff']['id'];
-            }
-        }
-        $matches = array_values(array_unique($matches));
-        if (count($matches) !== 1) {
-            throw new MlabFactoryApiException('Pickup selection is missing or ambiguous.', 422);
-        }
-        return $matches[0];
     }
 
     private function orderData($idOrder)
@@ -294,10 +263,6 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
                 'length' => (float) $product->depth,
             );
         }
-        $dropOff = null;
-        if ((int) Tools::getValue('include_dropoff') === 1) {
-            $dropOff = $this->getDropOffId((int) $order->id_cart, (int) $order->id_carrier);
-        }
         return array('order' => array(
             'id' => (int) $order->id,
             'date_add' => (string) $order->date_add,
@@ -315,7 +280,6 @@ class webserviceapipacklinkshippingModuleFrontController extends MlabFactoryApiB
             ),
             'items' => $items,
             'label_seller_id' => count(array_unique($sellers)) === 1 && $sellers[0] > 0 ? $sellers[0] : null,
-            'dropoff_point_id' => $dropOff,
             'weight_unit' => (string) Configuration::get('PS_WEIGHT_UNIT'),
             'dimension_unit' => (string) Configuration::get('PS_DIMENSION_UNIT'),
         ));

@@ -90,5 +90,6 @@ final class ShipmentCreationWorkerTest extends TestCase
         $result = $this->worker($this->order, $packlink)->run();
         self::assertSame(1, $result['deferred']);
         self::assertSame('pending', $this->db->table('packlink_shipments')->where('order_id', 12)->value('status'));
+        self::assertSame('pickup_unavailable', $this->db->table('packlink_shipments')->where('order_id', 12)->value('last_error'));
     }
 }

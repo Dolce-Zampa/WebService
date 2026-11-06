@@ -2,7 +2,6 @@
 
 define('_DB_PREFIX_', '');
 class ModuleFrontController {}
-class Module { public static $enabled = false; public static function isEnabled($name) { return self::$enabled; } }
 class Configuration { public static function get($key) { return ''; } }
 class Tools { public static function getValue($key, $default = null) { return $_GET[$key] ?? $default; } }
 class PrestaShopDatabaseException extends Exception {}
@@ -25,7 +24,6 @@ class Db {
         $this->pdo->exec('CREATE TABLE product (id_product INTEGER PRIMARY KEY, is_virtual INTEGER, id_manufacturer INTEGER)');
         $this->pdo->exec('CREATE TABLE order_detail (id_order INTEGER, product_id INTEGER)');
         $this->pdo->exec('CREATE TABLE packlink_shipments (order_id INTEGER PRIMARY KEY, status TEXT, provider_reference TEXT, last_state_rank INTEGER, last_order_state INTEGER, provider_state TEXT, tracking_number TEXT, tracking_url TEXT, labels_json TEXT, label_seller_id INTEGER, label_mail_status TEXT, updated_at TEXT)');
-        $this->pdo->exec('CREATE TABLE packlink_entity (type TEXT, index_1 TEXT, index_2 TEXT, data TEXT)');
         $this->pdo->exec('CREATE TABLE history (order_id INTEGER, state INTEGER)');
     }
     public static function getInstance() { return self::$instance; }

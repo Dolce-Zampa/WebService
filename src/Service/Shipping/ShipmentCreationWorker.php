@@ -102,14 +102,7 @@ final class ShipmentCreationWorker
                 }
                 if (($carrier['pickup'] ?? false) === true) {
                     $failure = 'pickup_unavailable';
-                    $withDropoff = $this->shop->order((int) $job->order_id, true);
-                    if (($withDropoff['carrier_reference'] ?? null) !== ($order['carrier_reference'] ?? null)
-                        || ($withDropoff['current_state'] ?? null) !== $order['current_state']
-                        || ($withDropoff['date_add'] ?? null) !== $order['date_add']
-                        || empty($withDropoff['dropoff_point_id'])) {
-                        throw new \RuntimeException('Drop-off point is missing or order changed.');
-                    }
-                    $order = $withDropoff;
+                    throw new \RuntimeException('Pickup checkout selection is not available.');
                 }
                 $failure = 'draft_invalid';
                 $config = array_merge($this->config['draft'] ?? [], ['service_id' => $carrier['service_id']]);
@@ -118,9 +111,6 @@ final class ShipmentCreationWorker
                     'content' => $this->config['content'] ?? '', 'content_value' => $order['content_value'] ?? null,
                     'currency' => $order['currency'] ?? null,
                 ];
-                if (($carrier['pickup'] ?? false) === true) {
-                    $data['dropoff_point_id'] = $order['dropoff_point_id'];
-                }
                 $draft = $this->factory->build((int) $job->order_id, $data, $config);
                 $seller = $order['label_seller_id'] ?? null;
                 $failure = 'creation_storage_failed';

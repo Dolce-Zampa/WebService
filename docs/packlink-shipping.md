@@ -47,11 +47,12 @@ valori predefiniti di produzione.
 
 Le chiavi `carriers` sono gli ID **riferimento corriere** PrestaShop; i valori
 `service_id` sono ID di servizi Packlink, non ID del metodo del modulo.
-Per i servizi a punto di ritiro impostare `pickup: true`: il worker legge la
-selezione `CartCarrierDropOffMapping` mantenuta dal checkout del modulo Packlink.
-Una selezione mancante o ambigua viene rinviata, non sostituita. Se quel
-checkout non è disponibile su PrestaShop 9.2, occorre un flusso che conservi la
-selezione compatibile prima di abilitare quei corrieri.
+I servizi a punto di ritiro (`pickup: true`) non sono ancora supportati: non
+esiste nel webservice una fonte indipendente per il punto selezionato al
+checkout. Il worker lascia questi ordini in attesa con errore
+`pickup_unavailable`, senza creare una bozza o interferire con la chiusura
+dell'ordine. Non abilitarli finché il checkout non conserva una selezione
+utilizzabile senza il modulo Packlink. I servizi a domicilio usano `pickup: false`.
 
 Le dimensioni predefinite sono in centimetri e il peso in chilogrammi. Il
 worker usa peso e dimensioni del prodotto, con fallback ai valori configurati:
@@ -68,41 +69,28 @@ recupero delle etichette per quello stato. Stati sconosciuti vengono ritentati
 con backoff senza modificare l'ordine. Se lo stato ordine è stato cambiato
 manualmente al di fuori della sequenza prevista, l'aggiornamento è sospeso.
 
-## Attivazione e passaggio dal vecchio modulo
+## Attivazione
 
-Il modulo Packlink non viene modificato. Per evitare che il vecchio e il nuovo
-flusso creino spedizioni per lo stesso ordine, il nuovo worker non crea bozze
-mentre il modulo Packlink è abilitato in PrestaShop. Quando il modulo è
-abilitato, i suoi hook e il suo comportamento rimangono quelli originali;
-l'isolamento dagli errori Packlink riguarda il nuovo flusso asincrono.
+Il modulo Packlink non è installato su PrestaShop 9.2 e non è richiesto dal
+nuovo flusso. Il worker usa esclusivamente l'API Packlink diretta e le API del
+modulo `webserviceapi`.
 
 1. Distribuire il webservice e applicare le migrazioni Phinx. Distribuire la
    nuova versione del modulo `webserviceapi`, eseguire il suo upgrade a
    `1.1.2` e verificare che il pannello Packlink appaia nella pagina ordine.
-2. Prima del passaggio, fermare e svuotare la coda di creazione del modulo
-   Packlink, verificare eventuali bozze già create e disabilitare il modulo in
-   PrestaShop. Non modificare i suoi file. Il nuovo servizio rifiuta la scansione
-   degli ordini finché il modulo risulta abilitato.
-3. Scegliere un istante **futuro** dopo la disabilitazione e il rilascio,
-   preciso al secondo, nel fuso usato da `orders.date_add`; impostarlo in
-   `since`. Non anticiparlo successivamente: si rischierebbe di creare una
-   seconda spedizione per ordini già elaborati dal vecchio modulo.
-4. Configurare e verificare servizi, mittente, pacchi, stati e credenziali;
-   impostare `PACKLINK_SHIPPING_ENABLED=true` e riavviare lo scheduler. Gli
-   ordini precedenti al cutover non vengono importati dal nuovo worker.
-   Verificare con un ordine di prova che l'ordine si concluda anche quando
-   Packlink non è raggiungibile, e che la bozza compaia una sola volta.
+2. Scegliere un istante **futuro** dopo il rilascio, preciso al secondo, nel
+   fuso usato da `orders.date_add`; impostarlo in `since`. Gli ordini precedenti
+   non vengono importati dal nuovo worker. Non anticipare la data dopo l'avvio:
+   ordini precedenti potrebbero già avere una spedizione sul provider.
+3. Configurare e verificare servizi a domicilio, mittente, pacchi, stati e
+   credenziali; impostare `PACKLINK_SHIPPING_ENABLED=true` e riavviare lo
+   scheduler. Provare la finalizzazione dell'ordine con Packlink non raggiungibile
+   e verificare che una bozza venga creata una sola volta.
 
-Disabilitare il modulo può rimuovere dal checkout le funzionalità e i corrieri
-che esso fornisce, inclusa la selezione dei punti di ritiro. Verificare e
-predisporre un checkout compatibile prima del passaggio: la lettura delle
-selezioni storiche non sostituisce la raccolta di nuove selezioni. Fino ad
-allora il cutover non è pronto per la produzione.
-
-Per tornare indietro, fermare il nuovo worker e riconciliare manualmente le
-spedizioni già create prima di riabilitare il modulo: entrambi i sistemi
-potrebbero altrimenti creare bozze per gli stessi ordini. Eventuali ordini
-precedenti al cutover restano da gestire secondo il processo operativo esistente.
+Il supporto ai punti di ritiro richiede un checkout indipendente dal vecchio
+modulo che registri il punto scelto. Fino alla sua realizzazione e verifica,
+quegli ordini devono essere gestiti manualmente: non è sufficiente configurare
+un corriere pickup nel worker.
 
 ## Webhook e riconciliazione
 

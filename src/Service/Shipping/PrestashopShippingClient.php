@@ -40,12 +40,12 @@ final class PrestashopShippingClient
         return $ids;
     }
 
-    public function order(int $orderId, bool $includeDropoff = false): array
+    public function order(int $orderId): array
     {
         if ($orderId <= 0) {
             throw new \InvalidArgumentException('Invalid order ID.');
         }
-        $result = $this->request('GET', ['id_order' => $orderId, 'include_dropoff' => $includeDropoff ? 1 : 0]);
+        $result = $this->request('GET', ['id_order' => $orderId]);
         if (!isset($result['order']) || !is_array($result['order']) || ($result['order']['id'] ?? null) !== $orderId) {
             throw new \RuntimeException('Invalid PrestaShop order response.');
         }
