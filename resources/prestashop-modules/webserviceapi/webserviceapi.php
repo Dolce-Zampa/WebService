@@ -19,7 +19,7 @@ class webserviceapi extends PaymentModule
     {
         $this->name = 'webserviceapi';
         $this->tab = 'administration';
-        $this->version = '1.1.1';
+        $this->version = '1.1.2';
         $this->author = 'MlabFactory - Marco De Felice';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -36,6 +36,7 @@ class webserviceapi extends PaymentModule
         return parent::install()
             && $this->installConfigurator()
             && $this->registerHook('moduleRoutes')
+            && $this->registerHook('displayAdminOrderMainBottom')
             && $this->registerHook('paymentOptions')
             && $this->registerHook('paymentReturn')
             && $this->registerHook('actionObjectProductAddAfter')
@@ -45,6 +46,46 @@ class webserviceapi extends PaymentModule
             && Configuration::updateValue(self::CONFIG_CHATGPT_TEXT_PROMPT, '')
             && Configuration::updateValue(self::CONFIG_CHATGPT_IMAGE_PROMPT, '')
             && $this->registerHook('actionGetExtraMailTemplateVars');
+    }
+
+    /** Displays synchronized shipping details on the back-office order page. */
+    public function hookDisplayAdminOrderMainBottom($params)
+    {
+        $orderId = (int) ($params['id_order'] ?? 0);
+        if ($orderId <= 0) {
+            return '';
+        }
+        try {
+            $row = Db::getInstance()->getRow('SELECT `provider_reference`, `provider_state`, `tracking_number`, `tracking_url`, `labels_json`'
+                . ' FROM `' . _DB_PREFIX_ . 'packlink_shipments` WHERE `order_id` = ' . $orderId, false);
+        } catch (Throwable $exception) {
+            return '';
+        }
+        if (!$row) {
+            return '';
+        }
+        $escape = static function ($value) { return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); };
+        $html = '<div class="card"><div class="card-header">Packlink</div><div class="card-body">';
+        foreach (array('provider_reference' => 'Riferimento', 'provider_state' => 'Stato', 'tracking_number' => 'Tracking') as $key => $label) {
+            if (!empty($row[$key])) {
+                $html .= '<p><strong>' . $escape($label) . ':</strong> ' . $escape($row[$key]) . '</p>';
+            }
+        }
+        $urls = array();
+        if (!empty($row['tracking_url'])) {
+            $urls[] = array('Tracking', $row['tracking_url']);
+        }
+        $labels = json_decode((string) ($row['labels_json'] ?? ''), true);
+        foreach (is_array($labels) ? $labels : array() as $label) {
+            $urls[] = array('Etichetta', $label);
+        }
+        foreach ($urls as $url) {
+            if (is_string($url[1]) && filter_var($url[1], FILTER_VALIDATE_URL)
+                && strtolower((string) parse_url($url[1], PHP_URL_SCHEME)) === 'https') {
+                $html .= '<p><a href="' . $escape($url[1]) . '" target="_blank" rel="noopener noreferrer">' . $escape($url[0]) . '</a></p>';
+            }
+        }
+        return $html . '</div></div>';
     }
 
     public function installConfigurator()

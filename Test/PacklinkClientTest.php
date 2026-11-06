@@ -32,6 +32,19 @@ final class PacklinkClientTest extends TestCase
         self::assertTrue($history[0]['options']['verify']);
     }
 
+    public function testRegistersAnAuthenticatedWebhookUsingTheProviderContract(): void
+    {
+        $history = [];
+        $stack = HandlerStack::create(new MockHandler([new Response(200, [], '{"integration_id":"int-1"}')]));
+        $stack->push(Middleware::history($history));
+        $client = new PacklinkClient(new Client(['handler' => $stack]), 'https://api.packlink.com', 'key');
+        self::assertSame('int-1', $client->registerIntegration('prestashop_module', 'guid-1', 'Shop', 'https://service.example/api/webhooks/packlink', str_repeat('x', 32)));
+        $payload = json_decode((string) $history[0]['request']->getBody(), true);
+        self::assertSame('X-Packlink-Webhook-Secret', $payload['webhooks']['http_header_name']);
+        self::assertSame(str_repeat('x', 32), $payload['webhooks']['http_header_value']);
+        self::assertSame('/v1/integrations', $history[0]['request']->getUri()->getPath());
+    }
+
     public function testAmbiguousCreateFailureIsSanitizedAndNotRetried(): void
     {
         $history = [];

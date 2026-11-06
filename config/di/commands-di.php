@@ -104,3 +104,11 @@ $container->set(\PS\Webservice\Commands\ClearProductCacheCommand::class, functio
         $c->get(\PS\Webservice\Service\PS\Product::class)
     );
 });
+
+$container->set(\PS\Webservice\Commands\RecoverPacklinkShipmentCommand::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Commands\RecoverPacklinkShipmentCommand($capsule->getConnection(), new \GuzzleHttp\Client());
+});
+
+$container->set(\PS\Webservice\Commands\RegisterPacklinkIntegrationCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RegisterPacklinkIntegrationCommand(new \GuzzleHttp\Client());
+});

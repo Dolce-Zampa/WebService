@@ -38,6 +38,8 @@ $retryPendingStripeConnectTransfersHandler = $container->get(RetryPendingStripeC
 $retryQueuedStripeConnectTransferAllocationsHandler = $container->get(RetryQueuedStripeConnectTransferAllocationsMessageHandler::class);
 $scheduledPromotionCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessageHandler::class);
 
+$packlinkShippingHandler = $container->get(\PS\Webservice\Commands\Scheduler\PacklinkShippingMessageHandler::class);
+
 $bus = new MessageBus([
     new HandleMessageMiddleware(new HandlersLocator([
         \PS\Webservice\Commands\Scheduler\WarmProductCacheMessage::class => [$warmProductCacheHandler],
@@ -47,6 +49,7 @@ $bus = new MessageBus([
         \PS\Webservice\Commands\Scheduler\RetryPendingStripeConnectTransfersMessage::class => [$retryPendingStripeConnectTransfersHandler],
         \PS\Webservice\Commands\Scheduler\RetryQueuedStripeConnectTransferAllocationsMessage::class => [$retryQueuedStripeConnectTransferAllocationsHandler],
         \PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessage::class => [$scheduledPromotionCacheHandler],
+        \PS\Webservice\Commands\Scheduler\PacklinkShippingMessage::class => [$packlinkShippingHandler],
     ])),
 ]);
 

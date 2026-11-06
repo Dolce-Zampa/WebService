@@ -1,7 +1,8 @@
 # DZ-147 — Analisi sostituzione del modulo Packlink
 
-La destinazione concordata è l'API Packlink diretta. Questa analisi non è una
-procedura di rilascio: l'integrazione completa non è ancora disponibile.
+La destinazione concordata è l'API Packlink diretta. Questa analisi descrive
+il comportamento esaminato prima della sostituzione; per il rilascio vedere
+[packlink-shipping.md](packlink-shipping.md).
 
 ## Comportamento attuale
 
@@ -30,7 +31,7 @@ invia `POST /v1/shipments` per creare **una bozza**, non garantisce che sia
 acquistata o affidata al corriere, e legge il campo `reference` della risposta.
 Il [supporto Packlink](https://support-pro.packlink.com/hc/it/articles/214125845-Come-posso-completare-una-spedizione)
 descrive completamento e pagamento tramite Packlink PRO prima della conferma.
-Serve confermare se questo passaggio manuale sia accettabile per la issue.
+Il passaggio manuale è stato confermato per questa issue.
 Lo stesso proxy espone `GET /v1/shipments/{reference}`, `/labels` e `/track`.
 Il [DTO della bozza](https://github.com/packlink-dev/ecommerce_module_core/blob/master/src/BusinessLogic/Http/DTO/Draft.php)
 contiene, tra gli altri, indirizzi, pacchi, servizio, eventuale punto di
@@ -49,24 +50,14 @@ autenticato. La riconciliazione tramite polling resta necessaria.
 
 Il codice esaminato non documenta una chiave di idempotenza per la creazione.
 Un timeout, un errore remoto o una risposta senza riferimento possono quindi
-essere ambigui. I componenti preliminari di questa branch inviano la creazione
+essere ambigui. Il nuovo worker invia la creazione
 una sola volta per ordine e lasciano in attesa di verifica manuale sia gli
 esiti ambigui sia un processo interrotto dopo la presa in carico. Non ripetere
 un POST finché non si è verificato l'esito nel pannello Packlink.
 
-## Lavoro necessario prima del rilascio
+## Perimetro concordato
 
-- Completare e verificare l'import delle associazioni preesistenti del modulo,
-  inclusi gli ordini già inviati, prima di attivare nuove creazioni. È stato
-  predisposto un importer per i record `OrderShipmentDetails` nella tabella
-  `packlink_entity`, ma non è ancora collegato a un comando operativo né
-  verificato sui dati del negozio. Fermare prima tutte le scritture del vecchio
-  modulo: la sola unicità nel nuovo database non impedisce duplicati tra sistemi.
-- Verificare il recupero del punto di ritiro e degli indirizzi di partenza,
-  inclusi quelli degli artigiani, e il mapping corriere/servizio effettivo.
-- Implementare acquisizione degli ordini idonei, preparazione della bozza,
-  worker schedulato, riconciliazione, webhook autenticato dove disponibile,
-  aggiornamento PrestaShop e recupero operativo; coprire i flussi con test.
-- Confermare dati, permessi, webhook e comportamento delle API in staging;
-  disattivare la creazione del vecchio modulo solo dopo un piano di passaggio
-  verificato. Il checkout deve rimanere indipendente dal provider.
+Il nuovo flusso riguarda esclusivamente gli ordini creati dal cutover in poi;
+non è previsto l'import delle associazioni storiche. L'operatore completa e
+paga manualmente la bozza in Packlink PRO. Per configurazione, passaggio e
+recupero vedere [packlink-shipping.md](packlink-shipping.md).

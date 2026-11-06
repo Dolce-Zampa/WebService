@@ -34,6 +34,24 @@ final class PacklinkClient
         return $reference;
     }
 
+    /** Registration is deliberately explicit: its result must be stored by the operator. */
+    public function registerIntegration(string $type, string $guid, string $name, string $webhookUrl, string $secret): string
+    {
+        if ($type === '' || $guid === '' || $name === '' || strlen($secret) < 32
+            || preg_match('/[\r\n]/', $secret) || !filter_var($webhookUrl, FILTER_VALIDATE_URL)
+            || strtolower((string) parse_url($webhookUrl, PHP_URL_SCHEME)) !== 'https') {
+            throw new \InvalidArgumentException('Invalid Packlink integration registration.');
+        }
+        $result = $this->request('POST', 'integrations', [
+            'integration_type' => $type, 'integration' => ['guid' => $guid, 'name' => $name],
+            'webhooks' => ['http_header_name' => 'X-Packlink-Webhook-Secret', 'http_header_value' => $secret, 'status_update_url' => $webhookUrl],
+        ]);
+        if (!isset($result['integration_id']) || !is_string($result['integration_id']) || $result['integration_id'] === '') {
+            throw new PacklinkException('register_integration_invalid_response');
+        }
+        return $result['integration_id'];
+    }
+
     public function shipment(string $reference): array
     {
         return $this->request('GET', 'shipments/' . $this->reference($reference));
@@ -67,7 +85,7 @@ final class PacklinkClient
         if ($body !== null) {
             $options['json'] = $body;
         }
-        $operation = $method === 'POST' ? 'create_draft' : 'read_shipment';
+        $operation = $path === 'integrations' ? 'register_integration' : ($method === 'POST' ? 'create_draft' : 'read_shipment');
         try {
             $response = $this->http->request($method, $this->baseUrl . 'v1/' . $path, $options);
         } catch (GuzzleException $exception) {
