@@ -20,6 +20,7 @@ return [
     \PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand::class,
     \PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand::class,
     \PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class,
+    \PS\Webservice\Commands\ElasticSearch\AuditProductIndex::class,
     \PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class,
     \PS\Webservice\Commands\ElasticSearch\IndexProduct::class,
 ];

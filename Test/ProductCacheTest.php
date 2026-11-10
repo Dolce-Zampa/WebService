@@ -424,6 +424,21 @@ final class ProductCacheTest extends TestCase
         $this->assertNull($service->getProductById(251));
     }
 
+    public function test_empty_upstream_payload_is_not_treated_as_an_inactive_product(): void
+    {
+        $service = new Product($this->http(['products' => []]));
+        $this->expectExceptionMessage('Incomplete upstream product payload: 251');
+        $service->getProductById(251);
+    }
+
+    public function test_active_product_can_be_loaded_without_optional_catalog_fields(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        unset($data['reference'], $data['description'], $data['description_short'], $data['id_manufacturer'], $data['id_supplier'], $data['id_category_default']);
+        $service = new Product($this->http(['products' => [$data]]));
+        $this->assertSame((int) $data['id'], $service->getProductById((int) $data['id'])->getId());
+    }
+
     public function test_unfiltered_category_keeps_all_products(): void
     {
         $first = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);

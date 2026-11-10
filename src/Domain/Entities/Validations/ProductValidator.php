@@ -9,9 +9,7 @@ use PS\Webservice\Domain\Entities\ProductEntity;
 final class ProductValidator {
     /** Campi scalari obbligatori a livello root */
     private const REQUIRED_FIELDS = [
-        'id', 'id_manufacturer', 'id_supplier', 'id_category_default',
-        'reference', 'price', 'name', 'link_rewrite', 'description',
-        'description_short', 'active', 'url',
+        'id', 'price', 'name', 'link_rewrite', 'active', 'url',
     ];
 
     /** Chiavi obbligatorie dentro associations */

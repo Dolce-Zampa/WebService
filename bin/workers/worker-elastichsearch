@@ -60,6 +60,14 @@ while (true) {
         Log::info("ElastichWorker: successfully processed job with payload: " . json_encode($payload));
 
     } catch (\Throwable $e) {
-        Log::error("ElastichWorker: failed to process jobw ith payload: " . json_encode($payload) . " Error: " . $e->getMessage());
+        $attempt = (int) ($payload['attempt'] ?? 0) + 1;
+        Log::error('ElastichWorker: failed to process job', ['payload' => $payload, 'attempt' => $attempt, 'error' => $e->getMessage()]);
+        $payload['attempt'] = $attempt;
+        if ($attempt < 5) {
+            $queue->push(QUEUE_NAME, $payload);
+            sleep(5 * $attempt);
+        } else {
+            $queue->push(ElkService::FAILED_QUEUE, $payload);
+        }
     }
 }

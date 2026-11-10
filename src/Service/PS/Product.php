@@ -394,7 +394,10 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 throw new PrestashopConnectorException($this->httpService);
             }
             $productData = $response->toArray()['products'][0] ?? null;
-            if (!is_array($productData) || (int) ($productData['active'] ?? 0) !== 1) {
+            if (!is_array($productData) || !array_key_exists('active', $productData)) {
+                throw new \RuntimeException('Incomplete upstream product payload: ' . $id);
+            }
+            if ((int) $productData['active'] !== 1) {
                 // Inactive products must not appear in artisan catalogues and
                 // must never populate the product cache.
                 return null;
@@ -456,7 +459,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function searchProducts(string $query): Collection
     {
-        $this->httpService->setUrl("/search?query={$query}&language=1&display=full");
+        $this->httpService->setUrl('/search?' . http_build_query(['query' => $query, 'language' => 1, 'display' => 'full']));
         $response = $this->httpService->invoke('GET');
 
         if ($response->failed()) {

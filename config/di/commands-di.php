@@ -77,6 +77,12 @@ $container->set(\PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class, f
     );
 });
 
+$container->set(\PS\Webservice\Commands\ElasticSearch\AuditProductIndex::class, function ($c) {
+    return new \PS\Webservice\Commands\ElasticSearch\AuditProductIndex(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\ElasticSearch\IndexProduct::class, function ($c) {
     return new \PS\Webservice\Commands\ElasticSearch\IndexProduct(
         $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
