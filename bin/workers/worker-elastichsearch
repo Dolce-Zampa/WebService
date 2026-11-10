@@ -25,49 +25,26 @@ require_once __DIR__ . '/../../bootstrap/app.php';
 
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Service\ElkService;
+use PS\Webservice\Service\ElkJobHandler;
 use PS\Webservice\Service\RedisQueue;
 
 /** @var \DI\Container $container */
 $queue = $container->get(RedisQueue::class);
 $elkservice = $container->get(ElkService::class);
+$handler = new ElkJobHandler($elkservice, $queue);
 
 const QUEUE_NAME = ElkService::QUEUE_NAME;
 
 Log::info('ElkWorker: started, listening on queue "' . QUEUE_NAME . '"');
 
 while (true) {
-    $job = $queue->pop([QUEUE_NAME], 10);
-
-    if ($job === null) {
-        // Timeout – just keep looping
-        continue;
-    }
-
-    $payload = $job['payload'];
-
     try {
-
-        if(isset($payload['product_ids']) && is_array($payload['product_ids'])) {
-            Log::info("ElkWorker: indexing products with IDs: " . json_encode($payload['product_ids']));
-            $elkservice->bulkIndexProducts($payload['product_ids']);
+        $job = $queue->pop([QUEUE_NAME], 10);
+        if ($job !== null && !$handler->handle($job['payload'])) {
+            sleep(5 * min((int) ($job['payload']['attempt'] ?? 0) + 1, 5));
         }
-
-        if(isset($payload['category_id']) && is_int($payload['category_id'])) {
-            Log::info("ElkWorker: indexing category with ID: " . $payload['category_id']);
-            $elkservice->bulkIndexCategory($payload['category_id']);
-        }
-
-        Log::info("ElastichWorker: successfully processed job with payload: " . json_encode($payload));
-
     } catch (\Throwable $e) {
-        $attempt = (int) ($payload['attempt'] ?? 0) + 1;
-        Log::error('ElastichWorker: failed to process job', ['payload' => $payload, 'attempt' => $attempt, 'error' => $e->getMessage()]);
-        $payload['attempt'] = $attempt;
-        if ($attempt < 5) {
-            $queue->push(QUEUE_NAME, $payload);
-            sleep(5 * $attempt);
-        } else {
-            $queue->push(ElkService::FAILED_QUEUE, $payload);
-        }
+        Log::error('ElastichWorker: queue failure', ['error' => $e->getMessage()]);
+        sleep(5);
     }
 }

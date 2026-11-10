@@ -6,6 +6,15 @@ $container->set(\PS\Webservice\Commands\Scheduler\AppScheduleProvider::class, fu
     return new \PS\Webservice\Commands\Scheduler\AppScheduleProvider();
 });
 
+$container->set(\PS\Webservice\Commands\Scheduler\ReconcileProductIndexMessageHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\ReconcileProductIndexMessageHandler(
+        new \PS\Webservice\Service\ProductIndexReconciler(
+            new \PS\Webservice\Service\ProductIndexAudit($c->get(\Elastic\Elasticsearch\ClientBuilder::class)),
+            $c->get(\PS\Webservice\Service\RedisQueue::class)
+        )
+    );
+});
+
 $container->set(\PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessageHandler::class, function () {
     return new \PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessageHandler(
         new \GuzzleHttp\Client(), (string) env('PS_BASE_URL', ''), (string) env('WEBSERVICE_KEY', '')

@@ -20,6 +20,7 @@ final class AppScheduleProvider implements ScheduleProviderInterface
 
         return (new Schedule())
             ->add(RecurringMessage::cron('* * * * *', new ScheduledPromotionCacheMessage()))
+            ->add(RecurringMessage::cron('0 4 * * *', new ReconcileProductIndexMessage(), 'Europe/Rome'))
             ->add(RecurringMessage::cron('0 3 * * *', new WarmProductCacheMessage(), 'Europe/Rome'))
             ->add(
                 // Esegue ogni giorno alla mezzanotte (Europe/Rome)

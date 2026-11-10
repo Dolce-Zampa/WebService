@@ -169,18 +169,26 @@ class ElkService
     public function searchProductsByName(string $query): Collection
     {
         $fields = [
-            'name^3', 'description_short^2', 'description', 'meta_title', 'meta_description', 'reference', 'ean13',
-            'data.name^3', 'data.description_short^2', 'data.description', 'data.meta_title', 'data.meta_description', 'data.reference', 'data.ean13',
+            'name^3', 'description_short^2', 'description', 'meta_title', 'meta_description',
+            'data.name^3', 'data.description_short^2', 'data.description', 'data.meta_title', 'data.meta_description',
         ];
+        $matches = [
+            ['multi_match' => ['query' => $query, 'fields' => $fields, 'type' => 'phrase_prefix']],
+            ['multi_match' => ['query' => $query, 'fields' => $fields, 'type' => 'best_fields', 'operator' => 'and']],
+        ];
+        $compact = preg_replace('/[\s-]+/u', '', trim($query));
+        if ($compact !== null && $compact !== '' && $compact !== $query) {
+            $matches[] = ['multi_match' => ['query' => $compact, 'fields' => $fields, 'type' => 'phrase_prefix']];
+        }
+        foreach (['reference', 'ean13', 'data.reference.keyword', 'data.ean13.keyword'] as $field) {
+            $matches[] = ['term' => [$field => $query]];
+        }
         $response = $this->client->search([
             'index' => self::INDEX_PRODUCTS,
             'scroll' => '2m',
             'body' => [
                 'size' => 200,
-                'query' => ['bool' => ['should' => [
-                    ['multi_match' => ['query' => $query, 'fields' => $fields, 'type' => 'phrase_prefix']],
-                    ['multi_match' => ['query' => $query, 'fields' => $fields, 'type' => 'best_fields', 'operator' => 'and']],
-                ], 'minimum_should_match' => 1]],
+                'query' => ['bool' => ['should' => $matches, 'minimum_should_match' => 1]],
             ],
         ]);
 

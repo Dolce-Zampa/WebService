@@ -16,8 +16,12 @@ use PS\Webservice\Service\OpenAIService;
 use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Service\RedisQueue;
+use PS\Webservice\Service\ProductIndexAudit;
+use PS\Webservice\Service\ProductIndexReconciler;
+use PS\Webservice\Service\ElkJobHandler;
 use PS\Webservice\Commands\ElasticSearch\IndexBulkProduct;
 use PS\Webservice\Commands\ElasticSearch\AuditProductIndex;
+use PS\Webservice\Commands\Scheduler\AppScheduleProvider;
 use Slim\Psr7\Factory\ServerRequestFactory;
 use Slim\Psr7\Response;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -109,6 +113,27 @@ final class ElkSearchHotfixTest extends TestCase
         self::assertSame(['scroll_id' => ['last']], json_decode((string) $this->requests[3]['request']->getBody(), true));
     }
 
+    public function test_phrase_prefix_search_excludes_keyword_fields_and_supports_compound_names(): void
+    {
+        $products = $this->createMock(Product::class);
+        $products->expects($this->never())->method('getProductById');
+        $client = $this->client([
+            ['_scroll_id' => 'search', 'hits' => ['hits' => []]],
+            ['succeeded' => true],
+        ]);
+        (new ElkService($client, $products))->searchProductsByName('porta giochi');
+        $request = json_decode((string) $this->requests[0]['request']->getBody(), true);
+        $matches = $request['query']['bool']['should'];
+        foreach ($matches as $match) {
+            if (($match['multi_match']['type'] ?? null) === 'phrase_prefix') {
+                self::assertNotContains('ean13', $match['multi_match']['fields']);
+                self::assertNotContains('reference', $match['multi_match']['fields']);
+            }
+        }
+        self::assertSame('portagiochi', $matches[2]['multi_match']['query']);
+        self::assertContains(['term' => ['ean13' => 'porta giochi']], $matches);
+    }
+
     public function test_controller_never_searches_prestashop_when_elasticsearch_succeeds(): void
     {
         $products = $this->createMock(Product::class);
@@ -195,6 +220,80 @@ final class ElkSearchHotfixTest extends TestCase
         self::assertSame([4], $result['extra_active_ids']);
         self::assertSame([1], $result['duplicate_ids']);
         self::assertSame(1, $result['invalid_documents']);
+    }
+
+    public function test_nightly_reconciliation_queues_only_missing_active_ids_individually(): void
+    {
+        $database = new Illuminate\Database\Capsule\Manager();
+        $database->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+        $database->setAsGlobal();
+        $database->bootEloquent();
+        $database->getConnection()->statement('CREATE TABLE product (id_product INTEGER PRIMARY KEY, active INTEGER, date_upd TEXT)');
+        foreach ([1 => 1, 2 => 1, 3 => 0, 4 => 1] as $id => $active) {
+            $database->getConnection()->table('product')->insert(['id_product' => $id, 'active' => $active, 'date_upd' => '2026-11-10 10:00:00']);
+        }
+        $client = $this->client([
+            ['_scroll_id' => 'audit', 'hits' => ['hits' => [['_source' => ['data' => ['id_product' => 1, 'name' => 'P', 'price' => 0, 'url' => '/p', 'active' => true]]]]]],
+            ['_scroll_id' => 'audit', 'hits' => ['hits' => []]], ['succeeded' => true],
+        ]);
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->method('acquireIndexReconcileLock')->willReturn('lock');
+        $queue->expects($this->once())->method('releaseIndexReconcileLock')->with('lock');
+        $queued = [];
+        $queue->expects($this->exactly(2))->method('enqueueMissingIndexProduct')->willReturnCallback(function (int $id, string $version) use (&$queued): string {
+            $queued[$id] = $version;
+            return 'queued';
+        });
+        (new ProductIndexReconciler(new ProductIndexAudit($client), $queue))->run();
+        self::assertSame([2 => '2026-11-10 10:00:00', 4 => '2026-11-10 10:00:00'], $queued);
+    }
+
+    public function test_partial_index_scan_never_queues_products(): void
+    {
+        $database = new Illuminate\Database\Capsule\Manager();
+        $database->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+        $database->setAsGlobal();
+        $database->bootEloquent();
+        $database->getConnection()->statement('CREATE TABLE product (id_product INTEGER PRIMARY KEY, active INTEGER)');
+        $database->getConnection()->table('product')->insert(['id_product' => 2, 'active' => 1]);
+        $client = $this->client([['timed_out' => true, '_scroll_id' => 'audit', 'hits' => ['hits' => []]], ['succeeded' => true]]);
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->method('acquireIndexReconcileLock')->willReturn('lock');
+        $queue->expects($this->never())->method('enqueueMissingIndexProduct');
+        $queue->expects($this->once())->method('releaseIndexReconcileLock')->with('lock');
+        $this->expectExceptionMessage('incomplete audit results');
+        (new ProductIndexReconciler(new ProductIndexAudit($client), $queue))->run();
+    }
+
+    public function test_reconciliation_job_retries_then_quarantines_individual_failure(): void
+    {
+        $payload = ['product_ids' => [228], 'attempt' => 4, 'reconcile' => ['id' => 228, 'version' => 'v1', 'token' => 'token']];
+        $elk = $this->createMock(ElkService::class);
+        $elk->method('bulkIndexProducts')->with([228])->willThrowException(new RuntimeException('bad product'));
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->expects($this->never())->method('push');
+        $queue->expects($this->once())->method('finishIndexReconcileJob')->with($this->callback(fn (array $job): bool => $job['attempt'] === 5 && $job['error'] === 'bad product'), true);
+        self::assertFalse((new ElkJobHandler($elk, $queue))->handle($payload));
+    }
+
+    public function test_reconciliation_job_releases_reservation_on_success(): void
+    {
+        $payload = ['product_ids' => [271], 'reconcile' => ['id' => 271, 'version' => 'v1', 'token' => 'token']];
+        $elk = $this->createMock(ElkService::class);
+        $elk->expects($this->once())->method('bulkIndexProducts')->with([271]);
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->expects($this->once())->method('finishIndexReconcileJob')->with($payload, false);
+        self::assertTrue((new ElkJobHandler($elk, $queue))->handle($payload));
+    }
+
+    public function test_reconciliation_is_scheduled_at_four_in_rome_across_dst(): void
+    {
+        $messages = (new AppScheduleProvider())->getSchedule()->getRecurringMessages();
+        $scheduled = array_values(array_filter($messages, static fn ($message): bool => (string) $message->getTrigger() === '0 4 * * *'));
+        self::assertCount(1, $scheduled);
+        $trigger = $scheduled[0]->getTrigger();
+        self::assertSame(strtotime('2026-03-29 02:00:00 UTC'), $trigger->getNextRunDate(new DateTimeImmutable('2026-03-28 23:00:00 UTC'))->getTimestamp());
+        self::assertSame(strtotime('2026-11-11 03:00:00 UTC'), $trigger->getNextRunDate(new DateTimeImmutable('2026-11-10 23:00:00 UTC'))->getTimestamp());
     }
 
     public function test_category_indexing_continues_after_first_page(): void

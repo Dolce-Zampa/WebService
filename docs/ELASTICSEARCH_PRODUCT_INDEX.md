@@ -5,6 +5,15 @@ used only if the Elasticsearch request fails, including an incomplete response.
 Product changes enqueue updates; the Elasticsearch worker must be running for
 the index to reflect those changes.
 
+The scheduler reconciles active catalog IDs against Elasticsearch every day at
+04:00 Europe/Rome. It scans the full index before queuing individual missing
+products; failed or partial scans do not queue anything. Redis reservations
+prevent overlapping runs and duplicate pending reconciliation jobs. If a job
+fails five times, it is recorded in `elk_queue_failed` and the same product
+version is suppressed for seven days; a catalog update allows an earlier retry.
+The worker, scheduler and Redis must be running. Reconciliation reports failures
+and duplicates in logs; it does not automatically delete obsolete documents.
+
 After deploying the updated API and worker, an operator can enqueue all active
 products with `php bin/console elk:index-bulk --all`. The command only enqueues
 work: a successful exit does not mean that indexing has finished. Failed jobs
