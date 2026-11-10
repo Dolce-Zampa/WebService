@@ -227,6 +227,7 @@ class Order extends Cart implements PrestashopServiceInterface
                     'create_account' => $customerDetails->create_account ?? false,
                     'newsletter' => $customerDetails->newsletter ?? false,
                     'id_carrier' => $carrierId,
+                    'is_virtual' => $carrierId === 0,
                     'coupon_code' => $couponCode,
                     'payment_label' => $paymentMethod,
                     'checkout_snapshot_id' => $checkoutSnapshotId,

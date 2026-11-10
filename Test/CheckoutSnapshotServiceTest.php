@@ -12,6 +12,27 @@ use PS\Webservice\Service\PS\Order;
 
 final class CheckoutSnapshotServiceTest extends TestCase
 {
+    public function test_virtual_cart_snapshot_keeps_zero_carrier_and_no_shipping(): void
+    {
+        $db = $this->database();
+        $order = $this->createMock(Order::class);
+        $session = OrderSession::create([
+            'cart_id' => 42, 'id_customer' => 9, 'id_carrier' => 0, 'is_virtual' => true,
+            'customer' => CustomerEntity::create(['email' => 'buyer@example.test', 'firstname' => 'Test', 'lastname' => 'Customer'], $order),
+        ], $order);
+        $product = ['id_product' => 22, 'id_manufacturer' => 7, 'name' => 'Gift card', 'price_wt' => '20.00', 'quantity' => 1];
+        $session->addCartLineItem($product);
+        $service = new CheckoutSnapshotService($db);
+        $snapshot = $service->create($session, ['currency_iso' => 'EUR', 'is_virtual' => true,
+            'products' => [$product], 'totals' => ['shipping_tax_incl' => 0]]);
+        $resolved = $service->resolveForStripeSession($snapshot['id'], \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_virtual', 'amount_total' => 2000, 'currency' => 'eur',
+            'metadata' => ['checkout_snapshot_id' => $snapshot['id']],
+        ]));
+        self::assertSame(0, $resolved['payload']['carrier_id']);
+        self::assertSame(0, $resolved['payload']['totals']['shipping_cents']);
+    }
+
     private string|false $previousAppKey;
 
     protected function setUp(): void

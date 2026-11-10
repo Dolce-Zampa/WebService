@@ -27,6 +27,7 @@ trait Order
             'payment_module' => $payload->payment_module ?? $serverCart['payment_module'] ?? null,
             'create_account' => $payload->create_account ?? false,
             'id_carrier' => $payload->id_carrier,
+            'is_virtual' => !empty($serverCart['products']) && ($serverCart['is_virtual'] ?? false) === true,
             'expires_at' => $payload->expires_at ?? time() + 3600,
             'recovery_attempt' => $payload->recovery_attempt ?? false,
             'customer' => CustomerEntity::create([

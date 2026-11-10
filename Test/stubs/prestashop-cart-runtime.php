@@ -18,7 +18,9 @@ class Cart
     public $id_carrier = 0;
     public $secure_key = 'test';
     public $products = [];
+    public $virtual = false;
     public function getProducts() { return $this->products; }
+    public function isVirtualCart() { return $this->virtual; }
     public function getCartRules($filter, $autoAdd) { return []; }
     public function getOrderTotal($tax, $type) { return $type === self::ONLY_SHIPPING ? 6.1 : 40.0; }
 }

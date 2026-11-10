@@ -1047,7 +1047,8 @@ class StripeWebhookController extends OrderController
             ? $this->positiveInteger($metadata['id_guest'] ?? null)
             : $this->positiveInteger($snapshotPayload['guest_id'] ?? null);
         $carrierId = $snapshotPayload === null
-            ? filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            ? (($metadata['is_virtual'] ?? '') === 'true' && ($metadata['id_carrier'] ?? '') === '0'
+                ? 0 : filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]))
             : (int) $snapshotPayload['carrier_id'];
         $couponCode = $snapshotPayload === null
             ? ($this->stripeOptionalIdentifier($metadata['coupon_code'] ?? null))
@@ -1461,6 +1462,7 @@ class StripeWebhookController extends OrderController
                     'id_customer' => $cachedMetadata['id_customer'] ?? null,
                     'id_guest' => $cachedMetadata['id_guest'] ?? null,
                     'id_carrier' => $cachedMetadata['id_carrier'] ?? $carrierId,
+                    'is_virtual' => ($cachedMetadata['is_virtual'] ?? '') === 'true',
                     'recovery_attempt' => $cachedMetadata['recovery_attempt'] ?? false,
                     'customer' => $cachedSession['customer'] ?? null,
                 ];

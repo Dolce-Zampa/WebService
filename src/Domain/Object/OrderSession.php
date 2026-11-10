@@ -63,7 +63,8 @@ class OrderSession implements ObjectInterface
         }
 
         $carrierId = $data['id_carrier'] ?? null;
-        if (!is_numeric($carrierId) || (int) $carrierId <= 0) {
+        $isVirtual = ($data['is_virtual'] ?? false) === true;
+        if (!is_numeric($carrierId) || ((int) $carrierId <= 0 && !($isVirtual && (int) $carrierId === 0))) {
             throw new \InvalidArgumentException('A valid carrier ID is required for payment session');
         }
 
@@ -74,6 +75,7 @@ class OrderSession implements ObjectInterface
             'id_customer' => (string) ($data['id_customer'] ?? ''),
             'id_guest' => (string) ($data['id_guest'] ?? ''),
             'id_carrier' => (string) $data['id_carrier'],
+            'is_virtual' => $isVirtual ? 'true' : 'false',
             'coupon_code' => (string) ($data['discounts'][0]['coupon'] ?? ''),
             'recovery_attempt' => $this->metadataBoolean($data['recovery_attempt'] ?? false, 'recovery_attempt'),
             'create_account' => $this->metadataBoolean($data['create_account'] ?? false, 'create_account'),

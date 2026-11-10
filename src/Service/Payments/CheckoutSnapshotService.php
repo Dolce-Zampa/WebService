@@ -205,7 +205,9 @@ final class CheckoutSnapshotService
             'cart_id' => $cartId,
             'customer_id' => $this->optionalPositiveInteger($metadata['id_customer'] ?? null),
             'guest_id' => $this->optionalPositiveInteger($metadata['id_guest'] ?? null),
-            'carrier_id' => $this->positiveInteger($metadata['id_carrier'] ?? null, 'carrier ID'),
+            'carrier_id' => ($cart['is_virtual'] ?? false) === true && ($metadata['is_virtual'] ?? '') === 'true'
+                && (string) ($metadata['id_carrier'] ?? '') === '0'
+                ? 0 : $this->positiveInteger($metadata['id_carrier'] ?? null, 'carrier ID'),
             'currency' => $currency,
             'coupon_code' => (string) ($metadata['coupon_code'] ?? ''),
             'payment_module' => isset($metadata['payment_module']) ? (string) $metadata['payment_module'] : null,

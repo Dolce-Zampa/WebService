@@ -381,7 +381,8 @@ final class OrderSecurityTest extends TestCase
             ->disableOriginalConstructor()
             ->onlyMethods(['getCartFromId'])
             ->getMock();
-        $orderService->expects($this->never())->method('getCartFromId');
+        $orderService->expects($this->once())->method('getCartFromId')
+            ->willReturn(CartEntity::create(['id' => 10, 'products' => [['id_product' => 1]], 'is_virtual' => false], $orderService));
 
         $controller = $this->createOrderController($orderService);
         $request = $this->createMock(ServerRequestInterface::class);

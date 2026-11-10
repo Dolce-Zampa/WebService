@@ -179,15 +179,17 @@ class OrderController extends CartController
             return response(['error' => 'Customer ID or guest ID is required'], 403);
         }
 
-        $carrierId = filter_var($payload['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if ($carrierId === false) {
-            return response(['error' => 'A valid carrier ID is required'], 422);
-        }
-
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response([], 404);
         }
+        $cartData = $cart->toArray();
+        $virtual = !empty($cartData['products']) && ($cartData['is_virtual'] ?? false) === true;
+        $carrierId = $virtual ? 0 : filter_var($payload['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($carrierId === false) {
+            return response(['error' => 'A valid carrier ID is required'], 422);
+        }
+        $payload['id_carrier'] = $carrierId;
 
         // Create payment session
         try {

@@ -23,9 +23,9 @@ final class CartMetadataSerializationTest extends TestCase
         $db = \Db::getInstance();
         $db->metadata = [
             ['id_product' => '234', 'id_manufacturer' => '8', 'manufacturer_name' => 'Artigiano',
-                'id_supplier' => '9', 'link_rewrite' => 'collare'],
+                'id_supplier' => '9', 'link_rewrite' => 'collare', 'is_virtual' => '0'],
             ['id_product' => '235', 'id_manufacturer' => '0', 'manufacturer_name' => null,
-                'id_supplier' => '0', 'link_rewrite' => null],
+                'id_supplier' => '0', 'link_rewrite' => null, 'is_virtual' => '1'],
         ];
 
         $serialized = \MlabFactoryApiHelper::serializeCart($cart);
@@ -46,12 +46,19 @@ final class CartMetadataSerializationTest extends TestCase
         self::assertSame(0, $serialized['products'][2]['id_manufacturer']);
         self::assertSame('', $serialized['products'][2]['manufacturer_name']);
         self::assertSame('', $serialized['products'][2]['link_rewrite']);
+        self::assertFalse($serialized['is_virtual']);
+        self::assertFalse($serialized['products'][0]['is_virtual']);
+        self::assertTrue($serialized['products'][2]['is_virtual']);
         self::assertSame(6.1, $serialized['totals']['shipping_tax_incl']);
         $queries = array_values(array_filter($db->queries, fn ($sql) => str_contains($sql, 'manufacturer')));
         self::assertCount(1, $queries);
         self::assertStringContainsString('IN (234,235)', $queries[0]);
         self::assertStringContainsString('pl.id_lang = 2', $queries[0]);
         self::assertStringContainsString('pl.id_shop = 3', $queries[0]);
+
+        $cart->virtual = true;
+        self::assertTrue(\MlabFactoryApiHelper::serializeCart($cart)['is_virtual']);
+        $cart->virtual = false;
 
         $db->queries = [];
         $cart->products = [];
