@@ -22,6 +22,7 @@ final class GiftCardClient
         private readonly ClientInterface $http,
         private readonly string $url,
         private readonly string $apiKey,
+        private readonly bool $verifyTls = true,
     ) {
         $parts = parse_url($url);
         if (!is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
@@ -38,6 +39,13 @@ final class GiftCardClient
             || isset($query['action']) || isset($query['api_key'])) {
             throw new \InvalidArgumentException('Gift card API URL must target the module API without an action or key.');
         }
+    }
+
+    /** TLS verification can be disabled only by explicit opt-in in non-production environments. */
+    public static function verifyTlsForEnvironment(string $environment, mixed $allowInsecureTls): bool
+    {
+        $development = in_array(strtolower(trim($environment)), ['local', 'dev', 'development', 'testing', 'test'], true);
+        return !($development && filter_var($allowInsecureTls, FILTER_VALIDATE_BOOLEAN));
     }
 
     /**
@@ -99,15 +107,32 @@ final class GiftCardClient
         if (!preg_match('~^[A-Za-z0-9._:/-]{8,128}$~D', $idempotencyKey) || array_key_exists('api_key', $data)) {
             throw new \InvalidArgumentException('Invalid gift card request.');
         }
+        return $this->request($action, $data, $idempotencyKey);
+    }
+
+    /** Process queued deliveries and expire old reservations. */
+    public function maintenance(): array
+    {
+        return $this->request('maintenance', [], null);
+    }
+
+    /** @param array<string, mixed> $data @return array<string, mixed> */
+    private function request(string $action, array $data, ?string $idempotencyKey): array
+    {
+        $headers = ['Accept' => 'application/json'];
+        if ($idempotencyKey !== null) {
+            $headers['Idempotency-Key'] = $idempotencyKey;
+        }
         try {
             $response = $this->http->request('POST', $this->url . '&action=' . $action, [
-                'headers' => ['Accept' => 'application/json', 'Idempotency-Key' => $idempotencyKey],
+                'headers' => $headers,
                 'json' => $data + ['api_key' => $this->apiKey],
-                'verify' => true,
+                'verify' => $this->verifyTls,
                 'allow_redirects' => false,
                 'http_errors' => false,
                 'connect_timeout' => 5,
-                'timeout' => 15,
+                // Maintenance can send a batch of 20 messages synchronously.
+                'timeout' => $action === 'maintenance' ? 120 : 15,
             ]);
         } catch (GuzzleException $error) {
             // Request exceptions can contain credentials and gift card codes.

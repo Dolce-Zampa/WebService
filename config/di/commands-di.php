@@ -4,6 +4,12 @@
 
 $container->set(\PS\Webservice\Service\MailerInterface::class, \DI\get(\PS\Webservice\Service\PS\Mailer::class));
 
+$container->set(\PS\Webservice\Commands\GiftCardMaintenanceCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\GiftCardMaintenanceCommand(
+        $c->get(\PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHandler::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\SendReviewRequestMailCommand::class, function ($c) {
     return new \PS\Webservice\Commands\SendReviewRequestMailCommand(
         $c->get(\PS\Webservice\Service\MailerInterface::class),

@@ -17,6 +17,22 @@ final class GiftCardClientTest extends TestCase
     private const URL = 'https://shop.example/index.php?fc=module&module=mlabgiftcard&controller=api';
     private const KEY = 'gc_api_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
+    public function test_tls_can_be_disabled_only_with_explicit_development_opt_in(): void
+    {
+        self::assertFalse(GiftCardClient::verifyTlsForEnvironment('testing', true));
+        self::assertFalse(GiftCardClient::verifyTlsForEnvironment('local', 'true'));
+        self::assertTrue(GiftCardClient::verifyTlsForEnvironment('testing', false));
+        self::assertTrue(GiftCardClient::verifyTlsForEnvironment('production', true));
+        self::assertTrue(GiftCardClient::verifyTlsForEnvironment('', true));
+
+        $history = [];
+        $stack = HandlerStack::create(new MockHandler([new Response(200, [], '{"success":true,"data":{}}')]));
+        $stack->push(Middleware::history($history));
+        $client = new GiftCardClient(new Client(['handler' => $stack]), self::URL, self::KEY, false);
+        $client->maintenance();
+        self::assertFalse($history[0]['options']['verify']);
+    }
+
     public function testReserveSendsCredentialAndCodeOnlyInJsonAndDoesNotFollowRedirects(): void
     {
         $history = [];

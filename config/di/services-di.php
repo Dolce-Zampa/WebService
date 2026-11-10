@@ -5,6 +5,9 @@ $container->set(\PS\Webservice\Service\GiftCard\GiftCardClient::class, function 
         new \GuzzleHttp\Client(),
         (string) env('GIFT_CARD_API_URL', ''),
         (string) env('GIFT_CARD_API_KEY', ''),
+        \PS\Webservice\Service\GiftCard\GiftCardClient::verifyTlsForEnvironment(
+            (string) env('APP_ENV', 'production'), env('GIFT_CARD_ALLOW_INSECURE_TLS', false)
+        ),
     );
 });
 
