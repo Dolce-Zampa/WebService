@@ -29,8 +29,7 @@ final class GiftCardCheckoutControllerTest extends TestCase
      */
     public function test_registered_customer_cannot_redeem_using_an_unverified_identity(): void
     {
-        $_ENV['GIFT_CARD_CHECKOUT_ENABLED'] = 'true';
-        $_ENV['APP_DISABLE_CACHE'] = 'false';
+        $this->configureGiftCardEnvironment();
         $orders = $this->createMock(Order::class);
         $orders->expects(self::never())->method('getCartFromId');
         $payment = $this->createMock(PaymentGatewayInterface::class);
@@ -51,10 +50,8 @@ final class GiftCardCheckoutControllerTest extends TestCase
      */
     public function test_uses_stripe_only_for_the_remaining_amount(int $giftCents, int $stripeCents): void
     {
-        $_ENV['GIFT_CARD_CHECKOUT_ENABLED'] = 'true';
-        $_ENV['APP_DISABLE_CACHE'] = 'false';
-        $_ENV['APP_ENV'] = 'testing';
-        $_ENV['PAYMENT_MODULE'] = 'webserviceapi';
+        $this->configureGiftCardEnvironment();
+        $_SERVER['PAYMENT_MODULE'] = $_ENV['PAYMENT_MODULE'] = 'webserviceapi';
         Facade::clearResolvedInstances();
         Facade::setFacadeApplication(['cache' => new Repository(new ArrayStore()), 'log' => new \Psr\Log\NullLogger()]);
         $db = new Manager(new \Illuminate\Container\Container());
@@ -117,6 +114,14 @@ final class GiftCardCheckoutControllerTest extends TestCase
         self::assertSame($stripeCents, $data['gift_card']['remaining_cents']);
         self::assertSame($stripeCents === 0 ? 'confirmed' : 'payment_required', $data['checkout_status']);
         self::assertSame($stripeCents === 0 ? 1 : 0, $settlement->calls);
+    }
+
+    private function configureGiftCardEnvironment(): void
+    {
+        // Dotenv populates both arrays; the environment repository reads $_SERVER first.
+        $_SERVER['GIFT_CARD_CHECKOUT_ENABLED'] = $_ENV['GIFT_CARD_CHECKOUT_ENABLED'] = 'true';
+        $_SERVER['APP_DISABLE_CACHE'] = $_ENV['APP_DISABLE_CACHE'] = 'false';
+        $_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = 'testing';
     }
 
     public static function amounts(): array { return ['fully covered' => [2500, 0], 'partially covered' => [1000, 1500]]; }
