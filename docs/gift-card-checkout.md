@@ -2,6 +2,12 @@
 
 Il cliente può usare nello stesso ordine un coupon e una gift card breve `GC-XXXX-XXXX`. All’applicazione del codice il backend verifica il credito disponibile senza prenotarlo e il frontend mostra il totale indicativo; il valore definitivo può cambiare prima della conferma. Il backend calcola il totale dopo lo sconto, prenota il credito e, se il saldo copre tutto, completa l'ordine senza creare una sessione di pagamento Stripe. Con un residuo positivo crea una sessione Stripe per il solo residuo. I codici lunghi precedenti non sono accettati.
 
+Il saldo effettivo viene addebitato solo dopo la verifica del pagamento. Durante la sessione Stripe il credito è temporaneamente prenotato, per evitare che venga speso due volte. Se il cliente annulla tornando al sito, il backend fa prima scadere la specifica sessione Stripe non pagata e poi rilascia la prenotazione; il carrello viene conservato. Se il cliente abbandona senza tornare, il webhook di scadenza libera la prenotazione. L’annullamento non rilascia credito se Stripe segnala un pagamento completato, e si può riprovare in caso di errore temporaneo.
+
+Per i pagamenti parziali si applica tutto il credito disponibile. Se resta un importo positivo inferiore a 0,50 €, Stripe non può elaborare il pagamento con carta: il checkout richiede di modificare il carrello o rimuovere la gift card prima di procedere.
+
+Se totale o credito disponibile cambiano rispetto al riepilogo, il backend non conferma l’ordine: il cliente vede gli importi aggiornati e può confermare nuovamente. Una prenotazione appena creata viene rilasciata; una prenotazione già associata a una sessione non viene rilasciata per questa variazione.
+
 L'ordine viene confermato dopo la cattura della prenotazione. In caso di errore temporaneo dopo la verifica del pagamento, rimane in attesa e lo scheduler riprova la contabilizzazione; è necessario mantenere attivo lo scheduler e non disabilitare la funzionalità finché vi sono operazioni in sospeso. I trasferimenti ai venditori sono successivi e possono utilizzare anche il saldo della piattaforma Stripe. Un saldo insufficiente lascia il trasferimento da riprovare: la gestione operativa del finanziamento è separata.
 
 ## Preparazione per prove locali

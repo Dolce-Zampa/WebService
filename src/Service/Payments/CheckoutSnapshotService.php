@@ -250,6 +250,18 @@ final class CheckoutSnapshotService
             'verified' => !empty($record->gift_card_payment_verified_at)];
     }
 
+    /** Resolve the exact attempt, including a released attempt for safe cancellation retries. */
+    public function giftCardSnapshotById(string $snapshotId): ?array
+    {
+        $record = $this->db->table(self::TABLE)->where('id', $this->snapshotId($snapshotId))
+            ->whereNotNull('gift_card_reservation_id')->first();
+        if ($record === null) return null;
+        return ['id' => (string) $record->id, 'payload' => $this->payload($record),
+            'session_id' => $this->optionalStripeIdentifier($record->checkout_session_id ?? null),
+            'verified' => !empty($record->gift_card_payment_verified_at),
+            'released' => !empty($record->gift_card_released_at)];
+    }
+
     public function markGiftCardReleased(string $snapshotId): void
     {
         $this->db->table(self::TABLE)->where('id', $this->snapshotId($snapshotId))

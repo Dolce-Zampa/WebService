@@ -72,6 +72,46 @@ class PaymentService implements PaymentGatewayInterface
         }
     }
 
+    /** Only release a gift card hold once Stripe has made the session unpayable. */
+    public function expireUnpaidSession(string $sessionId): void
+    {
+        if (!preg_match('/^cs_[A-Za-z0-9_]{1,188}$/D', $sessionId)) {
+            throw new \InvalidArgumentException('Invalid Stripe Checkout Session.');
+        }
+        $session = $this->retrieveCheckoutSession($sessionId);
+        if (($session->status ?? null) === 'expired' && ($session->payment_status ?? null) === 'unpaid') return;
+        if (($session->status ?? null) === 'complete' || ($session->payment_status ?? null) === 'paid') {
+            throw new CheckoutPaymentAlreadyCompletedException('Checkout has already completed.');
+        }
+        if (($session->status ?? null) !== 'open' || ($session->payment_status ?? null) !== 'unpaid') {
+            throw new \RuntimeException('Stripe Checkout Session cannot be safely expired.');
+        }
+        try {
+            $session = $this->expireCheckoutSession($sessionId);
+        } catch (\Stripe\Exception\ApiErrorException $error) {
+            // Another cancellation or a payment can win the race with expiration.
+            $session = $this->retrieveCheckoutSession($sessionId);
+        }
+        if (($session->status ?? null) === 'complete' || ($session->payment_status ?? null) === 'paid') {
+            throw new CheckoutPaymentAlreadyCompletedException('Checkout has already completed.');
+        }
+        if (($session->status ?? null) !== 'expired' || ($session->payment_status ?? null) !== 'unpaid') {
+            throw new \RuntimeException('Stripe Checkout Session could not be safely expired.');
+        }
+    }
+
+    protected function retrieveCheckoutSession(string $sessionId): \Stripe\Checkout\Session
+    {
+        return $this->stripeClient === null ? \Stripe\Checkout\Session::retrieve($sessionId)
+            : $this->stripeClient->checkout->sessions->retrieve($sessionId, []);
+    }
+
+    protected function expireCheckoutSession(string $sessionId): \Stripe\Checkout\Session
+    {
+        return $this->stripeClient === null ? \Stripe\Checkout\Session::retrieve($sessionId)->expire()
+            : $this->stripeClient->checkout->sessions->expire($sessionId, []);
+    }
+
     public function getPaymentUrl(OrderSession $orderSession, ObjectInterface $entity): string 
     {
         $paymentLink = \Stripe\PaymentLink::create([

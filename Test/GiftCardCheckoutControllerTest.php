@@ -48,7 +48,7 @@ final class GiftCardCheckoutControllerTest extends TestCase
      * @preserveGlobalState disabled
      * @dataProvider amounts
      */
-    public function test_uses_stripe_only_for_the_remaining_amount(int $giftCents, int $stripeCents, int $expectedTotal, int $expectedApplied, int $expectedStatus): void
+    public function test_uses_stripe_only_for_the_remaining_amount(int $giftCents, int $stripeCents, int $expectedTotal, int $expectedApplied, int $expectedStatus, string $expectedError = 'checkout_changed'): void
     {
         $this->configureGiftCardEnvironment();
         $_SERVER['PAYMENT_MODULE'] = $_ENV['PAYMENT_MODULE'] = 'webserviceapi';
@@ -116,7 +116,12 @@ final class GiftCardCheckoutControllerTest extends TestCase
         self::assertSame($expectedStatus, $result->getStatusCode(), (string) $result->getBody());
         $data = json_decode((string) $result->getBody(), true)['data'];
         if ($expectedStatus === 409) {
-            self::assertSame('checkout_changed', $data['error']['code']);
+            self::assertSame($expectedError, $data['error']['code']);
+            if ($expectedError === 'payment_too_small') {
+                self::assertStringContainsString('action=release', (string) $handler->getLastRequest()->getUri());
+                self::assertSame(0, $settlement->calls);
+                return;
+            }
             self::assertSame(2500, $data['actual_total_cents']);
             if ($expectedApplied !== $giftCents && $expectedTotal === 2500) {
                 self::assertSame($giftCents, $data['actual_applied_cents']);
@@ -130,6 +135,10 @@ final class GiftCardCheckoutControllerTest extends TestCase
         self::assertSame($giftCents, $data['gift_card']['applied_cents']);
         self::assertSame($stripeCents, $data['gift_card']['remaining_cents']);
         self::assertSame($stripeCents === 0 ? 'confirmed' : 'payment_required', $data['checkout_status']);
+        if ($stripeCents > 0) {
+            self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $data['checkout_snapshot_id']);
+            self::assertSame($reservationId, $db->table('stripe_checkout_snapshots')->where('id', $data['checkout_snapshot_id'])->value('gift_card_reservation_id'));
+        }
         self::assertSame($stripeCents === 0 ? 1 : 0, $settlement->calls);
     }
 
@@ -146,8 +155,10 @@ final class GiftCardCheckoutControllerTest extends TestCase
         return [
             'fully covered' => [2500, 0, 2500, 2500, 201],
             'partially covered' => [1000, 1500, 2500, 1000, 201],
+            'five euro gift card is fully applied' => [500, 2000, 2500, 500, 201],
             'changed total' => [1000, 1500, 2600, 1000, 409],
             'changed balance' => [1000, 1500, 2500, 1500, 409],
+            'stripe below minimum' => [2470, 30, 2500, 2470, 409, 'payment_too_small'],
         ];
     }
 }

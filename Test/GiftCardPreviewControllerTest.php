@@ -34,7 +34,7 @@ final class GiftCardPreviewControllerTest extends TestCase
             $payload = json_decode((string) $request->getBody(), true);
             self::assertSame('GC-8DUE-28DF', $payload['code']);
             return new GuzzleResponse(200, [], json_encode(['success' => true, 'data' => ['card' => [
-                'status' => 'active', 'expired' => false, 'available_cents' => 2000, 'currency' => 'EUR',
+                'status' => 'active', 'expired' => false, 'balance_cents' => 2000, 'available_cents' => 2000, 'currency' => 'EUR',
                 'recipient_email' => 'private@example.test', 'id' => 'internal-id',
             ]]]));
         }]);
@@ -101,11 +101,12 @@ final class GiftCardPreviewControllerTest extends TestCase
 
     public static function unavailableCards(): array
     {
-        $active = ['status' => 'active', 'expired' => false, 'available_cents' => 100, 'currency' => 'EUR'];
+        $active = ['status' => 'active', 'expired' => false, 'balance_cents' => 100, 'available_cents' => 100, 'currency' => 'EUR'];
         return [
             'inactive' => [array_replace($active, ['status' => 'blocked']), 'card_inactive'],
             'expired' => [array_replace($active, ['expired' => true]), 'card_expired'],
-            'empty' => [array_replace($active, ['available_cents' => 0]), 'insufficient_balance'],
+            'empty' => [array_replace($active, ['balance_cents' => 0, 'available_cents' => 0]), 'zero_balance'],
+            'reserved' => [array_replace($active, ['available_cents' => 0]), 'credit_reserved'],
             'currency' => [array_replace($active, ['currency' => 'USD']), 'currency_mismatch'],
         ];
     }

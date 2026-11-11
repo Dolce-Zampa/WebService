@@ -66,7 +66,6 @@ final class GiftCardClient
             'currency' => 'EUR',
             'amount_cents' => $totalCents,
             'allow_partial' => true,
-            'minimum_remainder_cents' => 50,
             'ttl_seconds' => $ttlSeconds,
         ];
         if ($customerId !== null) {
