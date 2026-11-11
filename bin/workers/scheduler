@@ -39,6 +39,7 @@ $retryQueuedStripeConnectTransferAllocationsHandler = $container->get(RetryQueue
 $scheduledPromotionCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessageHandler::class);
 $reconcileProductIndexHandler = $container->get(\PS\Webservice\Commands\Scheduler\ReconcileProductIndexMessageHandler::class);
 $giftCardMaintenanceHandler = $container->get(\PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHandler::class);
+$giftCardRecoveryHandler = $container->get(\PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessageHandler::class);
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(new HandlersLocator([
@@ -51,6 +52,7 @@ $bus = new MessageBus([
         \PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessage::class => [$scheduledPromotionCacheHandler],
         \PS\Webservice\Commands\Scheduler\ReconcileProductIndexMessage::class => [$reconcileProductIndexHandler],
         \PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessage::class => [$giftCardMaintenanceHandler],
+        \PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessage::class => [$giftCardRecoveryHandler],
     ])),
 ]);
 

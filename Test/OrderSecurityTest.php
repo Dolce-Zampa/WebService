@@ -319,7 +319,7 @@ final class OrderSecurityTest extends TestCase
             ->createOrder($request, $this->createMock(ResponseInterface::class), []);
 
         $this->assertSame(503, $result->getStatusCode());
-        $this->assertSame('Gift card redemption is not available.', json_decode((string) $result->getBody(), true)['data']['error']);
+        $this->assertSame(['code' => 'temporarily_unavailable'], json_decode((string) $result->getBody(), true)['data']['error']);
         $this->assertStringNotContainsString('sensitive-gift-card-code', (string) $result->getBody());
     }
 

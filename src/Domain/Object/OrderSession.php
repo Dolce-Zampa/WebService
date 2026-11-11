@@ -197,7 +197,7 @@ class OrderSession implements ObjectInterface
         ];
     }
 
-    public function applyCouponCart(array $cart): void
+    public function applyCouponCart(array $cart, bool $giftCardCheckout = false): void
     {
         if (empty($cart['currency_iso'])) {
             throw new \InvalidArgumentException('Cart currency is required.');
@@ -220,7 +220,7 @@ class OrderSession implements ObjectInterface
         }
         $code = (string) ($cart['cart_rules'][0]['code'] ?? '');
         $this->data['metadata']['coupon_code'] = $code;
-        if ($discount > 0) {
+        if ($discount > 0 && !$giftCardCheckout) {
             $this->addDiscount(new Discount('Cart ' . $cart['id'] . ' discount', $discount, $code, type: 'amount'));
         }
         $this->payableTotal = (float) $grandTotal;
@@ -276,6 +276,8 @@ class OrderSession implements ObjectInterface
             ],
             'quantity' => 1,
         ]];
+        // Asynchronous payment methods can settle after a reservation expires.
+        $payload['payment_method_types'] = ['card'];
         // The residual already includes all commercial discounts and shipping.
         unset($payload['discounts'], $payload['shipping_options']);
         return $payload;

@@ -14,7 +14,7 @@ final class GiftCardClient
         'insufficient_balance', 'cart_reserved', 'card_unavailable', 'card_inactive',
         'card_expired', 'card_blocked', 'reservation_conflict', 'gift_card_purchase',
         'unauthorized', 'forbidden', 'rate_limited', 'temporarily_unavailable',
-        'idempotency_conflict', 'order_unavailable', 'order_already_redeemed', 'cart_unavailable',
+        'idempotency_conflict', 'order_unavailable', 'order_already_redeemed', 'cart_unavailable', 'payment_too_small',
         'cart_mismatch', 'customer_unavailable', 'order_mismatch', 'order_unpaid', 'reservation_unavailable',
     ];
 
@@ -66,6 +66,7 @@ final class GiftCardClient
             'currency' => 'EUR',
             'amount_cents' => $totalCents,
             'allow_partial' => true,
+            'minimum_remainder_cents' => 50,
             'ttl_seconds' => $ttlSeconds,
         ];
         if ($customerId !== null) {
@@ -75,13 +76,27 @@ final class GiftCardClient
     }
 
     /** @return array<string, mixed> */
-    public function capture(string $reservationId, int $orderId, string $idempotencyKey): array
+    public function capture(string $reservationId, int $orderId, string $idempotencyKey, ?int $pendingStateId = null): array
     {
         $this->assertReservationId($reservationId);
         if ($orderId < 1) {
             throw new \InvalidArgumentException('Invalid order ID.');
         }
-        return $this->post('capture', ['reservation_id' => $reservationId, 'order_id' => $orderId], $idempotencyKey);
+        if ($pendingStateId !== null && $pendingStateId < 1) {
+            throw new \InvalidArgumentException('Invalid pending order state.');
+        }
+        $payload = ['reservation_id' => $reservationId, 'order_id' => $orderId];
+        if ($pendingStateId !== null) {
+            $payload['pending_state_id'] = $pendingStateId;
+        }
+        return $this->post('capture', $payload, $idempotencyKey);
+    }
+
+    /** Mark a reservation for settlement after the external payment is verified. */
+    public function protect(string $reservationId, string $idempotencyKey): array
+    {
+        $this->assertReservationId($reservationId);
+        return $this->post('protect', ['reservation_id' => $reservationId], $idempotencyKey);
     }
 
     /** @return array<string, mixed> */
@@ -101,7 +116,7 @@ final class GiftCardClient
     /** @param array<string, mixed> $data @return array<string, mixed> */
     public function post(string $action, array $data, string $idempotencyKey): array
     {
-        if (!in_array($action, ['lookup', 'reserve', 'capture', 'release'], true)) {
+        if (!in_array($action, ['lookup', 'reserve', 'protect', 'capture', 'release'], true)) {
             throw new \InvalidArgumentException('Unsupported gift card operation.');
         }
         if (!preg_match('~^[A-Za-z0-9._:/-]{8,128}$~D', $idempotencyKey) || array_key_exists('api_key', $data)) {

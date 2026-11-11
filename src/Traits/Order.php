@@ -16,7 +16,7 @@ trait Order
     protected int $carrierId;
     private OrderService $orderService;
 
-    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = [], array $serverCart = []): OrderSession
+    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = [], array $serverCart = [], bool $giftCardCheckout = false): OrderSession
     {
 
         $this->orderService = $orderService;
@@ -50,7 +50,8 @@ trait Order
         $freeShipping = $this->checkForFreeShippingCartRule($payload->getCartRules());
         if (!empty($serverCart['cart_rules'])) {
             $this->orderSession->applyCouponCart(
-                $freeShipping ? $this->withoutShipping($serverCart) : $serverCart
+                $freeShipping ? $this->withoutShipping($serverCart) : $serverCart,
+                $giftCardCheckout,
             );
         } elseif (!$freeShipping) {
             $this->orderSession->addCartShipping($serverCart);

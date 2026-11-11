@@ -12,6 +12,19 @@ use PS\Webservice\Service\PS\Order;
 
 final class CheckoutSnapshotServiceTest extends TestCase
 {
+    public function test_coupon_on_gift_card_checkout_does_not_create_a_stripe_coupon(): void
+    {
+        $order = $this->createMock(Order::class);
+        $order->expects(self::never())->method('createCouponCode');
+        $session = OrderSession::create(['cart_id' => 42, 'id_customer' => 9, 'id_carrier' => 3,
+            'customer' => CustomerEntity::create(['email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Test'], $order)], $order);
+        $session->addCartLineItem(['id_product' => 10, 'name' => 'Collare', 'price_wt' => '30.00', 'quantity' => 1]);
+        $session->applyCouponCart(['id' => 42, 'currency_iso' => 'EUR',
+            'cart_rules' => [['code' => 'PROMO']], 'totals' => ['shipping_tax_incl' => 0, 'grand_total_tax_incl' => 25]], true);
+        self::assertSame(25.0, $session->payableTotal());
+        self::assertArrayNotHasKey('discounts', $session->toArray());
+    }
+
     public function test_virtual_cart_snapshot_keeps_zero_carrier_and_no_shipping(): void
     {
         $db = $this->database();
@@ -151,6 +164,10 @@ final class CheckoutSnapshotServiceTest extends TestCase
         $snapshot = $service->create($session, [
             'currency_iso' => 'EUR', 'products' => [$product], 'totals' => ['shipping_tax_incl' => '0.00'],
         ]);
+        $again = $service->create($session, [
+            'currency_iso' => 'EUR', 'products' => [$product], 'totals' => ['shipping_tax_incl' => '0.00'],
+        ]);
+        self::assertSame($snapshot['id'], $again['id']);
 
         $resolved = $service->resolveForStripeSession($snapshot['id'], \Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_gift_split', 'amount_total' => 2500, 'currency' => 'eur',
@@ -160,6 +177,20 @@ final class CheckoutSnapshotServiceTest extends TestCase
         self::assertSame(5000, $resolved['payload']['gift_card']['gift_card_cents']);
         self::assertSame(2500, $resolved['payload']['gift_card']['stripe_cents']);
         self::assertArrayNotHasKey('code', $resolved['payload']['gift_card']);
+        $stripe = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_gift_split', 'payment_intent' => 'pi_gift123', 'amount_total' => 2500, 'currency' => 'eur', 'payment_status' => 'unpaid',
+            'metadata' => ['checkout_snapshot_id' => $snapshot['id']],
+        ]);
+        try {
+            $service->markGiftCardPaymentVerified($snapshot['id'], $stripe);
+            self::fail('An unpaid Stripe session must not be marked as verified.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('not been verified', $exception->getMessage());
+        }
+        self::assertNull($db->table('stripe_checkout_snapshots')->where('id', $snapshot['id'])->value('gift_card_payment_verified_at'));
+        $stripe->payment_status = 'paid';
+        $service->markGiftCardPaymentVerified($snapshot['id'], $stripe);
+        self::assertNotNull($db->table('stripe_checkout_snapshots')->where('id', $snapshot['id'])->value('gift_card_payment_verified_at'));
     }
 
     private function database(): Manager
@@ -183,6 +214,12 @@ final class CheckoutSnapshotServiceTest extends TestCase
             $table->text('payload_ciphertext');
             $table->string('payload_hash', 64);
             $table->text('verification_payload');
+            $table->string('gift_card_reservation_id', 32)->nullable()->unique();
+            $table->dateTime('gift_card_payment_verified_at')->nullable();
+            $table->dateTime('gift_card_settled_at')->nullable();
+            $table->dateTime('gift_card_allocated_at')->nullable();
+            $table->dateTime('gift_card_next_recovery_at')->nullable();
+            $table->dateTime('gift_card_released_at')->nullable();
             $table->dateTime('created_at');
             $table->dateTime('updated_at');
         });

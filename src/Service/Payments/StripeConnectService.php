@@ -10,6 +10,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 use PS\Webservice\Domain\Financial\FinancialMovement;
 use PS\Webservice\Service\Financial\FinancialLedgerService;
+use PS\Webservice\Service\GiftCard\GiftCardSellerFunding;
 
 /**
  * Platform-charge / separate-transfer implementation for Stripe Connect.
@@ -304,6 +305,15 @@ final class StripeConnectService
             }
 
             $snapshot = $this->allocationSnapshotFromJob($job);
+            if (isset($snapshot['gift_card'])) {
+                $reservation = $snapshot['gift_card']['reservation_id'] ?? null;
+                $settled = $this->db->table('stripe_checkout_snapshots')
+                    ->where('gift_card_reservation_id', $reservation)->where('order_id', $orderId)
+                    ->whereNotNull('gift_card_settled_at')->exists();
+                if (!$settled) {
+                    throw new \RuntimeException('Gift card order is not settled.');
+                }
+            }
             $this->createTransfersForOrder(
                 $orderId,
                 (string) $job->stripe_payment_intent_id,
@@ -407,8 +417,16 @@ final class StripeConnectService
         if (!$this->enabled()) {
             return;
         }
-        if ($orderId < 1 || !preg_match('/^pi_[A-Za-z0-9]+$/', $paymentIntentId) || $transferGroup === '') {
+        if ($orderId < 1 || !preg_match('/^(?:pi_[A-Za-z0-9]+|gc_[a-f0-9]{32})$/D', $paymentIntentId) || $transferGroup === '') {
             throw new \InvalidArgumentException('Invalid Stripe Connect transfer correlation.');
+        }
+
+        if (isset($checkoutSnapshot['gift_card'])) {
+            $this->createGiftCardTransfers($orderId, $paymentIntentId, $transferGroup, $occurredAt, $checkoutSnapshot);
+            return;
+        }
+        if (!preg_match('/^pi_[A-Za-z0-9]+$/D', $paymentIntentId)) {
+            throw new \InvalidArgumentException('A Stripe payment intent is required.');
         }
 
         $paymentIntent = $this->stripe->paymentIntents->retrieve($paymentIntentId, ['expand' => ['latest_charge']]);
@@ -461,6 +479,70 @@ final class StripeConnectService
         }
     }
 
+    /** @param array<string,mixed> $snapshot */
+    private function createGiftCardTransfers(int $orderId, string $paymentReference, string $transferGroup, DateTimeImmutable $occurredAt, array $snapshot): void
+    {
+        $gift = $snapshot['gift_card'];
+        $total = $snapshot['totals']['grand_total_cents'] ?? null;
+        $giftCents = $gift['gift_card_cents'] ?? null;
+        $stripeCents = $gift['stripe_cents'] ?? null;
+        $reservationId = $gift['reservation_id'] ?? null;
+        if (!is_int($total) || !is_int($giftCents) || !is_int($stripeCents)
+            || $total < 1 || $giftCents < 1 || $stripeCents < 0 || $giftCents + $stripeCents !== $total
+            || !is_string($reservationId) || !preg_match('/^[a-f0-9]{32}$/D', $reservationId)
+            || ($snapshot['currency'] ?? null) !== 'EUR') {
+            throw new \RuntimeException('Invalid gift card seller allocation.');
+        }
+        if (!$this->db->table('stripe_checkout_snapshots')->where('gift_card_reservation_id', $reservationId)
+            ->where('order_id', $orderId)->whereNotNull('gift_card_settled_at')->exists()) {
+            throw new \RuntimeException('Gift card order is not settled.');
+        }
+        $chargeId = null;
+        if ($stripeCents > 0) {
+            if (!preg_match('/^pi_[A-Za-z0-9]+$/D', $paymentReference)) {
+                throw new \RuntimeException('Gift card checkout is missing its Stripe payment.');
+            }
+            $intent = $this->stripe->paymentIntents->retrieve($paymentReference, ['expand' => ['latest_charge']]);
+            if (($intent->status ?? null) !== 'succeeded' || strtoupper((string) ($intent->currency ?? '')) !== 'EUR'
+                || $this->paidAmountCents($intent) !== $stripeCents) {
+                throw new \RuntimeException('Stripe payment differs from the gift card checkout.');
+            }
+            $chargeId = $this->stripeId($intent->latest_charge ?? null, 'charge');
+        } elseif ($paymentReference !== 'gc_' . $reservationId) {
+            throw new \RuntimeException('Gift card checkout payment reference is invalid.');
+        }
+        $allocations = $this->sellerAllocationsFromCheckoutSnapshot($snapshot, $total, 'EUR');
+        $plans = GiftCardSellerFunding::plan($total, $giftCents, $allocations);
+        foreach ($plans as $plan) {
+            foreach (['charge_cents' => $chargeId, 'platform_cents' => null] as $funding => $sourceCharge) {
+                $amount = $plan[$funding];
+                if ($amount === 0) {
+                    continue;
+                }
+                $sellerId = $plan['manufacturer_id'];
+                $key = 'connect:gift:' . hash('sha256', $reservationId . ':' . $sellerId . ':' . $funding);
+                if ($this->db->table(self::TRANSFERS)->where('idempotency_key', $key)->exists()) {
+                    continue;
+                }
+                $account = $this->db->table(self::ACCOUNTS)->where('manufacturer_id', $sellerId)->first();
+                $this->storeTransfer([
+                    'order_id' => $orderId, 'manufacturer_id' => $sellerId,
+                    'stripe_account_id' => $account?->stripe_account_id,
+                    'stripe_payment_intent_id' => $paymentReference, 'stripe_charge_id' => $sourceCharge,
+                    'stripe_transfer_id' => null, 'transfer_group' => $transferGroup, 'idempotency_key' => $key,
+                    'amount' => $amount, 'original_amount' => $amount, 'currency' => 'EUR',
+                    'status' => 'pending', 'failure_code' => 'seller_account_not_ready',
+                ]);
+            }
+        }
+        foreach ($plans as $plan) {
+            $account = $this->readyAccount($plan['manufacturer_id']);
+            if ($account !== null) {
+                $this->retryPendingTransfersForSeller($plan['manufacturer_id'], $account, $occurredAt);
+            }
+        }
+    }
+
     /**
      * A platform refund does not reverse a Connect Transfer by itself. Once
      * Stripe has confirmed a refund, allocate the recoverable seller share
@@ -482,6 +564,10 @@ final class StripeConnectService
 
         $this->assertConnectCase($paymentIntentId, $refundId, $refundAmount, $currency);
         $transfers = $this->transfersForPaymentIntent($paymentIntentId, $currency);
+        // A Stripe refund concerns only the Stripe-funded part of a mixed
+        // checkout; gift-card-funded transfers belong to a separate refund.
+        $transfers = array_values(array_filter($transfers, static fn (object $transfer): bool =>
+            !str_starts_with((string) $transfer->idempotency_key, 'connect:gift:') || $transfer->stripe_charge_id !== null));
         if ($transfers === []) {
             return;
         }
@@ -833,7 +919,7 @@ final class StripeConnectService
 
     private function assertAllocationCorrelation(int $cartId, string $paymentIntentId, string $transferGroup, ?int $orderId): void
     {
-        if ($cartId < 1 || !preg_match('/^pi_[A-Za-z0-9]+$/', $paymentIntentId)
+        if ($cartId < 1 || !preg_match('/^(?:pi_[A-Za-z0-9]+|gc_[a-f0-9]{32})$/D', $paymentIntentId)
             || !preg_match('/^[A-Za-z0-9_-]{1,191}$/', $transferGroup)
             || ($orderId !== null && $orderId < 1)) {
             throw new \InvalidArgumentException('Invalid Stripe Connect allocation correlation.');
@@ -854,6 +940,9 @@ final class StripeConnectService
             'totals' => $snapshot['totals'] ?? null,
             'sellers' => $snapshot['sellers'] ?? null,
         ];
+        if (isset($snapshot['gift_card'])) {
+            $allocation['gift_card'] = $snapshot['gift_card'];
+        }
         $encoded = json_encode($allocation, JSON_THROW_ON_ERROR);
         if (strlen($encoded) > 65535) {
             throw new \RuntimeException('Stripe Connect allocation snapshot is too large.');
@@ -947,6 +1036,11 @@ final class StripeConnectService
         try {
             $this->db->table(self::TRANSFERS)->insert($values);
         } catch (QueryException) {
+            // Concurrent allocation attempts must never reset a completed transfer.
+            if (($values['status'] ?? null) === 'pending'
+                && $this->db->table(self::TRANSFERS)->where('idempotency_key', $values['idempotency_key'])->exists()) {
+                return;
+            }
             $this->db->table(self::TRANSFERS)->where('idempotency_key', $values['idempotency_key'])->update([
                 'stripe_transfer_id' => $values['stripe_transfer_id'],
                 'stripe_charge_id' => $values['stripe_charge_id'],
@@ -1254,25 +1348,32 @@ final class StripeConnectService
         $amount = (int) $pending->amount;
         $currency = strtoupper((string) $pending->currency);
         $paymentIntentId = $this->stripeId($pending->stripe_payment_intent_id ?? null, 'payment intent');
-        $chargeId = $this->stripeId($pending->stripe_charge_id ?? null, 'charge');
+        $chargeId = $pending->stripe_charge_id === null ? null : $this->stripeId($pending->stripe_charge_id, 'charge');
         $accountId = $this->stripeId($account->stripe_account_id ?? null, 'account');
         $idempotencyKey = (string) ($pending->idempotency_key ?? '');
+
+        if ($chargeId === null && !str_starts_with($idempotencyKey, 'connect:gift:')) {
+            throw new \RuntimeException('Pending Stripe transfer is missing its charge.');
+        }
 
         if ($orderId < 1 || $sellerId < 1 || $amount < 1 || !preg_match('/^[A-Z]{3}$/', $currency) || $idempotencyKey === '' || strlen($idempotencyKey) > 191) {
             throw new \RuntimeException('Pending Stripe Connect transfer is invalid.');
         }
 
-        $transfer = $this->stripe->transfers->create([
+        $params = [
             'amount' => $amount,
             'currency' => strtolower($currency),
             'destination' => $accountId,
-            'source_transaction' => $chargeId,
             'transfer_group' => (string) $pending->transfer_group,
             'metadata' => [
                 'order_id' => (string) $orderId,
                 'manufacturer_id' => (string) $sellerId,
             ],
-        ], ['idempotency_key' => $idempotencyKey]);
+        ];
+        if ($chargeId !== null) {
+            $params['source_transaction'] = $chargeId;
+        }
+        $transfer = $this->stripe->transfers->create($params, ['idempotency_key' => $idempotencyKey]);
 
         $this->storeTransfer([
             'order_id' => $orderId,

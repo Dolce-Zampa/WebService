@@ -32,6 +32,10 @@ $container->set(\PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHand
     );
 });
 
+$container->set(\PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessageHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessageHandler($c);
+});
+
 $container->set(\PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHandler::class, function ($c) {
     return new \PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHandler(
         $c->get(\PS\Webservice\Commands\SendReviewRequestMailCommand::class)
