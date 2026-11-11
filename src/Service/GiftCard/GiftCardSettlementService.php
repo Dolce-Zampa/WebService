@@ -34,6 +34,17 @@ final class GiftCardSettlementService
             throw new \RuntimeException('Gift card checkout data is invalid.');
         }
 
+        $platformCents = $gift['platform_cents'] ?? 0;
+        $stripeCents = $gift['stripe_cents'] ?? null;
+        $giftCents = $gift['gift_card_cents'] ?? null;
+        $totalCents = $payload['totals']['grand_total_cents'] ?? null;
+        if (!is_int($platformCents) || $platformCents < 0 || $platformCents >= 50
+            || !is_int($stripeCents) || $stripeCents < 0 || ($platformCents > 0 && $stripeCents !== 0)
+            || !is_int($giftCents) || $giftCents < 1 || !is_int($totalCents)
+            || $giftCents + $stripeCents + $platformCents !== $totalCents) {
+            throw new \RuntimeException('Gift card checkout payment split is invalid.');
+        }
+
         $cache = Cache::getFacadeRoot();
         $store = is_object($cache) && method_exists($cache, 'getStore') ? $cache->getStore() : null;
         $isDevelopment = in_array(strtolower((string) env('APP_ENV', 'production')), ['dev', 'development', 'local', 'test', 'testing'], true);
@@ -96,6 +107,16 @@ final class GiftCardSettlementService
                     'provider_transaction_id' => $reservationId, 'provider_event_id' => 'capture:' . $reservationId,
                     'source_event_type' => 'gift_card.capture', 'source_event_id' => $reservationId,
                 ]), 'gift-card:capture:' . $reservationId);
+                if ($platformCents > 0) {
+                    $this->ledger->record(FinancialMovement::fromArray([
+                        'type' => 'adjustment', 'status' => 'paid',
+                        'amount' => '-' . intdiv($platformCents, 100) . '.' . str_pad((string) ($platformCents % 100), 2, '0', STR_PAD_LEFT),
+                        'currency' => 'EUR', 'occurred_at' => $occurredAt, 'order_id' => $orderId,
+                        'customer_id' => $payload['customer_id'] ?? null,
+                        'source_event_type' => 'gift_card.platform_coverage', 'source_event_id' => $reservationId,
+                        'metadata' => ['expense_source' => 'gift_card_checkout', 'reason' => 'stripe_minimum_remainder'],
+                    ]), 'gift-card:platform-coverage:' . $reservationId);
+                }
             }
             if ($this->stripeConnect->enabled()) {
                 $this->stripeConnect->enqueueTransferAllocation(

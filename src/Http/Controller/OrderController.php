@@ -347,7 +347,8 @@ class OrderController extends CartController
                     }
                     $gift = $existing['gift_card'];
                     $summary = ['total_cents' => $existing['totals']['grand_total_cents'],
-                        'applied_cents' => $gift['gift_card_cents'], 'remaining_cents' => $gift['stripe_cents']];
+                        'applied_cents' => $gift['gift_card_cents'], 'remaining_cents' => $gift['stripe_cents'],
+                        'platform_cents' => $gift['platform_cents'] ?? 0];
                     if ($gift['stripe_cents'] === 0 && $existingGift['settled'] && $existingGift['order_id'] !== null) {
                         return response(['checkout_status' => 'confirmed', 'gift_card' => $summary,
                             'order' => $this->orderService->giftCardOrderSummary($existingGift['order_id'], (int) $payload['id_cart'])]);
@@ -441,13 +442,6 @@ class OrderController extends CartController
                     'reserve:' . bin2hex(random_bytes(16)), 604800);
                 $tender = GiftCardTender::fromReservation($reservation, (int) $payload['id_cart'],
                     $customerId === null ? null : (int) $customerId, $totalCents, time());
-                if ($tender->stripeCents > 0 && $tender->stripeCents < 50) {
-                    if (($existingGift['payload']['gift_card']['reservation_id'] ?? null) === $tender->reservationId) {
-                        return response(['error' => ['code' => 'cart_reserved']], 409);
-                    }
-                    $giftCards->release($tender->reservationId, 'release:amount-too-small:' . $tender->reservationId);
-                    return response(['error' => ['code' => 'payment_too_small']], 409);
-                }
                 if ($expected !== null && $expected['applied_cents'] !== $tender->giftCardCents) {
                     // A previous checkout may already have issued a Stripe session using this hold.
                     if (($existingGift['payload']['gift_card']['reservation_id'] ?? null) === $tender->reservationId) {
@@ -459,7 +453,7 @@ class OrderController extends CartController
                 }
                 $orderSession->attachGiftCardTender($tender);
                 $giftSummary = ['total_cents' => $totalCents, 'applied_cents' => $tender->giftCardCents,
-                    'remaining_cents' => $tender->stripeCents, 'expires_at' => $tender->expiresAt];
+                    'remaining_cents' => $tender->stripeCents, 'platform_cents' => $tender->platformCents, 'expires_at' => $tender->expiresAt];
                 if ($tender->stripeCents === 0) {
                     $snapshot = $this->checkoutSnapshots->create($orderSession, $cart->toArray());
                     $this->checkoutSnapshots->markGiftCardPaymentVerified($snapshot['id']);

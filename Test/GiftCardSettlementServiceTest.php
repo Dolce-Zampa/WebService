@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Repositories\FinancialTransactionRepository;
+use PS\Webservice\Service\Financial\FinancialLedgerService;
 use PS\Webservice\Service\GiftCard\GiftCardClient;
 use PS\Webservice\Service\GiftCard\GiftCardSettlementService;
 use PS\Webservice\Service\GiftCard\GiftCardTender;
@@ -54,11 +56,53 @@ final class GiftCardSettlementServiceTest extends TestCase
                 $table->dateTime('gift_card_released_at')->nullable();
                 $table->dateTime('created_at'); $table->dateTime('updated_at');
             });
+            $schema = $db->schema();
+        $schema->create('financial_transactions', function ($table): void {
+            $table->increments('id');
+            $table->unsignedBigInteger('order_id')->nullable();
+            $table->unsignedBigInteger('customer_id')->nullable();
+            $table->unsignedBigInteger('artisan_id')->nullable();
+            $table->unsignedBigInteger('order_item_id')->nullable();
+            $table->string('order_reference', 64)->nullable();
+            $table->string('artisan_reference', 191)->nullable();
+            $table->string('order_item_reference', 191)->nullable();
+            $table->string('type', 32);
+            $table->string('status', 16);
+            $table->decimal('amount', 20, 6);
+            $table->char('currency', 3);
+            $table->string('provider', 64)->nullable();
+            $table->string('provider_account_id', 191)->nullable();
+            $table->string('provider_transaction_id', 191)->nullable();
+            $table->string('provider_event_id', 191)->nullable();
+            $table->string('source_event_type', 80)->nullable();
+            $table->string('source_event_id', 191)->nullable();
+            $table->unsignedBigInteger('related_transaction_id')->nullable();
+            $table->json('metadata')->nullable();
+            $table->dateTime('occurred_at');
+            $table->dateTime('available_at')->nullable();
+            $table->dateTime('settled_at')->nullable();
+            $table->timestamps();
+            $table->unique(['provider', 'provider_event_id']);
+        });
+        $schema->create('financial_transaction_events', function ($table): void {
+            $table->increments('id');
+            $table->unsignedBigInteger('financial_transaction_id');
+            $table->string('event_type', 32);
+            $table->string('status', 16);
+            $table->string('idempotency_key', 191)->unique();
+            $table->string('source_event_type', 80)->nullable();
+            $table->string('source_event_id', 191)->nullable();
+            $table->json('metadata')->nullable();
+            $table->dateTime('occurred_at');
+            $table->dateTime('received_at');
+            $table->dateTime('created_at');
+        });
+
             $orders = $this->createMock(Order::class);
-            $orders->expects(self::exactly(3))->method('giftCardOrderIdForCart')->willReturnOnConsecutiveCalls(null, 123, 123);
+            $orders->expects(self::exactly(4))->method('giftCardOrderIdForCart')->willReturnOnConsecutiveCalls(null, 123, 123, 123);
             $orders->expects(self::once())->method('confirmSessionOrder');
             $orders->method('giftCardPendingStateId')->willReturn(21);
-            $orders->expects(self::once())->method('settleGiftCardOrder')->willReturnCallback(function ($cart, $snapshotId) use ($db): void {
+            $orders->expects(self::exactly(2))->method('settleGiftCardOrder')->willReturnCallback(function ($cart, $snapshotId) use ($db): void {
                 $db->table('stripe_checkout_snapshots')->where('id', $snapshotId)->update(['gift_card_settled_at' => gmdate('Y-m-d H:i:s')]);
             });
             $reservation = str_repeat('a', 32);
@@ -69,7 +113,7 @@ final class GiftCardSettlementServiceTest extends TestCase
             $product = ['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '30.00', 'quantity' => 1];
             $session->addCartLineItem($product);
             $held = ['id' => $reservation, 'card_id' => $card, 'cart_id' => 42, 'customer_id' => 9,
-                'amount_cents' => 3000, 'status' => 'held', 'expires_at' => '2099-01-01T00:00:00Z'];
+                'amount_cents' => 2970, 'status' => 'held', 'expires_at' => '2099-01-01T00:00:00Z'];
             $session->attachGiftCardTender(GiftCardTender::fromReservation(['reservation' => $held,
                 'card' => ['id' => $card, 'status' => 'active', 'currency' => 'EUR']], 42, 9, 3000, time()));
             $snapshots = new CheckoutSnapshotService($db);
@@ -83,12 +127,14 @@ final class GiftCardSettlementServiceTest extends TestCase
             $stack = HandlerStack::create(new MockHandler([
                 new Response(200, [], $protected), new Response(503, [], '{"success":false}'),
                 new Response(200, [], $protected), new Response(200, [], $captured),
+                new Response(200, [], $protected), new Response(200, [], $captured),
             ]));
             $stack->push(Middleware::history($history));
             $client = new GiftCardClient(new Client(['handler' => $stack]),
                 'https://shop.example/index.php?fc=module&module=mlabgiftcard&controller=api', 'gc_api_' . str_repeat('a', 64));
             $connect = new StripeConnectService($db, null, new \Stripe\StripeClient('sk_test_123'));
-            $settlement = new GiftCardSettlementService($client, $snapshots, $orders, $connect);
+            $ledger = new FinancialLedgerService(new FinancialTransactionRepository($db));
+            $settlement = new GiftCardSettlementService($client, $snapshots, $orders, $connect, $ledger);
             try {
                 $settlement->settle($snapshot['id']);
                 self::fail('Capture should fail temporarily.');
@@ -98,6 +144,12 @@ final class GiftCardSettlementServiceTest extends TestCase
             self::assertSame(123, (int) $db->table('stripe_checkout_snapshots')->where('id', $snapshot['id'])->value('order_id'));
             self::assertSame(123, $settlement->settle($snapshot['id']));
             self::assertNotNull($db->table('stripe_checkout_snapshots')->where('id', $snapshot['id'])->value('gift_card_allocated_at'));
+            self::assertSame(123, $settlement->settle($snapshot['id']));
+            self::assertSame(2, $db->table('financial_transactions')->count());
+            $contribution = $db->table('financial_transactions')->where('source_event_type', 'gift_card.platform_coverage')->first();
+            self::assertNotNull($contribution);
+            self::assertSame(-0.30, (float) $contribution->amount);
+            self::assertSame(1, $db->table('financial_transaction_events')->where('idempotency_key', 'gift-card:platform-coverage:' . $reservation)->count());
             self::assertSame($history[0]['request']->getHeaderLine('Idempotency-Key'), $history[2]['request']->getHeaderLine('Idempotency-Key'));
             self::assertSame($history[1]['request']->getHeaderLine('Idempotency-Key'), $history[3]['request']->getHeaderLine('Idempotency-Key'));
         } finally {

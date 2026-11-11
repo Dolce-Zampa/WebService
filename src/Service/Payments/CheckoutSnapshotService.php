@@ -149,7 +149,13 @@ final class CheckoutSnapshotService
         $record = $this->record($snapshotId);
         $payload = $this->payload($record);
         $gift = $payload['gift_card'] ?? null;
-        if (!is_array($gift) || !is_int($gift['stripe_cents'] ?? null)) {
+        $platform = is_array($gift) ? ($gift['platform_cents'] ?? 0) : null;
+        $total = $payload['totals']['grand_total_cents'] ?? null;
+        if (!is_array($gift) || !is_int($gift['gift_card_cents'] ?? null) || $gift['gift_card_cents'] < 1
+            || !is_int($gift['stripe_cents'] ?? null) || $gift['stripe_cents'] < 0
+            || !is_int($platform) || $platform < 0 || $platform >= 50
+            || ($platform > 0 && $gift['stripe_cents'] !== 0)
+            || !is_int($total) || $gift['gift_card_cents'] + $gift['stripe_cents'] + $platform !== $total) {
             throw new \RuntimeException('Snapshot has no valid gift card payment.');
         }
         if ($gift['stripe_cents'] === 0) {

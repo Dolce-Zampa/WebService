@@ -486,9 +486,11 @@ final class StripeConnectService
         $total = $snapshot['totals']['grand_total_cents'] ?? null;
         $giftCents = $gift['gift_card_cents'] ?? null;
         $stripeCents = $gift['stripe_cents'] ?? null;
+        $platformCents = $gift['platform_cents'] ?? 0;
         $reservationId = $gift['reservation_id'] ?? null;
-        if (!is_int($total) || !is_int($giftCents) || !is_int($stripeCents)
-            || $total < 1 || $giftCents < 1 || $stripeCents < 0 || $giftCents + $stripeCents !== $total
+        if (!is_int($total) || !is_int($giftCents) || !is_int($stripeCents) || !is_int($platformCents)
+            || $total < 1 || $giftCents < 1 || $stripeCents < 0 || $platformCents < 0 || $platformCents >= 50
+            || ($platformCents > 0 && $stripeCents !== 0) || $giftCents + $stripeCents + $platformCents !== $total
             || !is_string($reservationId) || !preg_match('/^[a-f0-9]{32}$/D', $reservationId)
             || ($snapshot['currency'] ?? null) !== 'EUR') {
             throw new \RuntimeException('Invalid gift card seller allocation.');
@@ -512,7 +514,7 @@ final class StripeConnectService
             throw new \RuntimeException('Gift card checkout payment reference is invalid.');
         }
         $allocations = $this->sellerAllocationsFromCheckoutSnapshot($snapshot, $total, 'EUR');
-        $plans = GiftCardSellerFunding::plan($total, $giftCents, $allocations);
+        $plans = GiftCardSellerFunding::plan($total, $giftCents + $platformCents, $allocations);
         foreach ($plans as $plan) {
             foreach (['charge_cents' => $chargeId, 'platform_cents' => null] as $funding => $sourceCharge) {
                 $amount = $plan[$funding];

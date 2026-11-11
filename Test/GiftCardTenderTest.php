@@ -28,6 +28,23 @@ final class GiftCardTenderTest extends TestCase
         self::assertSame(0, $full->stripeCents);
     }
 
+    /** @dataProvider minimumResiduals */
+    public function test_small_residual_is_funded_by_the_platform(int $amount, int $platform, int $stripe): void
+    {
+        $tender = GiftCardTender::fromReservation($this->reservation($amount), 42, 5, 510, 1);
+        self::assertSame($amount, $tender->giftCardCents);
+        self::assertSame($platform, $tender->platformCents);
+        self::assertSame($stripe, $tender->stripeCents);
+        if ($platform > 0) self::assertSame($platform, $tender->toArray()['platform_cents']);
+        else self::assertArrayNotHasKey('platform_cents', $tender->toArray());
+    }
+
+    public static function minimumResiduals(): array
+    {
+        return ['1 cent' => [509, 1, 0], '10 cents' => [500, 10, 0], '49 cents' => [461, 49, 0],
+            '50 cents' => [460, 0, 50], 'fully covered' => [510, 0, 0]];
+    }
+
     public function testRejectsReservationForAnotherCustomer(): void
     {
         $this->expectException(RuntimeException::class);

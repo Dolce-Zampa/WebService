@@ -12,6 +12,7 @@ final class GiftCardTender
         public readonly int $totalCents,
         public readonly int $giftCardCents,
         public readonly int $stripeCents,
+        public readonly int $platformCents,
         public readonly string $expiresAt,
     ) {}
 
@@ -37,17 +38,23 @@ final class GiftCardTender
             throw new \RuntimeException('Gift card reservation has expired or has an invalid expiry.');
         }
         $amount = $reservation['amount_cents'];
-        return new self($reservation['id'], $cartId, $totalCents, $amount, $totalCents - $amount, $reservation['expires_at']);
+        $residual = $totalCents - $amount;
+        $platformCents = $residual > 0 && $residual < 50 ? $residual : 0;
+        return new self($reservation['id'], $cartId, $totalCents, $amount, $residual - $platformCents,
+            $platformCents, $reservation['expires_at']);
     }
 
-    /** @return array{reservation_id:string,gift_card_cents:int,stripe_cents:int,expires_at:string} */
+    /** @return array{reservation_id:string,gift_card_cents:int,stripe_cents:int,expires_at:string,platform_cents?:int} */
     public function toArray(): array
     {
-        return [
+        $data = [
             'reservation_id' => $this->reservationId,
             'gift_card_cents' => $this->giftCardCents,
             'stripe_cents' => $this->stripeCents,
             'expires_at' => $this->expiresAt,
         ];
+        // Preserve the immutable payload of already-issued ordinary checkouts.
+        if ($this->platformCents > 0) $data['platform_cents'] = $this->platformCents;
+        return $data;
     }
 }

@@ -86,6 +86,41 @@ final class GiftCardSettlementTest extends TestCase
         self::assertSame(30, Order::$record['payments'][0]->amount);
     }
 
+    public function test_platform_contribution_is_recorded_once_without_stripe(): void
+    {
+        $payload = json_decode(Db::$snapshot['verification_payload'], true);
+        $payload['gift_card']['gift_card_cents'] = 2970;
+        $payload['gift_card']['stripe_cents'] = 0;
+        $payload['gift_card']['platform_cents'] = 30;
+        Db::$snapshot['verification_payload'] = json_encode($payload);
+        Db::$snapshot['stripe_payment_intent_id'] = null;
+        Db::$reservation['amount_cents'] = 2970;
+        $this->settle();
+        $this->settle();
+        self::assertSame(2, Order::$record['state']);
+        self::assertCount(2, Order::$record['payments']);
+        self::assertSame(29.7, Order::$record['payments'][0]->amount);
+        self::assertSame(0.3, Order::$record['payments'][1]->amount);
+        self::assertSame('platform:' . $this->reservation, Order::$record['payments'][1]->transaction_id);
+    }
+
+    /** @dataProvider invalidPlatformSplits */
+    public function test_invalid_platform_contribution_cannot_confirm_order(array $overrides): void
+    {
+        $payload = json_decode(Db::$snapshot['verification_payload'], true);
+        $payload['gift_card'] = array_replace($payload['gift_card'], $overrides);
+        Db::$snapshot['verification_payload'] = json_encode($payload);
+        $this->expectException(MlabFactoryApiException::class);
+        try { $this->settle(); } finally { self::assertSame(21, Order::$record['state']); }
+    }
+
+    public static function invalidPlatformSplits(): array
+    {
+        return ['above maximum' => [['gift_card_cents' => 2950, 'stripe_cents' => 0, 'platform_cents' => 50]],
+            'with stripe' => [['gift_card_cents' => 1980, 'stripe_cents' => 1000, 'platform_cents' => 20]],
+            'invalid sum' => [['gift_card_cents' => 2970, 'stripe_cents' => 0, 'platform_cents' => 20]]];
+    }
+
     public function test_retry_recovers_if_recording_the_second_payment_fails(): void
     {
         Order::$failPaymentNumber = 2;

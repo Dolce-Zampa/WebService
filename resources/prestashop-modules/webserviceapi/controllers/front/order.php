@@ -199,11 +199,14 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             $reservationId = $gift['reservation_id'] ?? null;
             $giftCents = $gift['gift_card_cents'] ?? null;
             $stripeCents = $gift['stripe_cents'] ?? null;
+            $platformCents = $gift['platform_cents'] ?? 0;
             $totalCents = $verification['totals']['grand_total_cents'] ?? null;
             if (!is_string($reservationId) || !preg_match('/^[a-f0-9]{32}$/D', $reservationId)
                 || $reservationId !== ($snapshot['gift_card_reservation_id'] ?? null)
                 || !is_int($giftCents) || $giftCents <= 0 || !is_int($stripeCents) || $stripeCents < 0
-                || !is_int($totalCents) || $giftCents + $stripeCents !== $totalCents) {
+                || !is_int($platformCents) || $platformCents < 0 || $platformCents >= 50
+                || ($platformCents > 0 && $stripeCents !== 0)
+                || !is_int($totalCents) || $giftCents + $stripeCents + $platformCents !== $totalCents) {
                 throw new MlabFactoryApiException('Invalid gift card checkout snapshot.', 409);
             }
             $rows = $db->executeS('SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders` WHERE `id_cart`=' . $cartId);
@@ -233,6 +236,9 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             $expected = ['giftcard:' . $reservationId => ['Gift card', $giftCents]];
             if ($stripeCents > 0) {
                 $expected[$stripeId] = ['Stripe', $stripeCents];
+            }
+            if ($platformCents > 0) {
+                $expected['platform:' . $reservationId] = ['Contributo piattaforma', $platformCents];
             }
             $recorded = [];
             foreach ($order->getOrderPayments() as $payment) {

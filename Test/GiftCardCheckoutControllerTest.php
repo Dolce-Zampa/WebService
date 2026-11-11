@@ -134,6 +134,7 @@ final class GiftCardCheckoutControllerTest extends TestCase
         }
         self::assertSame($giftCents, $data['gift_card']['applied_cents']);
         self::assertSame($stripeCents, $data['gift_card']['remaining_cents']);
+        self::assertSame(2500 - $giftCents - $stripeCents, $data['gift_card']['platform_cents']);
         self::assertSame($stripeCents === 0 ? 'confirmed' : 'payment_required', $data['checkout_status']);
         if ($stripeCents > 0) {
             self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $data['checkout_snapshot_id']);
@@ -158,7 +159,9 @@ final class GiftCardCheckoutControllerTest extends TestCase
             'five euro gift card is fully applied' => [500, 2000, 2500, 500, 201],
             'changed total' => [1000, 1500, 2600, 1000, 409],
             'changed balance' => [1000, 1500, 2500, 1500, 409],
-            'stripe below minimum' => [2470, 30, 2500, 2470, 409, 'payment_too_small'],
+            '30 cents paid by platform' => [2470, 0, 2500, 2470, 201],
+            '49 cents paid by platform' => [2451, 0, 2500, 2451, 201],
+            '50 cents paid by Stripe' => [2450, 50, 2500, 2450, 201],
         ];
     }
 }

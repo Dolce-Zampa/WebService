@@ -95,6 +95,18 @@ final class StripeConnectServiceTest extends TestCase
             self::assertCount(1, $full);
             self::assertSame(6000, (int) $full[0]->amount);
             self::assertNull($full[0]->stripe_charge_id);
+
+            $coveredReservation = str_repeat('d', 32);
+            $db->table('stripe_checkout_snapshots')->insert(['gift_card_reservation_id' => $coveredReservation,
+                'order_id' => 44, 'gift_card_settled_at' => '2026-11-11 09:00:00']);
+            $snapshot['gift_card'] = ['reservation_id' => $coveredReservation, 'gift_card_cents' => 7470,
+                'stripe_cents' => 0, 'platform_cents' => 30];
+            $service->createTransfersForOrder(44, 'gc_' . $coveredReservation, 'dz_cart_44', new DateTimeImmutable(), $snapshot);
+            $service->createTransfersForOrder(44, 'gc_' . $coveredReservation, 'dz_cart_44', new DateTimeImmutable(), $snapshot);
+            $covered = $db->table('stripe_connect_transfers')->where('order_id', 44)->get()->all();
+            self::assertCount(1, $covered);
+            self::assertSame(6000, (int) $covered[0]->amount);
+            self::assertNull($covered[0]->stripe_charge_id);
             $now = gmdate('Y-m-d H:i:s');
             $db->table('stripe_connect_accounts')->insert(['manufacturer_id' => 7, 'stripe_account_id' => 'acct_test123',
                 'account_type' => 'express', 'country' => 'IT', 'details_submitted' => false, 'charges_enabled' => false,
@@ -102,7 +114,7 @@ final class StripeConnectServiceTest extends TestCase
             $account = \Stripe\Account::constructFrom(['id' => 'acct_test123', 'type' => 'express', 'country' => 'IT',
                 'details_submitted' => true, 'charges_enabled' => true, 'payouts_enabled' => true,
                 'capabilities' => ['transfers' => 'active'], 'requirements' => ['currently_due' => []]]);
-            self::assertSame(3, $service->handleAccountUpdated($account, new DateTimeImmutable()));
+            self::assertSame(4, $service->handleAccountUpdated($account, new DateTimeImmutable()));
             $byAmount = [];
             foreach ($transfers->calls as $call) $byAmount[$call['amount']] = $call;
             self::assertSame('ch_test123', $byAmount[2000]['source_transaction']);
