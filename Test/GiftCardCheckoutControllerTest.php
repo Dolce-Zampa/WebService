@@ -48,7 +48,7 @@ final class GiftCardCheckoutControllerTest extends TestCase
      * @preserveGlobalState disabled
      * @dataProvider amounts
      */
-    public function test_uses_stripe_only_for_the_remaining_amount(int $giftCents, int $stripeCents): void
+    public function test_uses_stripe_only_for_the_remaining_amount(int $giftCents, int $stripeCents, int $expectedTotal, int $expectedApplied, int $expectedStatus): void
     {
         $this->configureGiftCardEnvironment();
         $_SERVER['PAYMENT_MODULE'] = $_ENV['PAYMENT_MODULE'] = 'webserviceapi';
@@ -80,7 +80,7 @@ final class GiftCardCheckoutControllerTest extends TestCase
         $orders->expects(self::never())->method('createCouponCode');
         $orders->method('giftCardOrderSummary')->willReturn(['id' => 123, 'id_cart' => 10, 'current_state' => 2, 'reference' => 'ORDER123']);
         $payment = $this->createMock(PaymentGatewayInterface::class);
-        if ($stripeCents === 0) {
+        if ($stripeCents === 0 || $expectedStatus !== 201) {
             $payment->expects(self::never())->method('createPaymentSession');
         } else {
             $payment->expects(self::once())->method('createPaymentSession')->willReturnCallback(function (OrderSession $session) use ($stripeCents): string {
@@ -95,7 +95,11 @@ final class GiftCardCheckoutControllerTest extends TestCase
         $reserveBody = ['success' => true, 'data' => ['reservation' => ['id' => $reservationId, 'card_id' => $cardId,
             'cart_id' => 10, 'customer_id' => null, 'amount_cents' => $giftCents, 'status' => 'held',
             'expires_at' => '2099-01-01T00:00:00Z'], 'card' => ['id' => $cardId, 'status' => 'active', 'currency' => 'EUR']]];
-        $http = new Client(['handler' => HandlerStack::create(new MockHandler([new GuzzleResponse(200, [], json_encode($reserveBody))]))]);
+        $handler = new MockHandler([
+            new GuzzleResponse(200, [], json_encode($reserveBody)),
+            new GuzzleResponse(200, [], json_encode(['success' => true, 'data' => []])),
+        ]);
+        $http = new Client(['handler' => HandlerStack::create($handler)]);
         $client = new GiftCardClient($http, 'https://shop.example/index.php?fc=module&module=mlabgiftcard&controller=api', 'gc_api_' . str_repeat('a', 64));
         $settlement = new class { public int $calls = 0; public function settle(string $id): int { ++$this->calls; return 123; } };
         $controller = new OrderController($orders, $payment, null, new CheckoutSnapshotService($db),
@@ -105,11 +109,24 @@ final class GiftCardCheckoutControllerTest extends TestCase
         $request->method('getParsedBody')->willReturn(['id' => 1, 'id_cart' => 10, 'id_guest' => 8, 'id_customer' => null,
             'id_carrier' => 2, 'id_lang' => 1, 'payment_module' => 'webserviceapi', 'reference' => '', 'current_state' => 0,
             'date_add' => '', 'total_paid_tax_incl' => 0, 'total_paid_tax_excl' => 0, 'payment_method' => 'stripe',
-            'gift_card' => 'GC-8DUE-28DF', 'cart_rules' => [['code' => 'PROMO']],
+            'gift_card' => 'GC-8DUE-28DF', 'gift_card_expected' => ['total_cents' => $expectedTotal, 'applied_cents' => $expectedApplied],
+            'cart_rules' => [['code' => 'PROMO']],
             'customer' => ['email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Test']]);
         $result = $controller->createOrder($request, $this->createMock(ResponseInterface::class), []);
-        self::assertSame(201, $result->getStatusCode(), (string) $result->getBody());
+        self::assertSame($expectedStatus, $result->getStatusCode(), (string) $result->getBody());
         $data = json_decode((string) $result->getBody(), true)['data'];
+        if ($expectedStatus === 409) {
+            self::assertSame('checkout_changed', $data['error']['code']);
+            self::assertSame(2500, $data['actual_total_cents']);
+            if ($expectedApplied !== $giftCents && $expectedTotal === 2500) {
+                self::assertSame($giftCents, $data['actual_applied_cents']);
+                self::assertStringContainsString('action=release', (string) $handler->getLastRequest()->getUri());
+            } else {
+                self::assertSame(2, $handler->count()); // no reservation when the total has changed
+            }
+            self::assertSame(0, $settlement->calls);
+            return;
+        }
         self::assertSame($giftCents, $data['gift_card']['applied_cents']);
         self::assertSame($stripeCents, $data['gift_card']['remaining_cents']);
         self::assertSame($stripeCents === 0 ? 'confirmed' : 'payment_required', $data['checkout_status']);
@@ -124,5 +141,13 @@ final class GiftCardCheckoutControllerTest extends TestCase
         $_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = 'testing';
     }
 
-    public static function amounts(): array { return ['fully covered' => [2500, 0], 'partially covered' => [1000, 1500]]; }
+    public static function amounts(): array
+    {
+        return [
+            'fully covered' => [2500, 0, 2500, 2500, 201],
+            'partially covered' => [1000, 1500, 2500, 1000, 201],
+            'changed total' => [1000, 1500, 2600, 1000, 409],
+            'changed balance' => [1000, 1500, 2500, 1500, 409],
+        ];
+    }
 }
