@@ -831,62 +831,11 @@ class webserviceapi extends PaymentModule
         return (string) $manufacturer->name;
     }
 
-    // nuovo metodo
     public function hookActionGetExtraMailTemplateVars($params)
     {
         if (($params['template'] ?? '') === 'order_conf') {
             $this->addOrderProductionTimes($params);
-            return;
         }
-
-        // Intervenire solo sul template shipped
-        if ($params['template'] !== 'shipped') {
-            return;
-        }
-
-        // Ottenere l'ID dell'ordine
-        $orderId = (int) ($params['template_vars']['{id_order}'] ?? 0);
-        if (!$orderId) {
-            return;
-        }
-
-        $order = new Order($orderId);
-        if (!Validate::isLoadedObject($order)) {
-            return;
-        }
-
-        // Ottenere il numero di tracking dal record OrderCarrier
-        $trackingNumber = '';
-        $orderCarriers = OrderCarrier::getOrderCarriers($orderId);
-        if (!empty($orderCarriers)) {
-            $trackingNumber = (string) ($orderCarriers[0]->tracking_number ?? '');
-        }
-
-        if ($trackingNumber === '') {
-            return; // Nessun numero di tracking, non generare il link
-        }
-
-        // Generare il link di tracking in base all'ID del corriere
-        $carrierId = (int) $order->id_carrier;
-        $trackingUrl = '';
-
-        switch ($carrierId) {
-            case 1: // Sostituire con l'ID effettivo del tuo corriere
-                $trackingUrl = 'https://carrier-a.com/track/' . $trackingNumber;
-                break;
-            case 2:
-                $trackingUrl = 'https://carrier-b.com/trace?code=' . $trackingNumber;
-                break;
-            default:
-                $trackingUrl = 'https://default.com/track/' . $trackingNumber;
-        }
-
-        // Iniettare nell'array extra_template_vars
-        // Importante: utilizzare array_merge per preservare le variabili già iniettate da altri moduli
-        $params['extra_template_vars'] = array_merge(
-            $params['extra_template_vars'] ?? [],
-            ['{followup}' => $trackingUrl]
-        );
     }
 
     private function addOrderProductionTimes(array $params)
