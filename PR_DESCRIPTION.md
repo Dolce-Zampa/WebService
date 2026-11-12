@@ -16,7 +16,7 @@ Ogni chiamata a `PrestaShopLogger::addLog()` (usata estesamente nel modulo
 
 ## Tipo di logging
 
-- Mapping severità PrestaShop → Monolog: `0→Notice`, `1→Warning`, `2→Error`, `3→Critical`, `4→Info`.
+- Mapping severità PrestaShop → Monolog: `0→Debug`, `1→Info`, `2→Warning`, `3→Error`, `4→Critical`.
 - Contesto strutturato: `shop_id`, `shop_name`, `request_uri`, `ip`, `error_code`, `object_type`, `object_id`.
 - Stesso `LineFormatter` di `config/logger.php` (timestamp `Y-m-d H:i:s.v`, stacktrace, JSON pretty).
 
@@ -32,15 +32,15 @@ Ogni chiamata a `PrestaShopLogger::addLog()` (usata estesamente nel modulo
 
 | File | Ruolo |
 |------|-------|
-| `resources/overrides/classes/PrestaShopLogger.php` | L'override da copiare in `<prestashop>/override/classes/` |
+| `resources/overrides/classes/PrestaShopLogger.php` | L'override da integrare con eventuali override esistenti |
 | `resources/overrides/README.md` | Istruzioni di installazione, requisiti composer, configurazione |
-| `Test/PrestaShopLoggerOverrideTest.php` | Smoke test autonomo (stub di Core/Monolog/Logtail) — tutti verdi |
+| `Test/PrestaShopLoggerOverrideTest.php` | Smoke test isolato con stub di Core/Monolog/Logtail |
 
 ## Test
 
 ```bash
 php -l resources/overrides/classes/PrestaShopLogger.php   # OK
-php Test/PrestaShopLoggerOverrideTest.php                 # ALL TESTS PASSED (15 asserzioni)
+vendor/bin/phpunit Test/PrestaShopLoggerOverrideTest.php
 ```
 
 Verificato: forwarding attivo in produzione, mapping severità, contesto, skip senza API key,
@@ -48,10 +48,10 @@ force-on/off via Configuration, salvataggio `ps_log` sempre garantito.
 
 ## Deploy (per il team ops)
 
-1. Copiare `resources/overrides/*` in `<prestashop-root>/override/` (o aggiungerlo alla build dell'immagine `ghcr.io/dolce-zampa/prestashop`).
-2. Nel container PrestaShop: `composer require logtail/monolog-logtail` (Monolog è già bundled).
-3. Passare le env `LOGTAIL_API_KEY` (+ opzionalmente `LOGTAIL_ENDPOINT`, `APP_ENV`) al servizio `prestashop` di docker-compose.
-4. Cancellare `var/cache/*/class_index.php` per rigenerare l'override loader.
+Il deploy richiede una verifica in staging: lo shop esaminato ha già un override
+di `PrestaShopLogger` e il suo lockfile indica Monolog 2.10, mentre questa
+implementazione richiede Monolog 3 e Logtail 3. Integrare gli override e risolvere
+la compatibilità delle dipendenze prima di installare; vedere `resources/overrides/README.md`.
 
 ## Checklist
 

@@ -1,7 +1,7 @@
 # PrestaShop overrides
 
 Questa cartella contiene gli **override del core PrestaShop** usati dal progetto DolceZampa.
-Vanno copiati nella cartella `override/` del negozio PrestaShop (immagine `ghcr.io/dolce-zampa/prestashop`).
+Sono destinati alla cartella `override/` del negozio PrestaShop (immagine `ghcr.io/dolce-zampa/prestashop`).
 
 ## Elenco
 
@@ -11,30 +11,24 @@ Vanno copiati nella cartella `override/` del negozio PrestaShop (immagine `ghcr.
 
 ## Installazione
 
-```bash
-# dalla root del repository webservice
-cp -r resources/overrides/* <prestashop-root>/override/
+Prima dell'installazione verificare se esiste già `override/classes/PrestaShopLogger.php`.
+PrestaShop consente un solo override per classe: se esiste, confrontare e integrare
+le funzionalità necessarie invece di sovrascriverlo. Provare l'integrazione in
+staging prima del deploy e conservare una copia per il rollback.
 
+```bash
 # rigenerare la class index di PrestaShop
 rm -f <prestashop-root>/var/cache/prod/class_index.php   # o svuotare var/cache
 ```
 
-Nell'immagine Docker ufficiale del team l'override può essere montato/copiato in build, es.:
-
-```dockerfile
-COPY resources/overrides/ /var/www/html/override/
-RUN rm -rf /var/www/html/var/cache/*
-```
-
 ## Requisiti lato PrestaShop
 
-L'override usa Monolog + `logtail/monolog-logtail`, quindi nel negozio serve:
-
-```bash
-composer require monolog/monolog logtail/monolog-logtail
-```
-
-(PrestaShop 1.7/8 bundla già Monolog; il pacchetto Logtail va aggiunto.)
+Questa implementazione usa Monolog 3 e `logtail/monolog-logtail` 3. Il lockfile
+della copia PrestaShop locale esaminata indica Monolog 2.10: non è compatibile
+con questa combinazione. Non aggiornare le dipendenze del negozio alla cieca:
+occorre prima verificare i vincoli di PrestaShop e dei moduli e validare una
+soluzione compatibile in staging. Senza le dipendenze richieste il forwarding
+non funziona; la chiamata al logger nativo continua a essere eseguita.
 
 ## Configurazione
 

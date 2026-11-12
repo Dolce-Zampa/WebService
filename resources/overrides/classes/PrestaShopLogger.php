@@ -2,9 +2,8 @@
 /**
  * Override di PrestaShopLogger per il progetto DolceZampa (webservice).
  *
- * Installazione (copiare nella root del negozio PrestaShop):
- *   cp resources/overrides/classes/PrestaShopLogger.php <prestashop>/override/classes/PrestaShopLogger.php
- *   rm -f <prestashop>/var/cache/prod/class_index.php   (oppure cancellare l'intera cartella var/cache)
+ * Installazione: verificare e integrare eventuali override già presenti e
+ * risolvere i requisiti delle dipendenze come descritto in resources/overrides/README.md.
  *
  * Da questo momento ogni chiamata a PrestaShopLogger::addLog() viene:
  *   1. salvata nel database, esattamente come nel core di PrestaShop;
@@ -23,11 +22,11 @@ class PrestaShopLogger extends PrestaShopLoggerCore
      * Mappa le severità PrestaShop (0..4) sui livelli Monolog.
      */
     private const BETTERSTACK_DEFAULT_LEVELS = [
-        0 => \Monolog\Level::Notice,   // log (informazione)
-        1 => \Monolog\Level::Warning,  // warning
-        2 => \Monolog\Level::Error,    // error
-        3 => \Monolog\Level::Critical, // severe problem
-        4 => \Monolog\Level::Info,     // event (debug)
+        0 => \Monolog\Level::Debug,
+        1 => \Monolog\Level::Info,
+        2 => \Monolog\Level::Warning,
+        3 => \Monolog\Level::Error,
+        4 => \Monolog\Level::Critical,
     ];
 
     /** @var \Monolog\Logger|null logger initialized lazily */
@@ -43,26 +42,26 @@ class PrestaShopLogger extends PrestaShopLoggerCore
      */
     public static function addLog(
         $message,
-        $severity = self::SEVERITY_LOG,
-        $error_code = null,
-        $object_type = null,
-        $object_id = null,
-        $employee = null,
-        $date_add = null
+        $severity = 1,
+        $errorCode = null,
+        $objectType = null,
+        $objectId = null,
+        $allowDuplicate = false,
+        $idEmployee = null
     ) {
         // Comportamento originale: scrittura su ps_log (già robusto ai DB down).
         $result = parent::addLog(
             $message,
             $severity,
-            $error_code,
-            $object_type,
-            $object_id,
-            $employee,
-            $date_add
+            $errorCode,
+            $objectType,
+            $objectId,
+            $allowDuplicate,
+            $idEmployee
         );
 
         try {
-            self::sendToBetterStack($message, $severity, $error_code, $object_type, $object_id);
+            self::sendToBetterStack($message, $severity, $errorCode, $objectType, $objectId);
         } catch (\Throwable $e) {
             // Non devono mai rompere il flusso di PrestaShop: al massimo si finisce su stderr.
             error_log('[PrestaShopLogger override] BetterStack forwarding failed: ' . $e->getMessage());
