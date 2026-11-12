@@ -9,6 +9,8 @@
 
 /** CLIENT APIs */
 $app->get('/api/health', PS\Webservice\Http\Controller\PrestashopController::class . ':healthCheck');
+$app->get('/api/inpost/config', PS\Webservice\Http\Controller\InpostPointsController::class . ':config');
+$app->get('/api/inpost/points', PS\Webservice\Http\Controller\InpostPointsController::class . ':index');
 
 /** Carts api */
 $app->get('/api/cart/product/upselling', PS\Webservice\Http\Controller\CartController::class . ':upsellingCart')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('upselling-cart'));

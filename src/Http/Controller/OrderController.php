@@ -44,6 +44,7 @@ class OrderController extends CartController
         private readonly ?\Closure $giftCardClientFactory = null,
         private readonly ?\Closure $giftCardSettlementFactory = null,
         private readonly ?GiftCardCheckoutRateLimiter $giftCardRateLimiter = null,
+        private readonly ?\PS\Webservice\Service\PickupPoints\InpostCheckout $inpostCheckout = null,
     )
     {
         $this->stripeService = $stripeService;
@@ -381,6 +382,21 @@ class OrderController extends CartController
             return response(['error' => 'A valid carrier ID is required'], 422);
         }
         $payload['id_carrier'] = $carrierId;
+        $inpostPointId = $payload['inpost_point_id'] ?? null;
+        try {
+            if ($this->inpostCheckout !== null) {
+                if ($inpostPointId !== null && $this->checkoutSnapshots === null) {
+                    throw new \RuntimeException('Checkout snapshot is unavailable.');
+                }
+                $payload = $this->inpostCheckout->prepare($payload, (int) $carrierId);
+            } elseif ($inpostPointId !== null) {
+                throw new \RuntimeException('InPost checkout is not configured.');
+            }
+        } catch (\InvalidArgumentException $error) {
+            return response(['error' => $error->getMessage()], 422);
+        } catch (\Throwable $error) {
+            return response(['error' => 'Punti InPost temporaneamente non disponibili.'], 503);
+        }
 
         // Create payment session
         try {
@@ -414,6 +430,9 @@ class OrderController extends CartController
                 $checkout
             );
             $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray(), $giftCode !== null);
+            if (is_string($inpostPointId) && $inpostPointId !== '') {
+                $orderSession->setInpostPointId($inpostPointId);
+            }
             if (empty($orderSession->metadata['payment_module'])) {
                 throw new \InvalidArgumentException('A payment module must be selected or configured.');
             }

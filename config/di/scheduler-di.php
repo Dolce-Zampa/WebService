@@ -2,6 +2,13 @@
 
 // Definizioni di Dependency Injection per lo scheduler Symfony.
 
+$container->set(\PS\Webservice\Commands\Scheduler\SyncInpostPointsMessageHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\SyncInpostPointsMessageHandler(
+        $c->get(\PS\Webservice\Service\PickupPoints\InpostCatalog::class),
+        filter_var(env('INPOST_SYNC_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\Scheduler\AppScheduleProvider::class, function () {
     return new \PS\Webservice\Commands\Scheduler\AppScheduleProvider();
 });

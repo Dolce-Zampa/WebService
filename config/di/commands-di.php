@@ -2,6 +2,10 @@
 
 // Definizioni di Dependency Injection per i comandi Symfony Console.
 
+$container->set(\PS\Webservice\Commands\SyncInpostPointsCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\SyncInpostPointsCommand($c->get(\PS\Webservice\Service\PickupPoints\InpostCatalog::class));
+});
+
 $container->set(\PS\Webservice\Service\MailerInterface::class, \DI\get(\PS\Webservice\Service\PS\Mailer::class));
 
 $container->set(\PS\Webservice\Commands\GiftCardMaintenanceCommand::class, function ($c) {

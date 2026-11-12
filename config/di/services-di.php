@@ -1,5 +1,17 @@
 <?php
 
+$container->set(\PS\Webservice\Service\PickupPoints\InpostCheckout::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\PickupPoints\InpostCheckout(
+        $capsule->getConnection(),
+        \PS\Webservice\Service\PickupPoints\InpostCheckout::parseCarrierIds((string) env('INPOST_CARRIER_IDS', '')),
+        (int) env('INPOST_CATALOG_MAX_AGE_HOURS', 72)
+    );
+});
+
+$container->set(\PS\Webservice\Service\PickupPoints\InpostCatalog::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\PickupPoints\InpostCatalog(new \GuzzleHttp\Client(), $capsule->getConnection());
+});
+
 $container->set(\PS\Webservice\Service\GiftCard\GiftCardClient::class, function ($c) {
     return new \PS\Webservice\Service\GiftCard\GiftCardClient(
         new \GuzzleHttp\Client(),
