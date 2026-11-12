@@ -21,6 +21,21 @@ $container->set(\PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessage
     );
 });
 
+$container->set(\PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHandler::class, function () {
+    $key = (string) env('GIFT_CARD_MAINTENANCE_KEY', '');
+    return new \PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHandler(
+        new \GuzzleHttp\Client(), (string) env('GIFT_CARD_API_URL', ''),
+        $key !== '' ? $key : (string) env('GIFT_CARD_API_KEY', ''),
+        \PS\Webservice\Service\GiftCard\GiftCardClient::verifyTlsForEnvironment(
+            (string) env('APP_ENV', 'production'), env('GIFT_CARD_ALLOW_INSECURE_TLS', false)
+        )
+    );
+});
+
+$container->set(\PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessageHandler::class, function ($c) {
+    return new \PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessageHandler($c);
+});
+
 $container->set(\PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHandler::class, function ($c) {
     return new \PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHandler(
         $c->get(\PS\Webservice\Commands\SendReviewRequestMailCommand::class)

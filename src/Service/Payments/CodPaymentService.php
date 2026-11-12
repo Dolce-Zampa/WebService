@@ -14,6 +14,11 @@ class CodPaymentService implements PaymentGatewayInterface
         return new self();
     }
 
+    public function expireUnpaidSession(string $sessionId): void
+    {
+        throw new \RuntimeException('Cash on delivery has no Stripe session.');
+    }
+
     public function createPaymentSession(OrderSession $orderSession): string
     {
         $metadata = $orderSession->metadata;

@@ -33,4 +33,14 @@ final class ConfirmOrderSessionTest extends TestCase
 
         self::assertContains('payment_module must be a configured module name', $session->validate());
     }
+
+    public function test_carrier_zero_is_allowed_only_for_virtual_confirmation(): void
+    {
+        $data = ['id_cart' => 42, 'id_customer' => 7, 'id_guest' => null, 'order_state' => 2,
+            'amount_paid' => 20, 'payment_module' => 'webserviceapi', 'id_carrier' => 0];
+        $service = $this->createMock(PrestashopServiceInterface::class);
+        self::assertNotEmpty(ConfirmOrderSession::create($data, $service)->validate());
+        $data['is_virtual'] = true;
+        self::assertSame([], ConfirmOrderSession::create($data, $service)->validate());
+    }
 }

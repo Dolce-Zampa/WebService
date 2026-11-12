@@ -36,6 +36,9 @@ $container->set(\PS\Webservice\Http\Controller\OrderController::class, function 
         $payment,
         $repository,
         $c->get(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class),
+        fn () => $c->get(\PS\Webservice\Service\GiftCard\GiftCardClient::class),
+        fn () => $c->get(\PS\Webservice\Service\GiftCard\GiftCardSettlementService::class),
+        new \PS\Webservice\Service\GiftCard\GiftCardCheckoutRateLimiter(),
     );
 });
 
@@ -101,7 +104,9 @@ $container->set(\PS\Webservice\Http\Controller\StripeWebhookController::class, f
     $financialLedger = $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class);
     $sellerSaleNotifications = $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class);
     $stripeConnect = $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class);
-    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger, $sellerSaleNotifications, $stripeConnect, $c->get(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class));
+    return new \PS\Webservice\Http\Controller\StripeWebhookController($orderService, $mailjet, $payment, $mailer, null, $promotionService, $financialLedger, $sellerSaleNotifications, $stripeConnect, $c->get(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class),
+        fn () => $c->get(\PS\Webservice\Service\GiftCard\GiftCardSettlementService::class),
+        fn () => $c->get(\PS\Webservice\Service\GiftCard\GiftCardClient::class));
 });
 
 $container->set(\PS\Webservice\Http\Controller\CmsController::class, function ($c) {

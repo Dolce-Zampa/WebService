@@ -1,5 +1,27 @@
 <?php
 
+$container->set(\PS\Webservice\Service\GiftCard\GiftCardClient::class, function ($c) {
+    return new \PS\Webservice\Service\GiftCard\GiftCardClient(
+        new \GuzzleHttp\Client(),
+        (string) env('GIFT_CARD_API_URL', ''),
+        (string) env('GIFT_CARD_API_KEY', ''),
+        \PS\Webservice\Service\GiftCard\GiftCardClient::verifyTlsForEnvironment(
+            (string) env('APP_ENV', 'production'), env('GIFT_CARD_ALLOW_INSECURE_TLS', false)
+        ),
+    );
+});
+
+$container->set(\PS\Webservice\Service\GiftCard\GiftCardSettlementService::class, function ($c) {
+    return new \PS\Webservice\Service\GiftCard\GiftCardSettlementService(
+        $c->get(\PS\Webservice\Service\GiftCard\GiftCardClient::class),
+        $c->get(\PS\Webservice\Service\Payments\CheckoutSnapshotService::class),
+        $c->get(\PS\Webservice\Service\PS\Order::class),
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class),
+        $c->get(\PS\Webservice\Service\Financial\FinancialLedgerService::class),
+        $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class),
+    );
+});
+
 $container->set(\PS\Webservice\Service\HttpService::class, function ($c) {
     $webserviceConfig = new \PS\Webservice\Domain\Object\WebserviceConfig(
         domain: env('PS_BASE_URL') . '/api',
