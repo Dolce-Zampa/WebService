@@ -52,6 +52,13 @@ sequenceDiagram
 | Job | Espressione cron | Descrizione |
 |---|---|---|
 | `app:orders:send-review-request` | `0 0 * * *` (ogni giorno a mezzanotte, Europe/Rome) | Invia mail di richiesta recensione per gli ordini consegnati, evitando invii duplicati. |
+| Manutenzione gift card | `* * * * *` (ogni minuto) | Elabora le email in coda e libera le prenotazioni scadute tramite l'API del modulo. |
+
+Per attivare il job gift card, configurare `GIFT_CARD_API_URL` (URL HTTPS del controller senza `action`) e `GIFT_CARD_MAINTENANCE_KEY` con una chiave dotata del permesso `maintenance`. Se la chiave dedicata è vuota, viene usata `GIFT_CARD_API_KEY`. La chiave viene inviata nel body JSON. Il processo scheduler deve essere in esecuzione e avere accesso alle stesse variabili; gli errori vengono ritentati al minuto successivo.
+
+Per avviare manualmente la stessa manutenzione, eseguire `php bin/console app:gift-card:maintenance`. Il comando elabora fino a 20 email già pronte e le prenotazioni scadute del negozio raggiunto dall'URL configurato; non riguarda una singola gift card. Il conteggio delle email indica quelle accettate da PrestaShop, non garantisce la consegna alla casella.
+
+Per un PrestaShop locale con certificato autofirmato, è possibile impostare `GIFT_CARD_ALLOW_INSECURE_TLS=true` con `APP_ENV=local`, `dev`, `development`, `test` o `testing`. L'opzione si applica solo al client gift card; negli altri ambienti la verifica TLS rimane attiva.
 
 ## Come aggiungere un nuovo job pianificato
 

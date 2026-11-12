@@ -269,6 +269,29 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         }
     }
 
+    public function sendStripeBankTransferInstructions(string $email, string $firstname, array $instructions): void
+    {
+        try {
+            $templateVars = ['firstname' => $firstname] + $instructions;
+            foreach ($templateVars as $key => $value) {
+                $templateVars[$key . '_html'] = htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+            $this->httpService->setUrl('/mailer?debug=true');
+            $response = $this->httpService->invoke('POST', new PayloadServiceData([
+                'subject' => 'Istruzioni per il bonifico del tuo ordine',
+                'to_email' => $email,
+                'to_name' => $firstname,
+                'template' => TemplateMail::STRIPE_BANK_TRANSFER->value,
+                'template_vars' => $templateVars,
+            ]));
+            if ($response->failed() || ($response->toArray()['success'] ?? false) !== true) {
+                throw new \RuntimeException('PrestaShop did not confirm bank transfer email delivery.');
+            }
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
     private function weeklyFinancialSummaryRows(WeeklySellerFinancialSummary $summary): string
     {
         if ($summary->currencies === []) {

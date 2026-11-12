@@ -22,4 +22,7 @@ interface MailerInterface
 
     /** @param array<int, array{name: string, quantity: int, amount: string, details?: array<int, string>}> $items */
     public function sendSellerSaleNotification(string $email, string $sellerName, string $orderReference, string $finalizedAt, array $items, string $amount, string $status): void;
+
+    /** @param array<string, string> $instructions */
+    public function sendStripeBankTransferInstructions(string $email, string $firstname, array $instructions): void;
 }

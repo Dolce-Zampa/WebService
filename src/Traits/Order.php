@@ -16,7 +16,7 @@ trait Order
     protected int $carrierId;
     private OrderService $orderService;
 
-    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = [], array $serverCart = []): OrderSession
+    public function makeOrder(OrderEntity $payload, OrderService $orderService, array $serverCartProducts = [], array $serverCart = [], bool $giftCardCheckout = false): OrderSession
     {
 
         $this->orderService = $orderService;
@@ -27,6 +27,7 @@ trait Order
             'payment_module' => $payload->payment_module ?? $serverCart['payment_module'] ?? null,
             'create_account' => $payload->create_account ?? false,
             'id_carrier' => $payload->id_carrier,
+            'is_virtual' => !empty($serverCart['products']) && ($serverCart['is_virtual'] ?? false) === true,
             'expires_at' => $payload->expires_at ?? time() + 3600,
             'recovery_attempt' => $payload->recovery_attempt ?? false,
             'customer' => CustomerEntity::create([
@@ -49,7 +50,8 @@ trait Order
         $freeShipping = $this->checkForFreeShippingCartRule($payload->getCartRules());
         if (!empty($serverCart['cart_rules'])) {
             $this->orderSession->applyCouponCart(
-                $freeShipping ? $this->withoutShipping($serverCart) : $serverCart
+                $freeShipping ? $this->withoutShipping($serverCart) : $serverCart,
+                $giftCardCheckout,
             );
         } elseif (!$freeShipping) {
             $this->orderSession->addCartShipping($serverCart);

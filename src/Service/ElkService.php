@@ -3,6 +3,7 @@ namespace PS\Webservice\Service;
 
 use Elastic\Elasticsearch\Client;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Capsule\Manager as DB;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Service\PS\Product;
 use Illuminate\Support\Collection;
@@ -13,6 +14,7 @@ class ElkService
     protected Product $productService;
     public const QUEUE_NAME = 'elk_queue';
     public const INDEX_PRODUCTS = 'dolcezampa_products';
+    public const FAILED_QUEUE = 'elk_queue_failed';
 
     public function __construct(Client $clientBuilder, Product $productService)
     {
@@ -22,41 +24,61 @@ class ElkService
 
     public function inxedProduct(int $productId): void
     {
-        // Implementation for indexing a single product in ElasticSearch
-        $product = ProductEntity::createFromId($productId, $this->productService);
-        $document = $this->buildProductDocument($product);
-        $this->client->index([
-            'index' => self::INDEX_PRODUCTS,
-            'id' => $productId,
-            'body' => $document
-        ]);
+        $this->bulkIndexProducts([$productId]);
     }
 
     public function bulkIndexProducts(array $productIds): void
     {
-        $documents = [];
-        foreach ($productIds as $productId) {
+        $body = [];
+        $failures = [];
+        $operations = 0;
+        foreach (array_unique($productIds) as $productId) {
+            $productId = (int) $productId;
+            if ($productId <= 0) {
+                continue;
+            }
             try {
-                $product = ProductEntity::createFromId($productId, $this->productService);
-                $documents[] = $this->buildProductDocument($product);
+                $product = $this->productService->getProductById($productId);
+                if ($product === null) {
+                    $body[] = ['delete' => ['_id' => (string) $productId]];
+                    $operations++;
+                    continue;
+                }
+                $document = $this->buildProductDocument($product);
+                $body[] = ['index' => ['_id' => (string) $productId]];
+                $body[] = $document;
+                $operations++;
             } catch (\Throwable $e) {
                 Log::error("ElkService: failed to build document for product ID {$productId}. Error: " . $e->getMessage());
+                $failures[] = $productId;
             }
         }
-        $this->client->bulk([
-            'index' => self::INDEX_PRODUCTS,
-            'body' => array_map(fn($doc) => ['index' => ['_id' => $doc['id'] ?? null]] + ['data' => $doc], $documents)
-        ]);
-
+        if ($body !== []) {
+            $response = $this->client->bulk(['index' => self::INDEX_PRODUCTS, 'body' => $body]);
+            if (!isset($response['items']) || count($response['items']) !== $operations) {
+                throw new \RuntimeException('Elasticsearch returned an incomplete bulk response');
+            }
+            foreach ($response['items'] ?? [] as $item) {
+                $operation = array_key_first($item);
+                $result = $item[$operation];
+                $status = (int) ($result['status'] ?? 500);
+                if ($status >= 300 && !($operation === 'delete' && $status === 404)) {
+                    $failures[] = $result['_id'] ?? 'unknown';
+                    Log::error('ElkService: bulk item failed', ['operation' => $operation, 'result' => $result]);
+                }
+            }
+        }
+        if ($failures !== []) {
+            throw new \RuntimeException('Elasticsearch indexing failed for product IDs: ' . implode(', ', $failures));
+        }
     }
 
     public function bulkIndexCategory(int $categoryId): void
     {
-        $listOfProducts = $this->productService->getProductByCategory((string) $categoryId);
-        $productIds = array_map(fn($p) => (int) $p['id'], $listOfProducts->toArray());
-        if (count($productIds) >= 1) {
-            $this->bulkIndexProducts($productIds);
-        }
+        DB::table('category_product')->where('id_category', $categoryId)
+            ->chunkById(100, function ($products): void {
+                $this->bulkIndexProducts($products->pluck('id_product')->map(fn ($id) => (int) $id)->all());
+            }, 'id_product');
     }
 
     protected function buildProductDocument(ProductEntity $product): array
@@ -66,15 +88,15 @@ class ElkService
         // --- Categorie ---
         $categories = [];
         foreach ($p['associations']['categories'] ?? [] as $cat) {
-            $categories[] = ['id' => (int) $cat['id'], 'name' => $cat['name']];
+            $categories[] = ['id' => (int) $cat['id'], 'name' => $cat['name'] ?? ''];
         }
 
         // --- Features (es. "Pelle", "made in italy") ---
         $features = [];
         foreach ($p['associations']['product_features'] ?? [] as $f) {
             $features[] = [
-                'id_feature' => (int) $f['id_feature'],
-                'value' => $f['value']
+                'id_feature' => (int) ($f['id_feature'] ?? $f['id'] ?? 0),
+                'value' => $f['value'] ?? ''
             ];
         }
 
@@ -83,7 +105,7 @@ class ElkService
         $seen = [];
         foreach ($p['associations']['combinations'] ?? [] as $combo) {
             foreach ($combo['associations'] ?? [] as $key => $attr) {
-                if (!is_array($attr) || !isset($attr['id']))
+                if (!is_array($attr) || !isset($attr['id'], $attr['id_attribute_group'], $attr['type'], $attr['name']))
                     continue;
                 $sig = $attr['id_attribute_group'] . ':' . $attr['id'];
                 if (isset($seen[$sig]))
@@ -118,18 +140,18 @@ class ElkService
             'price' => (float) $p['price'],
             'original_price' => (float) ($p['original_price'] ?? 0),
             'wholesale_price' => (float) ($p['wholesale_price'] ?? 0),
-            'quantity' => (int) $p['quantity'],
-            'weight' => (float) $p['weight'],
-            'id_category_default' => (int) $p['id_category_default'],
-            'id_manufacturer' => (int) $p['id_manufacturer'],
-            'id_supplier' => (int) $p['id_supplier'],
+            'quantity' => (int) ($p['quantity'] ?? 0),
+            'weight' => (float) ($p['weight'] ?? 0),
+            'id_category_default' => (int) ($p['id_category_default'] ?? 0),
+            'id_manufacturer' => (int) ($p['id_manufacturer'] ?? 0),
+            'id_supplier' => (int) ($p['id_supplier'] ?? 0),
             'active' => (bool) $p['active'],
             'on_sale' => (bool) ($p['on_sale'] ?? false),
             'visibility' => $p['visibility'] ?? 'both',
             'condition' => $p['condition'] ?? 'new',
             'product_type' => $p['product_type'] ?? 'simple',
-            'date_add' => $p['date_add'],
-            'date_upd' => $p['date_upd'],
+            'date_add' => $p['date_add'] ?? null,
+            'date_upd' => $p['date_upd'] ?? null,
             'categories' => $categories,
             'features' => $features,
             'attributes' => $attrs,
@@ -146,32 +168,77 @@ class ElkService
      */
     public function searchProductsByName(string $query): Collection
     {
-        $params = [
-            'index' => ElkService::INDEX_PRODUCTS,
-            'body' => [
-                'query' => [
-                    'multi_match' => [
-                        'query' => $query,
-                        'fields' => [
-                            'data.name^3',              // il nome pesa 3x
-                            'data.description_short^2', // descrizione breve 2x
-                            'data.description',         // descrizione completa
-                            'data.meta_title',
-                            'data.meta_description'
-                        ],
-                        'type' => 'phrase_prefix',
-                    ]
-                ]
-            ]
+        $fields = [
+            'name^3', 'description_short^2', 'description', 'meta_title', 'meta_description',
+            'data.name^3', 'data.description_short^2', 'data.description', 'data.meta_title', 'data.meta_description',
         ];
+        $matches = [
+            ['multi_match' => ['query' => $query, 'fields' => $fields, 'type' => 'phrase_prefix']],
+            ['multi_match' => ['query' => $query, 'fields' => $fields, 'type' => 'best_fields', 'operator' => 'and']],
+        ];
+        $compact = preg_replace('/[\s-]+/u', '', trim($query));
+        if ($compact !== null && $compact !== '' && $compact !== $query) {
+            $matches[] = ['multi_match' => ['query' => $compact, 'fields' => $fields, 'type' => 'phrase_prefix']];
+        }
+        foreach (['reference', 'ean13', 'data.reference.keyword', 'data.ean13.keyword'] as $field) {
+            $matches[] = ['term' => [$field => $query]];
+        }
+        $response = $this->client->search([
+            'index' => self::INDEX_PRODUCTS,
+            'scroll' => '2m',
+            'body' => [
+                'size' => 200,
+                'query' => ['bool' => ['should' => $matches, 'minimum_should_match' => 1]],
+            ],
+        ]);
 
-        $response = $this->client->search($params);
+        $products = [];
+        $canonical = [];
+        $scrollId = null;
+        try {
+            do {
+                $scrollId = $response['_scroll_id'] ?? $scrollId;
+                if (($response['_shards']['failed'] ?? 0) > 0 || ($response['timed_out'] ?? false)) {
+                    throw new \RuntimeException('Elasticsearch returned incomplete search results');
+                }
+                $hits = $response['hits']['hits'] ?? [];
+                foreach ($hits as $hit) {
+                    $wrapped = isset($hit['_source']['data']);
+                    $source = $hit['_source']['data'] ?? $hit['_source'] ?? [];
+                    $id = (int) ($source['id_product'] ?? 0);
+                    if ($id <= 0 || !isset($source['name'], $source['price'], $source['url'], $source['active']) || $source['name'] === '' || $source['url'] === '') {
+                        throw new \RuntimeException('Incomplete product in Elasticsearch search results');
+                    }
+                    if (!(bool) $source['active'] || ($wrapped && isset($canonical[$id]))) {
+                        continue;
+                    }
+                    $source['id'] = $id;
+                    $imageId = (int) ($source['id_default_image'] ?? 0);
+                    $source['associations']['images'] = $imageId > 0 ? [['id' => $imageId]] : [];
+                    $products[$id] = ProductEntity::fromSnapshot($source, $this->productService);
+                    if (!$wrapped) {
+                        $canonical[$id] = true;
+                    }
+                }
+                if ($hits === []) {
+                    break;
+                }
+                if (!$scrollId) {
+                    throw new \RuntimeException('Elasticsearch did not return a scroll ID');
+                }
+                $response = $this->client->scroll(['body' => ['scroll_id' => $scrollId, 'scroll' => '2m']]);
+            } while (true);
+        } finally {
+            if ($scrollId) {
+                try {
+                    $this->client->clearScroll(['body' => ['scroll_id' => [$scrollId]]]);
+                } catch (\Throwable $e) {
+                    Log::warning('ElkService: could not clear search scroll: ' . $e->getMessage());
+                }
+            }
+        }
 
-        return collect($response['hits']['hits'] ?? [])
-            ->map(fn(array $hit) => ProductEntity::createFromId(
-                $hit['_source']['data']['id_product'],
-                $this->productService
-            ));
+        return collect(array_values($products));
     }
 }
 

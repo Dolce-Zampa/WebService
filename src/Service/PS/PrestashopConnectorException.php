@@ -9,14 +9,11 @@ class PrestashopConnectorException extends \Exception {
 
     public function __construct(HttpServiceInterface  $service, ?\Throwable $previous = null) {
 
-    $message = "An error occurrend while connecting to prestashop server ---- ";
-    $details = [
-        'error' => is_null($previous) ? $service->getBody() : $previous->getMessage(),
-        'config' => $service->getConfig()->toArray(),
-        'path' => $service->getUrl(),
-    ];
+    // Explicitly discard the legacy arguments: upstream details may contain secrets.
+    unset($service, $previous);
 
-    parent::__construct($message . json_encode($details), 424, $previous);
+    // Upstream bodies, URLs, headers and nested exceptions can contain secrets.
+    parent::__construct('Unable to communicate with PrestaShop.', 424);
 
     }
 }

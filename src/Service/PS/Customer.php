@@ -77,9 +77,6 @@ class Customer extends PrestashopService implements PrestashopServiceInterface
      */
     public function updateAccount(int $customerId, array $payload): HttpServiceInterface
     {
-        if (isset($payload['customer']) && is_array($payload['customer'])) {
-            $payload = $payload['customer'];
-        }
         $payload['id_customer'] = $customerId;
         return $this->invoke('PUT', '/account?noc_cache=1', $payload, 'update customer account');
     }
@@ -94,9 +91,6 @@ class Customer extends PrestashopService implements PrestashopServiceInterface
      */
     public function updateAddresses(int $customerId, array $payload): HttpServiceInterface
     {
-        if (isset($payload['customer']) && is_array($payload['customer'])) {
-            $payload = $payload['customer'];
-        }
         $payload['id_customer'] = $customerId;
         return $this->invoke('PUT', '/addresses?noc_cache=1', $payload, 'update customer addresses');
     }

@@ -83,7 +83,7 @@ class webserviceapimailerModuleFrontController extends MlabFactoryApiBaseModuleF
                 null, // Mittente nome (default)
                 $attachments,
                 null, // SMTP personalizzato
-                $this->getTemplatePath('') // Percorso personalizzato
+                $this->templateBasePath($template)
             );
 
             if (!$mailSent) {
@@ -158,6 +158,7 @@ class webserviceapimailerModuleFrontController extends MlabFactoryApiBaseModuleF
         $path = $this->getTemplatePath('');
         
         // Verifica l'esistenza dei file HTML e TXT
+        $path = $this->templateBasePath($templateName);
         $htmlFile = $path . $this->getLanguageIso($idLang) . '/' . $templateName . '.html';
         $txtFile = $path . $this->getLanguageIso($idLang) . '/' . $templateName . '.txt';
         
@@ -172,6 +173,11 @@ class webserviceapimailerModuleFrontController extends MlabFactoryApiBaseModuleF
     {
         // Puoi personalizzare il percorso base
         return _PS_ROOT_DIR_ . '/mails/';
+    }
+
+    private function templateBasePath($template)
+    {
+        return $template === 'stripe_bank_transfer' ? dirname(__FILE__) . '/../../mails/' : $this->getTemplatePath('');
     }
 
     /**

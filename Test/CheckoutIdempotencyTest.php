@@ -60,12 +60,7 @@ final class CheckoutIdempotencyTest extends TestCase
                 $sessions[] = $session;
                 return 'https://checkout.example.test/session-' . count($sessions);
             });
-        $repository = $this->getMockBuilder(\PS\Webservice\Repositories\PrestashopRepository::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['findUserIdFromSub'])
-            ->getMock();
-        $repository->method('findUserIdFromSub')->with('customer-sub')->willReturn(5);
-        $controller = new OrderController($orderService, $gateway, $repository);
+        $controller = new OrderController($orderService, $gateway);
 
         $first = $controller->createOrder($this->request(), $this->createMock(ResponseInterface::class), []);
         $retry = $controller->createOrder($this->request(), $this->createMock(ResponseInterface::class), []);
@@ -208,7 +203,6 @@ final class CheckoutIdempotencyTest extends TestCase
             'cart_rules' => [],
             'payment_module' => 'webserviceapi',
         ]);
-        $request->method('getAttribute')->with('user_id')->willReturn('customer-sub');
 
         return $request;
     }

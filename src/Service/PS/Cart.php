@@ -82,7 +82,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if($response->failed()) {
-            Log::error("Failed to create cart for customer {$payload->getId()}, code:" . $response->getHttpCode() . ", body: " . $response->getBody());
+            Log::error('Failed to create cart', ['status' => $response->getHttpCode()]);
             throw new PrestashopConnectorException($response);
         }
 
@@ -134,7 +134,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     public function updateCart(array $product, $cartId, $customerId, bool $isGuest = false, ?string $op = 'up'): HttpServiceInterface
     {
         $type = $isGuest ? 'guest' : 'customer';
-        $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
+        $this->httpService->setUrl('/carts');
 
         //create a payload
         $products = [
@@ -172,7 +172,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if($response->failed()) {
-            Log::error("Failed to update cart for customer {$payload->getId()}, code:" . $response->getHttpCode() . ", body: " . $response->getBody());
+            Log::error('Failed to update cart', ['status' => $response->getHttpCode()]);
             throw new PrestashopConnectorException($response);
         }
 
@@ -247,7 +247,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             $codes = [''];
         }
         foreach ($codes as $code) {
-            $this->httpService->setUrl('/cart_rules?' . http_build_query(['ws_key' => $this->httpService->getConfig()->apikey]));
+            $this->httpService->setUrl('/cart_rules');
             $response = $this->httpService->invoke('POST', [
                 'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId,
                 'id_carrier' => $carrierId, 'checkout' => true, 'code' => $code,
@@ -259,7 +259,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             ]);
             $data = $response->toArray();
             if ($response->failed() || empty($data['data']['cart'])) {
-                throw new \InvalidArgumentException($data['error']['message'] ?? 'Unable to validate coupon cart.');
+                throw new \InvalidArgumentException('Unable to validate coupon cart.');
             }
         }
         return CartEntity::create($data['data']['cart'], $this);
@@ -332,7 +332,6 @@ class Cart extends Carrier implements PrestashopServiceInterface {
      */
     private function invokeCartRules(array $queryParams): ?array
     {
-        $queryParams['ws_key'] = $this->httpService->getConfig()->apikey;
         $queryString = http_build_query($queryParams);
         $this->httpService->setUrl("/cart_rules?{$queryString}");
 
@@ -344,7 +343,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if ($response->failed()) {
-            Log::error("Failed to retrieve cart rules, code:" . $response->getHttpCode() . ", body: " . $response->getBody());
+            Log::error('Failed to retrieve cart rules', ['status' => $response->getHttpCode()]);
             return null;
         }
 
@@ -356,7 +355,6 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     {
         $queryParams = [
             'id_cart' => $cartId,
-            'ws_key' => $this->httpService->getConfig()->apikey,
         ];
 
         $payload = [

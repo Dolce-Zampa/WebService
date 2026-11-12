@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Facades\AwsCognitoClient;
 use PS\Webservice\Facades\Repositories;
-use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Repositories\CustomerRepository;
+use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\PS\Customer;
@@ -22,12 +22,15 @@ class CustomerController extends Controller
     private Customer $customerService;
     protected Mailer $mailer;
     private AuthService $authService;
-    private PrestashopRepository $prestashopRepository;
+    /**
+     * @var CustomerRepository $prestashopRepository
+     */
+    private RepositoryInterface $prestashopRepository;
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
     private MailjetService $mailjetService;
     private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
 
-    public function __construct(Customer $customerService, AuthService $authService, PrestashopRepository $prestashopRepository, Mailer $mailer, MailjetService $mailjetService)
+    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer, MailjetService $mailjetService)
     {
         $this->customerService = $customerService;
         $this->authService = $authService;
@@ -272,16 +275,18 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
-        }
-
-        if ($authenticatedCustomerId !== $customerId) {
-            return response(['error' => 'Forbidden'], 403);
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
         }
 
         $serviceResponse = $this->customerService->getAccount($customerId);
+        try {
+            $getAccountFromCognito = $this->authService->check($request);
+        } catch (\Throwable $e) {
+            Log::error('Customer Cognito check failed: ' . $e->getMessage());
+            return response(['message' => 'Unable to retrieve customer account'], 401);
+        }
+
         return $this->buildServiceResponse($serviceResponse);
     }
 
@@ -292,13 +297,8 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
-        }
-
-        if ($authenticatedCustomerId !== $customerId) {
-            return response(['error' => 'Forbidden'], 403);
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
         }
 
         $payload = $this->requireArrayPayload($request->getParsedBody());
@@ -313,13 +313,8 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
-        }
-
-        if ($authenticatedCustomerId !== $customerId) {
-            return response(['error' => 'Forbidden'], 403);
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
         }
 
         $serviceResponse = $this->customerService->getAddresses($customerId);
@@ -392,13 +387,8 @@ class CustomerController extends Controller
             throw new \InvalidArgumentException('Invalid customer id', 400);
         }
 
-        $authenticatedCustomerId = $this->resolveAuthenticatedCustomerIdOrDenyFromRepository($request, $this->prestashopRepository);
-        if ($authenticatedCustomerId instanceof Response) {
-            return $authenticatedCustomerId;
-        }
-
-        if ($authenticatedCustomerId !== $customerId) {
-            return response(['error' => 'Forbidden'], 403);
+        if ($authorizationFailure = $this->authorizeCustomer($request, $customerId)) {
+            return $authorizationFailure;
         }
 
         $payload = $this->requireArrayPayload($request->getParsedBody());
@@ -484,7 +474,6 @@ class CustomerController extends Controller
 
         return true;
     }
-
 
     protected function validateLoginPayload(array $payload): bool
     {

@@ -38,15 +38,20 @@ class CachingMiddleware implements MiddlewareInterface
         unset($params['clear_cache'], $params['no_cache']);
         ksort($params);
         $queryParams = http_build_query($params);
-        $cacheKey = 'api_cache:pricing-v2:' . $uri . '?' . $queryParams;
+        $cacheVersion = $this->tag[0] === 'products' ? 'pricing-v4' : 'pricing-v3';
+        $cacheKey = 'api_cache:' . $cacheVersion . ':' . $uri . '?' . $queryParams;
         $tagEstract = $this->extractTagsFromParams($request->getQueryParams());
 
-        $catalogTags = in_array($this->tag[0], ['product-detail', 'products', 'products,promotions', 'product-reviews', 'search'], true) ? ['product-catalog'] : [];
+        $catalogTags = [];
+        if (in_array($this->tag[0], ['product-detail', 'products', 'products,promotions', 'product-reviews', 'search'], true)) {
+            $category = $uri === '/api/products' && is_string($params['category'] ?? null) ? $params['category'] : null;
+            $catalogTags = \PS\Webservice\Service\PS\CatalogCacheTags::forCategories($category);
+        }
         $this->tags(array_merge($this->tag, ['api'], $tagEstract, $catalogTags));
 
         $cacheStore = \Illuminate\Support\Facades\Cache::tags($this->tags);
         $namespace = $cacheStore->getTags()->getNamespace();
-        $revision = \PS\Webservice\Service\PS\Product::revisionFor($this->tags);
+        $revision = \PS\Webservice\Service\PS\Product::revisionFor(array_merge($this->tags, ['product-catalog-writes']));
 
         //if param have no_cache=1 skip cache
         $skipCache = false;
@@ -82,7 +87,7 @@ class CachingMiddleware implements MiddlewareInterface
         // Cache only successful responses
         if (!$skipCache && $response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
             $body = $response->getBody()->__toString();
-            if ($cacheStore->getTags()->getNamespace() === $namespace && \PS\Webservice\Service\PS\Product::revisionFor($this->tags) === $revision) {
+            if ($cacheStore->getTags()->getNamespace() === $namespace && \PS\Webservice\Service\PS\Product::revisionFor(array_merge($this->tags, ['product-catalog-writes'])) === $revision) {
                 $this->setToCache($cacheKey, $body, $this->ttl);
             }
             

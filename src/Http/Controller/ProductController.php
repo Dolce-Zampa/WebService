@@ -220,7 +220,6 @@ class ProductController extends Controller
             ], 400);
         }
 
-        // First try with Elasticsearch
         try {
             $searchResults = $this->elkService->searchProductsByName($query);
         } catch (\Throwable $e) {

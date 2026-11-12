@@ -8,6 +8,19 @@ use PS\Webservice\Service\PS\Order;
 
 final class OrderSessionMetadataTest extends TestCase
 {
+    public function test_virtual_checkout_accepts_zero_carrier_but_physical_checkout_rejects_it(): void
+    {
+        $service = $this->createMock(Order::class);
+        $customer = CustomerEntity::create(['email' => 'customer@example.com', 'firstname' => 'Test', 'lastname' => 'Customer'], $service);
+        $data = ['cart_id' => 42, 'id_carrier' => 0, 'is_virtual' => true, 'customer' => $customer];
+        $session = OrderSession::create($data, $service);
+        self::assertSame('0', $session->metadata['id_carrier']);
+        self::assertSame('true', $session->metadata['is_virtual']);
+        $data['is_virtual'] = false;
+        $this->expectException(\InvalidArgumentException::class);
+        OrderSession::create($data, $service);
+    }
+
     public function test_metadata_is_string_only_and_excludes_customer_email(): void
     {
         $service = $this->createMock(Order::class);

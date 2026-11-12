@@ -25,20 +25,32 @@ class ScheduledPromotionCacheScan
                 throw new RuntimeException('Unable to read database time.');
             }
             $checkpointKey = 'MLABFACTORYAPI_PROMOTION_CACHE_CHECKPOINT';
+            $specificPriceIdKey = 'MLABFACTORYAPI_PROMOTION_CACHE_SPECIFIC_PRICE_ID';
+            $lastSpecificPriceId = (int) Configuration::getGlobalValue($specificPriceIdKey);
+            // Capture the high-water mark before scanning. Rows inserted after this
+            // read have a larger ID and will be picked up by the next run.
+            $specificPriceIdLimit = (int) $db->getValue('SELECT COALESCE(MAX(`id_specific_price`), 0) FROM `' . _DB_PREFIX_ . 'specific_price`');
             $count = ScheduledPromotionCache::run(
                 $now,
                 function () use ($checkpointKey) { return Configuration::getGlobalValue($checkpointKey); },
-                function ($previous, $now) use ($db) {
+                function ($previous, $now) use ($db, $lastSpecificPriceId, $specificPriceIdLimit) {
                     $lowerFrom = $previous ? " AND `from` >= '" . pSQL($previous) . "'" : '';
                     $lowerTo = $previous ? " AND `to` >= '" . pSQL($previous) . "'" : '';
                     // The end date is inclusive in PrestaShop, so process it only after that second.
                     $rows = $db->executeS('SELECT DISTINCT `id_product` FROM `' . _DB_PREFIX_ . 'specific_price`'
-                        . " WHERE `id_product` > 0 AND ((`from` != '0000-00-00 00:00:00' AND `from` <= '" . pSQL($now) . "'" . $lowerFrom . ')'
-                        . " OR (`to` != '0000-00-00 00:00:00' AND `to` < '" . pSQL($now) . "'" . $lowerTo . '))');
+                        . " WHERE `id_product` > 0 AND (((YEAR(`from`) > 0 AND `from` <= '" . pSQL($now) . "'" . $lowerFrom . ')'
+                        . " OR (YEAR(`to`) > 0 AND `to` < '" . pSQL($now) . "'" . $lowerTo . '))'
+                        . " OR (`id_specific_price` > " . (int) $lastSpecificPriceId
+                        . " AND `id_specific_price` <= " . (int) $specificPriceIdLimit
+                        . " AND YEAR(`from`) > 0 AND `from` <= '" . pSQL($now) . "'"
+                        . " AND (YEAR(`to`) = 0 OR `to` >= '" . pSQL($now) . "')))");
                     return $rows === false ? false : array_column($rows, 'id_product');
                 },
                 function ($id) use ($module) { return $module->clearScheduledPromotionCache($id); },
-                function ($time) use ($checkpointKey) { return Configuration::updateGlobalValue($checkpointKey, $time); }
+                function ($time) use ($checkpointKey, $specificPriceIdKey, $specificPriceIdLimit) {
+                    return Configuration::updateGlobalValue($checkpointKey, $time)
+                        && Configuration::updateGlobalValue($specificPriceIdKey, $specificPriceIdLimit);
+                }
             );
             return $count;
         } finally {

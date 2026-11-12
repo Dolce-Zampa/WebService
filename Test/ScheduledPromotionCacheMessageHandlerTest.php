@@ -24,7 +24,7 @@ final class ScheduledPromotionCacheMessageHandlerTest extends TestCase
         self::assertSame('POST', $request->getMethod());
         self::assertSame('/index.php', $request->getUri()->getPath());
         parse_str($request->getUri()->getQuery(), $query);
-        self::assertSame(['fc' => 'module', 'module' => 'webserviceapi', 'controller' => 'scheduledpromotioncache'], $query);
+        self::assertSame(['fc' => 'module', 'module' => 'webserviceapi', 'controller' => 'scheduledpromotioncache', 'ws_key' => $request->getHeaderLine('X-WS-Key')], $query);
         self::assertSame('secret-key', $request->getHeaderLine('X-WS-Key'));
     }
 }

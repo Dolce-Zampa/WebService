@@ -70,6 +70,21 @@ final class ProductPromotionDatesTest extends TestCase
         $this->assertSame([], $service->forProduct(37, new DateTimeImmutable('2026-11-09 12:00:00', new DateTimeZone('Europe/Rome'))));
     }
 
+    public function test_batch_returns_separate_active_promotions_for_each_product(): void
+    {
+        $now = new DateTimeImmutable('2026-11-20 12:00:00', new DateTimeZone('Europe/Rome'));
+        DB::table('specific_price')->insert([
+            ['id_product' => 245, 'id_product_attribute' => 2357, 'reduction' => 0.2, 'from' => '2026-11-19 00:00:00', 'to' => '0000-00-00 00:00:00'],
+            ['id_product' => 261, 'id_product_attribute' => 2884, 'reduction' => 0.5, 'from' => '2026-11-19 00:00:00', 'to' => '0000-00-00 00:00:00'],
+            ['id_product' => 262, 'id_product_attribute' => 2885, 'reduction' => 0.5, 'from' => '2026-11-19 00:00:00', 'to' => '0000-00-00 00:00:00'],
+        ]);
+        $batch = (new ProductPromotionDates())->forProducts([245, 261], $now);
+        $this->assertEqualsCanonicalizing([245, 261], array_keys($batch));
+        $this->assertArrayHasKey(2357, $batch[245]);
+        $this->assertArrayHasKey(2884, $batch[261]);
+        $this->assertSame([], (new ProductPromotionDates())->forProducts([], $now));
+    }
+
     public function test_product_detail_includes_dates_for_the_selected_combination(): void
     {
         $container = new Illuminate\Container\Container();
@@ -89,10 +104,18 @@ final class ProductPromotionDatesTest extends TestCase
         $service = $this->getMockBuilder(PS\Webservice\Service\PS\Product::class)
             ->setConstructorArgs([$http])->onlyMethods(['getProductById'])->getMock();
         $service->method('getProductById')->willReturn(PS\Webservice\Domain\Entities\ProductEntity::fromSnapshot([
-            'id' => 7, 'price' => 10, 'associations' => ['combinations' => [['id' => 9]]],
+            'id' => 7, 'price' => 10, 'id_default_combination' => 8,
+            'associations' => ['combinations' => [
+                ['id' => 9, 'price' => '2', 'ecotax' => '0', 'original_price' => '8'],
+                ['id' => 10, 'price' => '2', 'ecotax' => '0', 'original_price' => '12'],
+            ]],
         ], $service, true));
         $data = $service->getCompleteProductById(7)->toArray();
         $this->assertNull($data['promotion']);
+        $this->assertSame(9, $data['listing_promotion']['combination_id']);
+        $this->assertSame(12.0, $data['listing_promotion']['regular_price']);
+        $this->assertSame(8.0, $data['listing_promotion']['sale_price']);
+        $this->assertTrue($data['listing_promotion']['multiple_combinations']);
         $this->assertSame($now->setTime(0, 0)->format(DateTimeInterface::ATOM), $data['associations']['combinations'][0]['promotion']['start']);
         $this->assertSame($data['associations']['combinations'][0]['promotion']['end'], $data['associations']['combinations'][0]['promotion_end']);
         Illuminate\Support\Facades\Facade::clearResolvedInstances();

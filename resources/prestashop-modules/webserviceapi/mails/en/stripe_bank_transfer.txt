@@ -1,0 +1,14 @@
+Hello {firstname},
+
+We received your order and are waiting for your bank transfer. Please use the details provided by Stripe:
+
+Amount due: {amount}
+Beneficiary: {beneficiary}
+IBAN: {iban}
+BIC: {bic}
+Reference: {reference}
+
+Please include the reference if provided, so Stripe can match your transfer. If you have already sent it, please disregard this email. We will update your order once Stripe confirms receipt.
+
+Thank you,
+Dolce & Zampa

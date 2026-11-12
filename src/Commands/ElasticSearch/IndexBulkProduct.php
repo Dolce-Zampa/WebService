@@ -8,6 +8,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
@@ -22,28 +23,32 @@ class IndexBulkProduct extends IndexElk
     protected function configure(): void
     {
         $this->setDescription(self::$defaultDescription)
-        ->addOption('all', null, InputArgument::OPTIONAL, 'Index all products', false)
-        ->addOption('chunk', null, InputArgument::OPTIONAL, 'Chunk size for bulk indexing', 100)
+        ->addOption('all', null, InputOption::VALUE_NONE, 'Index all active products')
+        ->addOption('chunk', null, InputOption::VALUE_REQUIRED, 'Chunk size for bulk indexing', 100)
         ->addArgument('product_ids', InputArgument::OPTIONAL, 'IDs of the products to index')
         ->addArgument('category_id', InputArgument::OPTIONAL, 'ID of the category to index');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $productIds = array_map('intval', explode(',', $input->getArgument('product_ids') ?? ''));
+        $productIds = array_values(array_filter(array_map('intval', explode(',', $input->getArgument('product_ids') ?? '')), static fn (int $id): bool => $id > 0));
         $limit = (int) $input->getOption('chunk');
+        if ($limit <= 0) {
+            $output->writeln('<error>Chunk size must be positive.</error>');
+            return Command::INVALID;
+        }
         $indexAll = (bool) $input->getOption('all');
 
         if ($indexAll) {
             // get products id
-            Product::where("active", 1)->chunk($limit, function ($products) {
+            Product::where("active", 1)->chunkById($limit, function ($products) {
                 $productIds = [];
                 foreach ($products as $product) {
                     $productIds[] = (int) $product->id_product;
                 }
                 Log::info("IndexBulkProduct: queued products with IDs: " . json_encode($productIds));
                 $this->queue(['product_ids' => $productIds]);
-            });
+            }, 'id_product');
             return Command::SUCCESS;
         }
 

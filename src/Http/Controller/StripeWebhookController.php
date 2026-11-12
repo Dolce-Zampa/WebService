@@ -56,6 +56,8 @@ class StripeWebhookController extends OrderController
         ?SellerSaleNotificationService $sellerSaleNotifications = null,
         ?StripeConnectService $stripeConnect = null,
         ?CheckoutSnapshotService $checkoutSnapshots = null,
+        private readonly ?\Closure $giftCardSettlementFactory = null,
+        private readonly ?\Closure $giftCardClientFactory = null,
     )
     {
         $this->orderService = $orderService;
@@ -113,13 +115,16 @@ class StripeWebhookController extends OrderController
         if (in_array($event->type, ['checkout.session.completed', 'checkout.session.async_payment_succeeded'], true)) {
             try {
                 if (!$this->isPaidCheckoutSession($event->data->object)) {
-                    // `checkout.session.completed` is also delivered for
-                    // delayed payment methods. In that case Stripe has
-                    // accepted the Checkout flow, but has not collected the
-                    // money yet. The later async success event is the only
-                    // event that may create the order or seller allocations.
+                    if ($event->type === 'checkout.session.completed'
+                        && !($this->promotionService !== null && $this->promotionService->isPromotionCheckoutSession($event->data->object))
+                        && $this->isBankTransferCheckoutSession($event->data->object)) {
+                        $cartId = $this->handleCheckoutSessionCompleted($event->data->object, true);
+                        if ($cartId !== null) {
+                            $this->sendBankTransferInstructions($event->data->object, $cartId);
+                        }
+                    }
                     $this->recordFinancialWebhook($event);
-                    Log::info('Stripe webhook: checkout payment is not yet paid; confirmation deferred.', [
+                    Log::info('Stripe webhook: checkout payment is not yet paid.', [
                         'event_type' => (string) $event->type,
                         'event_id' => (string) ($event->id ?? ''),
                     ]);
@@ -131,11 +136,28 @@ class StripeWebhookController extends OrderController
                     $this->promotionService->activatePromotionFromStripeSession($event->data->object);
                     return response(['received' => true], 200);
                 }
-                // Persist Connect allocation intent before calling PrestaShop.
-                // Its API can time out after accepting the order, and a later
-                // retry must still be able to allocate the verified payment.
-                $this->queueStripeConnectTransferAllocation($event->data->object, $event);
-                $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                $giftSnapshot = $this->checkoutSnapshotForSession($event->data->object);
+                $isGiftCheckout = isset($giftSnapshot['payload']['gift_card']);
+                if ($isGiftCheckout) {
+                    if ($this->giftCardSettlementFactory === null || $this->checkoutSnapshots === null) {
+                        throw new \RuntimeException('Gift card settlement is unavailable.');
+                    }
+                    $this->checkoutSnapshots->markGiftCardPaymentVerified($giftSnapshot['id'], $event->data->object);
+                    ($this->giftCardSettlementFactory)()->settle($giftSnapshot['id']);
+                    $cartId = (int) $giftSnapshot['payload']['cart_id'];
+                } else {
+                    // Persist Connect allocation intent before calling PrestaShop.
+                    $this->queueStripeConnectTransferAllocation($event->data->object, $event);
+                    $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                }
+                if ($cartId !== null && $event->type === 'checkout.session.async_payment_succeeded'
+                    && $this->isBankTransferCheckoutSession($event->data->object)) {
+                    $paymentIntentId = $this->stripeTransactionId($event->data->object, (string) $event->type, null);
+                    if ($paymentIntentId === null) {
+                        throw new \RuntimeException('Paid checkout is missing its payment intent.');
+                    }
+                    $this->orderService->settleStripeBankTransfer($cartId, $paymentIntentId);
+                }
                 if ($cartId !== null && $this->sellerSaleNotifications !== null) {
                     // This happens only after Stripe's signature has been
                     // checked and PrestaShop has accepted the confirmation.
@@ -169,7 +191,9 @@ class StripeWebhookController extends OrderController
                 ]);
             }
             try {
-                $this->createStripeConnectTransfers($event->data->object, $event);
+                if (!$isGiftCheckout) {
+                    $this->createStripeConnectTransfers($event->data->object, $event);
+                }
             } catch (\Throwable $e) {
                 Log::critical('Stripe webhook: failed to create Stripe Connect transfers after checkout confirmation.', [
                     'event_type' => (string) $event->type,
@@ -210,10 +234,20 @@ class StripeWebhookController extends OrderController
 
         if( $event->type === 'checkout.session.expired') {
             try {
-                $this->handleCheckoutSessionExpired($event->data->object);
+                $snapshot = $this->checkoutSnapshotForSession($event->data->object);
+                if (isset($snapshot['payload']['gift_card'])) {
+                    if ($this->giftCardClientFactory === null) {
+                        throw new \RuntimeException('Gift card service is unavailable.');
+                    }
+                    $reservationId = $snapshot['payload']['gift_card']['reservation_id'];
+                    $this->checkoutSnapshots->markGiftCardReleased($snapshot['id']);
+                    ($this->giftCardClientFactory)()->release($reservationId, 'expired:' . $reservationId);
+                } else {
+                    $this->handleCheckoutSessionExpired($event->data->object);
+                }
                 $this->recordFinancialWebhook($event);
-            } catch (\Exception $e) {
-                Log::critical('Stripe webhook: failed to process checkout.session.expired: ' . $e->getMessage());
+            } catch (\Throwable $e) {
+                Log::critical('Stripe webhook: failed to process checkout.session.expired.', ['exception_type' => get_class($e)]);
                 return response(['error' => 'Failed to process event'], 500);
             }
         }
@@ -583,6 +617,74 @@ class StripeWebhookController extends OrderController
         return ($session->toArray()['payment_status'] ?? null) === 'paid';
     }
 
+    protected function isBankTransferCheckoutSession(\Stripe\StripeObject $session): bool
+    {
+        $data = $session->toArray();
+        $intentId = $this->stripeOptionalIdentifier($data['payment_intent'] ?? null);
+        if ($intentId === null || !preg_match('/^pi_[A-Za-z0-9]+$/D', $intentId)) {
+            throw new \RuntimeException('Unpaid checkout is missing its payment intent.');
+        }
+        $intent = $this->retrieveCheckoutPaymentIntent($intentId);
+        $intentData = $intent->toArray();
+        $method = $intentData['payment_method'] ?? null;
+        return (is_array($method) && ($method['type'] ?? null) === 'customer_balance')
+            || ($intentData['next_action']['type'] ?? null) === 'display_bank_transfer_instructions';
+    }
+
+    protected function retrieveCheckoutPaymentIntent(string $intentId): \Stripe\PaymentIntent
+    {
+        return \Stripe\PaymentIntent::retrieve(['id' => $intentId, 'expand' => ['payment_method']]);
+    }
+
+    protected function sendBankTransferInstructions(\Stripe\StripeObject $session, int $cartId): void
+    {
+        $sessionId = $this->checkoutSessionId($session);
+        $marker = 'stripe:bank-instructions:sent:' . hash('sha256', $sessionId);
+        $this->withCheckoutConfirmationLock($sessionId, function () use ($session, $cartId, $marker): void {
+            if (Cache::has($marker)) {
+                return;
+            }
+            $sessionData = $session->toArray();
+            $intentId = $this->stripeIdentifier($sessionData['payment_intent'] ?? null, 'payment intent');
+            $intent = $this->retrieveCheckoutPaymentIntent($intentId)->toArray();
+            if (($intent['status'] ?? null) === 'succeeded') {
+                return;
+            }
+            $details = $intent['next_action']['display_bank_transfer_instructions'] ?? null;
+            if (!is_array($details) || ($details['currency'] ?? null) !== 'eur') {
+                throw new \RuntimeException('Stripe bank transfer instructions are unavailable.');
+            }
+            $ibanDetails = null;
+            foreach ($details['financial_addresses'] ?? [] as $address) {
+                if (($address['type'] ?? null) === 'iban' && is_array($address['iban'] ?? null)) {
+                    $ibanDetails = $address['iban'];
+                    break;
+                }
+            }
+            $remaining = $details['amount_remaining'] ?? null;
+            if (!is_array($ibanDetails) || empty($ibanDetails['iban']) || empty($ibanDetails['account_holder_name'])
+                || !is_int($remaining) || $remaining <= 0) {
+                throw new \RuntimeException('Stripe bank transfer instructions are incomplete.');
+            }
+            $snapshot = $this->checkoutSnapshotForSession($session);
+            $metadata = $this->stripeMetadata($sessionData);
+            $customer = $snapshot !== null
+                ? $this->getCheckoutCustomerFromSnapshot($snapshot['payload'], $session)
+                : $this->getCheckoutCustomer($cartId, $this->positiveInteger($metadata['id_customer'] ?? null), $this->positiveInteger($metadata['id_guest'] ?? null), $session);
+            if (!filter_var($customer->email ?? null, FILTER_VALIDATE_EMAIL)) {
+                throw new \RuntimeException('Checkout customer email is invalid.');
+            }
+            $this->mailer->sendStripeBankTransferInstructions($customer->email, $customer->firstname, [
+                'amount' => number_format($remaining / 100, 2, ',', '.') . ' EUR',
+                'beneficiary' => (string) $ibanDetails['account_holder_name'],
+                'iban' => (string) $ibanDetails['iban'],
+                'bic' => (string) ($ibanDetails['bic'] ?? '-'),
+                'reference' => (string) ($details['reference'] ?? '-'),
+            ]);
+            Cache::put($marker, true, (new DateTimeImmutable('now'))->modify('+' . self::CHECKOUT_CONFIRMATION_MARKER_MINUTES . ' minutes'));
+        });
+    }
+
     private function financialTransactionByProviderTransaction(string $providerTransactionId): ?object
     {
         return $this->financialLedger?->findByProviderTransaction('stripe', $providerTransactionId);
@@ -942,13 +1044,12 @@ class StripeWebhookController extends OrderController
     }
 
     /**
-     * Confirms an order for a Checkout Session whose payment was already
-     * verified by handleWebhook(). The session-level lock and marker make a
-     * Stripe retry or the later async success event harmless.
+     * Creates the order after a verified payment, or in the pending bank
+     * transfer state after verification of the selected payment method.
      */
-    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session): ?int
+    public function handleCheckoutSessionCompleted(\Stripe\StripeObject $session, bool $bankTransferPending = false): ?int
     {
-        if (!$this->isPaidCheckoutSession($session)) {
+        if (!$this->isPaidCheckoutSession($session) && !$bankTransferPending) {
             Log::info('Stripe webhook: unpaid Checkout Session cannot be confirmed.', [
                 'checkout_session_id' => (string) ($session->id ?? ''),
             ]);
@@ -969,7 +1070,8 @@ class StripeWebhookController extends OrderController
             ? $this->positiveInteger($metadata['id_guest'] ?? null)
             : $this->positiveInteger($snapshotPayload['guest_id'] ?? null);
         $carrierId = $snapshotPayload === null
-            ? filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            ? (($metadata['is_virtual'] ?? '') === 'true' && ($metadata['id_carrier'] ?? '') === '0'
+                ? 0 : filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]))
             : (int) $snapshotPayload['carrier_id'];
         $couponCode = $snapshotPayload === null
             ? ($this->stripeOptionalIdentifier($metadata['coupon_code'] ?? null))
@@ -1016,6 +1118,7 @@ class StripeWebhookController extends OrderController
             $metadata,
             $snapshot,
             $snapshotPayload,
+            $bankTransferPending,
         ): int {
             if ($this->checkoutConfirmationIsRecorded($checkoutSessionId)) {
                 Log::info('Stripe webhook: duplicate paid checkout ignored after confirmation.', [
@@ -1053,7 +1156,13 @@ class StripeWebhookController extends OrderController
             $firstname = $customerDetails->firstname;
             $lastname = $customerDetails->lastname;
 
-            if ($snapshot !== null) {
+            if ($bankTransferPending) {
+                $this->orderService->confirmSessionOrder(
+                    $cartId, $customerId, $guestId, $carrierId, $couponCode,
+                    $email, $firstname, $lastname, $customerDetails, $amountPaid,
+                    'Bonifico bancario (Stripe)', $snapshot['id'] ?? null, true,
+                );
+            } elseif ($snapshot !== null) {
                 $this->orderService->confirmSessionOrder(
                     $cartId,
                     $customerId,
@@ -1376,6 +1485,7 @@ class StripeWebhookController extends OrderController
                     'id_customer' => $cachedMetadata['id_customer'] ?? null,
                     'id_guest' => $cachedMetadata['id_guest'] ?? null,
                     'id_carrier' => $cachedMetadata['id_carrier'] ?? $carrierId,
+                    'is_virtual' => ($cachedMetadata['is_virtual'] ?? '') === 'true',
                     'recovery_attempt' => $cachedMetadata['recovery_attempt'] ?? false,
                     'customer' => $cachedSession['customer'] ?? null,
                 ];

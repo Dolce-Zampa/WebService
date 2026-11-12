@@ -87,9 +87,11 @@ class ConfirmOrderSession implements ObjectInterface
             'id_guest' => $data['id_guest'],
             'create_account' => (bool) ($data['create_account'] ?? false),
             'newsletter' => (bool) ($data['newsletter'] ?? false),
-            'id_carrier' => isset($data['id_carrier']) ? (int) $data['id_carrier'] : null,
+            'id_carrier' => isset($data['id_carrier']) ? (int) $data['id_carrier'] : 14,
+            'is_virtual' => ($data['is_virtual'] ?? false) === true,
             'coupon_code' => $data['coupon_code'] ?? null,
             'checkout_snapshot_id' => $this->snapshotId($data['checkout_snapshot_id'] ?? null),
+            'stripe_bank_transfer_pending' => (bool) ($data['stripe_bank_transfer_pending'] ?? false),
         ];
     }
 
@@ -109,9 +111,10 @@ class ConfirmOrderSession implements ObjectInterface
             $errors[] = 'id_order_state is required and must be greater than 0';
         }
 
-        if ($this->data['id_carrier'] === null || $this->data['id_carrier'] <= 0) {
+        if ($this->data['id_carrier'] < 0 || ($this->data['id_carrier'] === 0 && !$this->data['is_virtual'])) {
             $errors[] = 'id_carrier is required and must be greater than 0';
         }
+      
         if (!is_string($this->data['payment_module'])
             || !preg_match('/^[a-z][a-z0-9_-]*$/i', $this->data['payment_module'])) {
             $errors[] = 'payment_module must be a configured module name';

@@ -1,0 +1,15 @@
+Ciao {firstname},
+
+Il tuo ordine è stato ricevuto ed è in attesa del bonifico. Per completare il pagamento usa i dati forniti da Stripe:
+
+Importo da versare: {amount}
+Beneficiario: {beneficiary}
+IBAN: {iban}
+BIC: {bic}
+Riferimento / causale: {reference}
+
+Inserisci il riferimento indicato, se presente: aiuta Stripe ad associare il bonifico al pagamento. Se hai già effettuato il bonifico, puoi ignorare questa email.
+Quando Stripe confermerà la ricezione, aggiorneremo lo stato dell’ordine.
+
+Grazie,
+Dolce & Zampa
