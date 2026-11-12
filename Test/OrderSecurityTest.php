@@ -296,6 +296,33 @@ final class OrderSecurityTest extends TestCase
 
     // -------------------------------------------------------- createOrder ownership
 
+    public function test_create_order_does_not_ignore_a_gift_card_and_create_a_full_price_checkout(): void
+    {
+        $orderService = $this->getMockBuilder(Order::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId'])
+            ->getMock();
+        $orderService->expects($this->never())->method('getCartFromId');
+
+        $paymentService = $this->createMock(PaymentGatewayInterface::class);
+        $paymentService->expects($this->never())->method('createPaymentSession');
+
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([
+            'id_cart' => 10,
+            'id_customer' => 5,
+            'id_carrier' => 2,
+            'gift_card' => 'sensitive-gift-card-code',
+        ]);
+
+        $result = $this->createOrderController($orderService, $paymentService)
+            ->createOrder($request, $this->createMock(ResponseInterface::class), []);
+
+        $this->assertSame(503, $result->getStatusCode());
+        $this->assertSame(['code' => 'temporarily_unavailable'], json_decode((string) $result->getBody(), true)['data']['error']);
+        $this->assertStringNotContainsString('sensitive-gift-card-code', (string) $result->getBody());
+    }
+
     public function test_create_order_returns_403_when_no_owner_id_provided(): void
     {
         $orderService = $this->getMockBuilder(Order::class)
@@ -354,7 +381,8 @@ final class OrderSecurityTest extends TestCase
             ->disableOriginalConstructor()
             ->onlyMethods(['getCartFromId'])
             ->getMock();
-        $orderService->expects($this->never())->method('getCartFromId');
+        $orderService->expects($this->once())->method('getCartFromId')
+            ->willReturn(CartEntity::create(['id' => 10, 'products' => [['id_product' => 1]], 'is_virtual' => false], $orderService));
 
         $controller = $this->createOrderController($orderService);
         $request = $this->createMock(ServerRequestInterface::class);

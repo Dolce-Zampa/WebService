@@ -376,7 +376,8 @@ final class StripeWebhookControllerTest extends TestCase
         $this->assertSame(200, $result->getStatusCode());
     }
 
-    public function test_checkout_snapshot_drives_confirmation_when_stripe_metadata_is_stale(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('snapshotCarrierCases')]
+    public function test_checkout_snapshot_drives_confirmation_when_stripe_metadata_is_stale(int $carrierId, bool $virtual): void
     {
         $previousAppKey = getenv('APP_KEY');
         putenv('APP_KEY=webhook-snapshot-test-key');
@@ -408,7 +409,7 @@ final class StripeWebhookControllerTest extends TestCase
 
             $orderService = $this->createMock(Order::class);
             $checkout = \PS\Webservice\Domain\Object\OrderSession::create([
-                'cart_id' => 42, 'id_customer' => 7, 'id_carrier' => 3, 'payment_module' => 'webserviceapi',
+                'cart_id' => 42, 'id_customer' => 7, 'id_carrier' => $carrierId, 'is_virtual' => $virtual, 'payment_module' => 'webserviceapi',
                 'customer' => \PS\Webservice\Domain\Entities\CustomerEntity::create([
                     'email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Snapshot',
                     'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'country' => 'IT'],
@@ -417,13 +418,13 @@ final class StripeWebhookControllerTest extends TestCase
             $checkout->addCartLineItem(['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '50.00', 'quantity' => 1]);
             $snapshotService = new CheckoutSnapshotService($db);
             $snapshot = $snapshotService->create($checkout, [
-                'currency_iso' => 'EUR',
+                'currency_iso' => 'EUR', 'is_virtual' => $virtual,
                 'products' => [['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '50.00', 'quantity' => 1]],
                 'totals' => ['shipping_tax_incl' => '0.00'],
             ]);
 
             $orderService->expects($this->once())->method('confirmSessionOrder')->with(
-                42, 7, null, 3, null, 'buyer@example.test', 'Buyer', 'Snapshot',
+                42, 7, null, $carrierId, null, 'buyer@example.test', 'Buyer', 'Snapshot',
                 $this->isType('object'), 50.0, 'Online payment', $snapshot['id'],
             );
             $controller = new class(
@@ -461,6 +462,11 @@ final class StripeWebhookControllerTest extends TestCase
                 $_ENV['APP_KEY'] = $previousAppKey;
             }
         }
+    }
+
+    public static function snapshotCarrierCases(): array
+    {
+        return ['physical' => [3, false], 'virtual' => [0, true]];
     }
 
     public function test_logs_ledger_failure_without_retrying_a_confirmed_checkout(): void

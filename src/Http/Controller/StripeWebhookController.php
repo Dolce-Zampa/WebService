@@ -56,6 +56,8 @@ class StripeWebhookController extends OrderController
         ?SellerSaleNotificationService $sellerSaleNotifications = null,
         ?StripeConnectService $stripeConnect = null,
         ?CheckoutSnapshotService $checkoutSnapshots = null,
+        private readonly ?\Closure $giftCardSettlementFactory = null,
+        private readonly ?\Closure $giftCardClientFactory = null,
     )
     {
         $this->orderService = $orderService;
@@ -134,11 +136,20 @@ class StripeWebhookController extends OrderController
                     $this->promotionService->activatePromotionFromStripeSession($event->data->object);
                     return response(['received' => true], 200);
                 }
-                // Persist Connect allocation intent before calling PrestaShop.
-                // Its API can time out after accepting the order, and a later
-                // retry must still be able to allocate the verified payment.
-                $this->queueStripeConnectTransferAllocation($event->data->object, $event);
-                $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                $giftSnapshot = $this->checkoutSnapshotForSession($event->data->object);
+                $isGiftCheckout = isset($giftSnapshot['payload']['gift_card']);
+                if ($isGiftCheckout) {
+                    if ($this->giftCardSettlementFactory === null || $this->checkoutSnapshots === null) {
+                        throw new \RuntimeException('Gift card settlement is unavailable.');
+                    }
+                    $this->checkoutSnapshots->markGiftCardPaymentVerified($giftSnapshot['id'], $event->data->object);
+                    ($this->giftCardSettlementFactory)()->settle($giftSnapshot['id']);
+                    $cartId = (int) $giftSnapshot['payload']['cart_id'];
+                } else {
+                    // Persist Connect allocation intent before calling PrestaShop.
+                    $this->queueStripeConnectTransferAllocation($event->data->object, $event);
+                    $cartId = $this->handleCheckoutSessionCompleted($event->data->object);
+                }
                 if ($cartId !== null && $event->type === 'checkout.session.async_payment_succeeded'
                     && $this->isBankTransferCheckoutSession($event->data->object)) {
                     $paymentIntentId = $this->stripeTransactionId($event->data->object, (string) $event->type, null);
@@ -180,7 +191,9 @@ class StripeWebhookController extends OrderController
                 ]);
             }
             try {
-                $this->createStripeConnectTransfers($event->data->object, $event);
+                if (!$isGiftCheckout) {
+                    $this->createStripeConnectTransfers($event->data->object, $event);
+                }
             } catch (\Throwable $e) {
                 Log::critical('Stripe webhook: failed to create Stripe Connect transfers after checkout confirmation.', [
                     'event_type' => (string) $event->type,
@@ -221,10 +234,20 @@ class StripeWebhookController extends OrderController
 
         if( $event->type === 'checkout.session.expired') {
             try {
-                $this->handleCheckoutSessionExpired($event->data->object);
+                $snapshot = $this->checkoutSnapshotForSession($event->data->object);
+                if (isset($snapshot['payload']['gift_card'])) {
+                    if ($this->giftCardClientFactory === null) {
+                        throw new \RuntimeException('Gift card service is unavailable.');
+                    }
+                    $reservationId = $snapshot['payload']['gift_card']['reservation_id'];
+                    $this->checkoutSnapshots->markGiftCardReleased($snapshot['id']);
+                    ($this->giftCardClientFactory)()->release($reservationId, 'expired:' . $reservationId);
+                } else {
+                    $this->handleCheckoutSessionExpired($event->data->object);
+                }
                 $this->recordFinancialWebhook($event);
-            } catch (\Exception $e) {
-                Log::critical('Stripe webhook: failed to process checkout.session.expired: ' . $e->getMessage());
+            } catch (\Throwable $e) {
+                Log::critical('Stripe webhook: failed to process checkout.session.expired.', ['exception_type' => get_class($e)]);
                 return response(['error' => 'Failed to process event'], 500);
             }
         }
@@ -1047,7 +1070,8 @@ class StripeWebhookController extends OrderController
             ? $this->positiveInteger($metadata['id_guest'] ?? null)
             : $this->positiveInteger($snapshotPayload['guest_id'] ?? null);
         $carrierId = $snapshotPayload === null
-            ? filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            ? (($metadata['is_virtual'] ?? '') === 'true' && ($metadata['id_carrier'] ?? '') === '0'
+                ? 0 : filter_var($metadata['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]))
             : (int) $snapshotPayload['carrier_id'];
         $couponCode = $snapshotPayload === null
             ? ($this->stripeOptionalIdentifier($metadata['coupon_code'] ?? null))
@@ -1461,6 +1485,7 @@ class StripeWebhookController extends OrderController
                     'id_customer' => $cachedMetadata['id_customer'] ?? null,
                     'id_guest' => $cachedMetadata['id_guest'] ?? null,
                     'id_carrier' => $cachedMetadata['id_carrier'] ?? $carrierId,
+                    'is_virtual' => ($cachedMetadata['is_virtual'] ?? '') === 'true',
                     'recovery_attempt' => $cachedMetadata['recovery_attempt'] ?? false,
                     'customer' => $cachedSession['customer'] ?? null,
                 ];

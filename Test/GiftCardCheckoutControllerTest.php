@@ -1,0 +1,167 @@
+<?php
+declare(strict_types=1);
+
+use GuzzleHttp\Client;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response as GuzzleResponse;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
+use Illuminate\Database\Capsule\Manager;
+use Illuminate\Support\Facades\Facade;
+use PHPUnit\Framework\TestCase;
+use PS\Webservice\Domain\Entities\CartEntity;
+use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Http\Controller\OrderController;
+use PS\Webservice\Service\GiftCard\GiftCardCheckoutRateLimiter;
+use PS\Webservice\Service\GiftCard\GiftCardClient;
+use PS\Webservice\Service\Payments\CheckoutSnapshotService;
+use PS\Webservice\Service\Payments\PaymentGatewayInterface;
+use PS\Webservice\Service\PS\Order;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+
+final class GiftCardCheckoutControllerTest extends TestCase
+{
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function test_registered_customer_cannot_redeem_using_an_unverified_identity(): void
+    {
+        $this->configureGiftCardEnvironment();
+        $orders = $this->createMock(Order::class);
+        $orders->expects(self::never())->method('getCartFromId');
+        $payment = $this->createMock(PaymentGatewayInterface::class);
+        $payment->expects(self::never())->method('createPaymentSession');
+        $controller = new OrderController($orders, $payment, null, new CheckoutSnapshotService(new Manager()),
+            fn () => null, fn () => null, new GiftCardCheckoutRateLimiter());
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn(['id_cart' => 10, 'id_customer' => 5,
+            'gift_card' => 'GC-8DUE-28DF']);
+        $result = $controller->createOrder($request, $this->createMock(ResponseInterface::class), []);
+        self::assertSame(403, $result->getStatusCode());
+    }
+
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     * @dataProvider amounts
+     */
+    public function test_uses_stripe_only_for_the_remaining_amount(int $giftCents, int $stripeCents, int $expectedTotal, int $expectedApplied, int $expectedStatus, string $expectedError = 'checkout_changed'): void
+    {
+        $this->configureGiftCardEnvironment();
+        $_SERVER['PAYMENT_MODULE'] = $_ENV['PAYMENT_MODULE'] = 'webserviceapi';
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication(['cache' => new Repository(new ArrayStore()), 'log' => new \Psr\Log\NullLogger()]);
+        $db = new Manager(new \Illuminate\Container\Container());
+        $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+        $db->setAsGlobal();
+        $db->bootEloquent();
+        $db->schema()->create('manufacturer_details', function ($table): void {
+            $table->integer('id_manufacturer')->primary(); $table->string('commission');
+        });
+        $db->schema()->create('stripe_checkout_snapshots', function ($table): void {
+            $table->string('id')->primary(); $table->integer('cart_id');
+            $table->string('checkout_session_id')->nullable(); $table->string('stripe_payment_intent_id')->nullable();
+            $table->integer('order_id')->nullable(); $table->string('transfer_group')->nullable(); $table->string('currency');
+            $table->text('payload_ciphertext'); $table->string('payload_hash'); $table->text('verification_payload');
+            $table->string('gift_card_reservation_id')->nullable(); $table->dateTime('gift_card_payment_verified_at')->nullable();
+            $table->dateTime('gift_card_settled_at')->nullable(); $table->dateTime('gift_card_allocated_at')->nullable();
+            $table->dateTime('gift_card_next_recovery_at')->nullable(); $table->dateTime('created_at'); $table->dateTime('updated_at');
+            $table->dateTime('gift_card_released_at')->nullable();
+        });
+        $orders = $this->createMock(Order::class);
+        $product = ['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '30.00', 'quantity' => 1];
+        $cart = CartEntity::create(['id' => 10, 'products' => [$product], 'currency_iso' => 'EUR',
+            'cart_rules' => [['code' => 'PROMO']], 'totals' => ['shipping_tax_incl' => 0, 'grand_total_tax_incl' => 25]], $orders);
+        $orders->method('getCartFromId')->willReturn($cart);
+        $orders->method('prepareCouponCart')->willReturn($cart);
+        $orders->expects(self::never())->method('createCouponCode');
+        $orders->method('giftCardOrderSummary')->willReturn(['id' => 123, 'id_cart' => 10, 'current_state' => 2, 'reference' => 'ORDER123']);
+        $payment = $this->createMock(PaymentGatewayInterface::class);
+        if ($stripeCents === 0 || $expectedStatus !== 201) {
+            $payment->expects(self::never())->method('createPaymentSession');
+        } else {
+            $payment->expects(self::once())->method('createPaymentSession')->willReturnCallback(function (OrderSession $session) use ($stripeCents): string {
+                $stripe = $session->toStripePaymentArray();
+                self::assertSame($stripeCents, $stripe['line_items'][0]['price_data']['unit_amount']);
+                self::assertSame(['card'], $stripe['payment_method_types']);
+                return 'https://checkout.stripe.com/c/pay/example';
+            });
+        }
+        $reservationId = str_repeat('a', 32);
+        $cardId = str_repeat('b', 32);
+        $reserveBody = ['success' => true, 'data' => ['reservation' => ['id' => $reservationId, 'card_id' => $cardId,
+            'cart_id' => 10, 'customer_id' => null, 'amount_cents' => $giftCents, 'status' => 'held',
+            'expires_at' => '2099-01-01T00:00:00Z'], 'card' => ['id' => $cardId, 'status' => 'active', 'currency' => 'EUR']]];
+        $handler = new MockHandler([
+            new GuzzleResponse(200, [], json_encode($reserveBody)),
+            new GuzzleResponse(200, [], json_encode(['success' => true, 'data' => []])),
+        ]);
+        $http = new Client(['handler' => HandlerStack::create($handler)]);
+        $client = new GiftCardClient($http, 'https://shop.example/index.php?fc=module&module=mlabgiftcard&controller=api', 'gc_api_' . str_repeat('a', 64));
+        $settlement = new class { public int $calls = 0; public function settle(string $id): int { ++$this->calls; return 123; } };
+        $controller = new OrderController($orders, $payment, null, new CheckoutSnapshotService($db),
+            fn () => $client, fn () => $settlement, new GiftCardCheckoutRateLimiter());
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getServerParams')->willReturn(['REMOTE_ADDR' => '192.0.2.10']);
+        $request->method('getParsedBody')->willReturn(['id' => 1, 'id_cart' => 10, 'id_guest' => 8, 'id_customer' => null,
+            'id_carrier' => 2, 'id_lang' => 1, 'payment_module' => 'webserviceapi', 'reference' => '', 'current_state' => 0,
+            'date_add' => '', 'total_paid_tax_incl' => 0, 'total_paid_tax_excl' => 0, 'payment_method' => 'stripe',
+            'gift_card' => 'GC-8DUE-28DF', 'gift_card_expected' => ['total_cents' => $expectedTotal, 'applied_cents' => $expectedApplied],
+            'cart_rules' => [['code' => 'PROMO']],
+            'customer' => ['email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Test']]);
+        $result = $controller->createOrder($request, $this->createMock(ResponseInterface::class), []);
+        self::assertSame($expectedStatus, $result->getStatusCode(), (string) $result->getBody());
+        $data = json_decode((string) $result->getBody(), true)['data'];
+        if ($expectedStatus === 409) {
+            self::assertSame($expectedError, $data['error']['code']);
+            if ($expectedError === 'payment_too_small') {
+                self::assertStringContainsString('action=release', (string) $handler->getLastRequest()->getUri());
+                self::assertSame(0, $settlement->calls);
+                return;
+            }
+            self::assertSame(2500, $data['actual_total_cents']);
+            if ($expectedApplied !== $giftCents && $expectedTotal === 2500) {
+                self::assertSame($giftCents, $data['actual_applied_cents']);
+                self::assertStringContainsString('action=release', (string) $handler->getLastRequest()->getUri());
+            } else {
+                self::assertSame(2, $handler->count()); // no reservation when the total has changed
+            }
+            self::assertSame(0, $settlement->calls);
+            return;
+        }
+        self::assertSame($giftCents, $data['gift_card']['applied_cents']);
+        self::assertSame($stripeCents, $data['gift_card']['remaining_cents']);
+        self::assertSame(2500 - $giftCents - $stripeCents, $data['gift_card']['platform_cents']);
+        self::assertSame($stripeCents === 0 ? 'confirmed' : 'payment_required', $data['checkout_status']);
+        if ($stripeCents > 0) {
+            self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $data['checkout_snapshot_id']);
+            self::assertSame($reservationId, $db->table('stripe_checkout_snapshots')->where('id', $data['checkout_snapshot_id'])->value('gift_card_reservation_id'));
+        }
+        self::assertSame($stripeCents === 0 ? 1 : 0, $settlement->calls);
+    }
+
+    private function configureGiftCardEnvironment(): void
+    {
+        // Dotenv populates both arrays; the environment repository reads $_SERVER first.
+        $_SERVER['GIFT_CARD_CHECKOUT_ENABLED'] = $_ENV['GIFT_CARD_CHECKOUT_ENABLED'] = 'true';
+        $_SERVER['APP_DISABLE_CACHE'] = $_ENV['APP_DISABLE_CACHE'] = 'false';
+        $_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = 'testing';
+    }
+
+    public static function amounts(): array
+    {
+        return [
+            'fully covered' => [2500, 0, 2500, 2500, 201],
+            'partially covered' => [1000, 1500, 2500, 1000, 201],
+            'five euro gift card is fully applied' => [500, 2000, 2500, 500, 201],
+            'changed total' => [1000, 1500, 2600, 1000, 409],
+            'changed balance' => [1000, 1500, 2500, 1500, 409],
+            '30 cents paid by platform' => [2470, 0, 2500, 2470, 201],
+            '49 cents paid by platform' => [2451, 0, 2500, 2451, 201],
+            '50 cents paid by Stripe' => [2450, 50, 2500, 2450, 201],
+        ];
+    }
+}

@@ -11,6 +11,10 @@ use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Http\Controller\CartController;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\Payments\CheckoutSnapshotService;
+use PS\Webservice\Service\Payments\CheckoutPaymentAlreadyCompletedException;
+use PS\Webservice\Service\GiftCard\GiftCardApiException;
+use PS\Webservice\Service\GiftCard\GiftCardCheckoutRateLimiter;
+use PS\Webservice\Service\GiftCard\GiftCardTender;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Traits\Order as OrderHelper;
@@ -37,6 +41,9 @@ class OrderController extends CartController
         PaymentGatewayInterface $stripeService,
         ?PrestashopRepository $customerRepository = null,
         ?CheckoutSnapshotService $checkoutSnapshots = null,
+        private readonly ?\Closure $giftCardClientFactory = null,
+        private readonly ?\Closure $giftCardSettlementFactory = null,
+        private readonly ?GiftCardCheckoutRateLimiter $giftCardRateLimiter = null,
     )
     {
         $this->stripeService = $stripeService;
@@ -123,6 +130,27 @@ class OrderController extends CartController
         }
 
         try {
+            if (filter_var(env('GIFT_CARD_CHECKOUT_ENABLED', false), FILTER_VALIDATE_BOOLEAN) && $this->checkoutSnapshots !== null) {
+                $giftSnapshot = $this->checkoutSnapshots->giftCardSnapshotForCart((int) $cartId);
+                if ($giftSnapshot !== null) {
+                    $owner = $giftSnapshot['payload'];
+                    $expectedCustomer = $owner['customer_id'] ?? null;
+                    $expectedGuest = $owner['guest_id'] ?? null;
+                    if ($expectedCustomer !== null) {
+                        if ((int) $customerId !== (int) $expectedCustomer || $this->authenticatedCustomerId($request) !== (int) $expectedCustomer) {
+                            return response(['success' => false, 'status' => 'not_found'], 404);
+                        }
+                    } elseif ($expectedGuest === null || (int) $guestId !== (int) $expectedGuest) {
+                        return response(['success' => false, 'status' => 'not_found'], 404);
+                    }
+                    if (!$giftSnapshot['settled'] || $giftSnapshot['order_id'] === null) {
+                        return response(['success' => false, 'status' => 'pending'], 202);
+                    }
+                    $summary = $this->orderService->giftCardOrderSummary($giftSnapshot['order_id'], (int) $cartId);
+                    return response(['success' => true, 'gift_card_status' => 'captured',
+                        'order_reference' => $summary['reference'], 'order' => $summary]);
+                }
+            }
             $order = $this->orderService->getOrderByCartId($cartId, $customerId, $guestId);
             if ($order === null) {
                 return response([
@@ -158,11 +186,133 @@ class OrderController extends CartController
         }
     }
 
+    /** Verify available credit without reserving it or creating an order. */
+    public function previewGiftCard(Request $request, Response $response, array $argv): Response
+    {
+        $payload = $request->getParsedBody();
+        if (!is_array($payload)) {
+            return response(['error' => ['code' => 'card_unavailable']], 422);
+        }
+        if (!filter_var(env('GIFT_CARD_CHECKOUT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            || filter_var(env('APP_DISABLE_CACHE', false), FILTER_VALIDATE_BOOLEAN)
+            || $this->giftCardClientFactory === null || $this->giftCardRateLimiter === null) {
+            return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+        }
+        $code = $payload['gift_card'] ?? null;
+        $cartId = filter_var($payload['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $customerId = $payload['id_customer'] ?? null;
+        $guestId = $payload['id_guest'] ?? null;
+        if (!is_string($code) || !preg_match('/^GC-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/D', $code) || $cartId === false) {
+            return response(['error' => ['code' => 'card_unavailable']], 422);
+        }
+        if (($customerId !== null && ($guestId !== null
+                || filter_var($customerId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false
+                || $this->authenticatedCustomerId($request) !== (int) $customerId))
+            || ($customerId === null && filter_var($guestId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
+            return response(['error' => ['code' => 'unauthorized']], 403);
+        }
+        try {
+            if (!$this->giftCardRateLimiter->allow((string) ($request->getServerParams()['REMOTE_ADDR'] ?? 'unknown'), $cartId)) {
+                return response(['error' => ['code' => 'rate_limited']], 429);
+            }
+            $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
+            $products = $cart?->toArray()['products'] ?? [];
+            if (!is_array($products) || !array_filter($products, static fn ($line) => is_array($line) && (int) ($line['id_product'] ?? 0) > 0)) {
+                return response(['error' => ['code' => 'card_unavailable']], 404);
+            }
+            $lookup = ['code' => $code];
+            if ($customerId !== null) {
+                $lookup['customer_id'] = (int) $customerId;
+            }
+            $card = (($this->giftCardClientFactory)())->post('lookup', $lookup, 'preview:' . bin2hex(random_bytes(16)))['card'] ?? null;
+            if (!is_array($card) || !is_string($card['status'] ?? null) || !is_bool($card['expired'] ?? null)
+                || !is_int($card['available_cents'] ?? null) || $card['available_cents'] < 0
+                || !is_int($card['balance_cents'] ?? null) || $card['balance_cents'] < $card['available_cents']
+                || !is_string($card['currency'] ?? null)) {
+                throw new \RuntimeException('Invalid gift card lookup response.');
+            }
+            if ($card['status'] !== 'active') return response(['error' => ['code' => 'card_inactive']], 409);
+            if ($card['expired']) return response(['error' => ['code' => 'card_expired']], 409);
+            if ($card['currency'] !== 'EUR') return response(['error' => ['code' => 'currency_mismatch']], 409);
+            if ($card['available_cents'] === 0) {
+                return response(['error' => ['code' => $card['balance_cents'] === 0 ? 'zero_balance' : 'credit_reserved']], 409);
+            }
+            return response(['available_cents' => $card['available_cents'], 'currency' => 'EUR'])
+                ->withHeader('Cache-Control', 'no-store');
+        } catch (GiftCardApiException $error) {
+            return response(['error' => ['code' => $error->errorCode]], $error->httpStatus);
+        } catch (\Throwable $error) {
+            return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+        }
+    }
+
+    /** Expire the exact unpaid Stripe session before returning its reserved credit. */
+    public function cancelGiftCardCheckout(Request $request, Response $response, array $argv): Response
+    {
+        $payload = $request->getParsedBody();
+        if (!is_array($payload) || !is_string($payload['checkout_snapshot_id'] ?? null)
+            || !preg_match('/^[a-f0-9]{32}$/D', $payload['checkout_snapshot_id'])) {
+            return response(['error' => ['code' => 'invalid_input']], 422);
+        }
+        if ($this->checkoutSnapshots === null || $this->giftCardClientFactory === null) {
+            return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+        }
+        try {
+            $snapshot = $this->checkoutSnapshots->giftCardSnapshotById($payload['checkout_snapshot_id']);
+            $owner = $snapshot['payload'] ?? null;
+            if (!is_array($owner) || (int) ($payload['id_cart'] ?? 0) !== (int) ($owner['cart_id'] ?? 0)) {
+                return response(['error' => ['code' => 'card_unavailable']], 404);
+            }
+            $customerId = $owner['customer_id'] ?? null;
+            $guestId = $owner['guest_id'] ?? null;
+            if ($customerId !== null) {
+                if ((int) ($payload['id_customer'] ?? 0) !== (int) $customerId
+                    || $this->authenticatedCustomerId($request) !== (int) $customerId) {
+                    return response(['error' => ['code' => 'card_unavailable']], 404);
+                }
+            } elseif ($guestId === null || (int) ($payload['id_guest'] ?? 0) !== (int) $guestId) {
+                return response(['error' => ['code' => 'card_unavailable']], 404);
+            }
+            $gift = $owner['gift_card'] ?? null;
+            if (!is_array($gift) || !is_string($gift['reservation_id'] ?? null)
+                || !preg_match('/^[a-f0-9]{32}$/D', $gift['reservation_id'])
+                || !is_int($gift['stripe_cents'] ?? null) || $gift['stripe_cents'] <= 0
+                || !is_string($snapshot['session_id'] ?? null)) {
+                return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+            }
+            if ($snapshot['verified']) return response(['error' => ['code' => 'checkout_already_paid']], 409);
+            $this->stripeService->expireUnpaidSession($snapshot['session_id']);
+            // The same stable key is used by the expired-session webhook; retries are safe.
+            $this->checkoutSnapshots->markGiftCardReleased($snapshot['id']);
+            $released = ($this->giftCardClientFactory)()->release($gift['reservation_id'], 'expired:' . $gift['reservation_id']);
+            if (($released['reservation']['id'] ?? null) !== $gift['reservation_id']
+                || ($released['reservation']['status'] ?? null) !== 'released') {
+                throw new \RuntimeException('Gift card reservation release was not confirmed.');
+            }
+            return response(['cancelled' => true])->withHeader('Cache-Control', 'no-store');
+        } catch (CheckoutPaymentAlreadyCompletedException $error) {
+            return response(['error' => ['code' => 'checkout_already_paid']], 409);
+        } catch (\Throwable $error) {
+            return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+        }
+    }
+
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
+        }
+
+        $giftCode = $payload['gift_card'] ?? null;
+        if ($giftCode !== null && (!filter_var(env('GIFT_CARD_CHECKOUT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            || filter_var(env('APP_DISABLE_CACHE', false), FILTER_VALIDATE_BOOLEAN)
+            || $this->giftCardClientFactory === null || $this->giftCardSettlementFactory === null
+            || $this->giftCardRateLimiter === null || $this->checkoutSnapshots === null)) {
+            return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+        }
+        if ($giftCode !== null && (!is_string($giftCode) || !preg_match('/^GC-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/D', $giftCode))) {
+            return response(['error' => ['code' => 'card_unavailable']], 422);
         }
 
         // Ownership check: require customer or guest identification — never trust anonymous cart access
@@ -172,16 +322,65 @@ class OrderController extends CartController
         if ($customerId === null && $guestId === null) {
             return response(['error' => 'Customer ID or guest ID is required'], 403);
         }
-
-        $carrierId = filter_var($payload['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if ($carrierId === false) {
-            return response(['error' => 'A valid carrier ID is required'], 422);
+        if ($giftCode !== null) {
+            if (($customerId !== null && ($guestId !== null || $this->authenticatedCustomerId($request) !== (int) $customerId))
+                || ($customerId === null && filter_var($guestId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
+                return response(['error' => ['code' => 'unauthorized']], 403);
+            }
+            if (($payload['payment_method'] ?? 'stripe') !== 'stripe') {
+                return response(['error' => ['code' => 'unsupported_payment_method']], 422);
+            }
+            try {
+                if (!$this->giftCardRateLimiter->allow((string) ($request->getServerParams()['REMOTE_ADDR'] ?? 'unknown'), (int) ($payload['id_cart'] ?? 0))) {
+                    return response(['error' => ['code' => 'rate_limited']], 429);
+                }
+            } catch (\Throwable $error) {
+                return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+            }
+            try {
+                $existingGift = $this->checkoutSnapshots->giftCardSnapshotForCart((int) ($payload['id_cart'] ?? 0));
+                if ($existingGift !== null && $existingGift['verified']) {
+                    $existing = $existingGift['payload'];
+                    if (($customerId !== null && (int) ($existing['customer_id'] ?? 0) !== (int) $customerId)
+                        || ($customerId === null && (int) ($existing['guest_id'] ?? 0) !== (int) $guestId)) {
+                        return response(['error' => ['code' => 'card_unavailable']], 404);
+                    }
+                    $gift = $existing['gift_card'];
+                    $summary = ['total_cents' => $existing['totals']['grand_total_cents'],
+                        'applied_cents' => $gift['gift_card_cents'], 'remaining_cents' => $gift['stripe_cents'],
+                        'platform_cents' => $gift['platform_cents'] ?? 0];
+                    if ($gift['stripe_cents'] === 0 && $existingGift['settled'] && $existingGift['order_id'] !== null) {
+                        return response(['checkout_status' => 'confirmed', 'gift_card' => $summary,
+                            'order' => $this->orderService->giftCardOrderSummary($existingGift['order_id'], (int) $payload['id_cart'])]);
+                    }
+                    return response(['checkout_status' => 'pending', 'gift_card' => $summary], 202);
+                }
+            } catch (\Throwable $error) {
+                return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+            }
         }
 
         $cart = $this->orderService->getCartFromId($payload['id_cart'], $customerId, $guestId);
         if (is_null($cart)) {
             return response([], 404);
         }
+        if ($giftCode === null && filter_var(env('GIFT_CARD_CHECKOUT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
+            && $this->checkoutSnapshots !== null) {
+            try {
+                if ($this->checkoutSnapshots->giftCardSnapshotForCart((int) $payload['id_cart']) !== null) {
+                    return response(['error' => 'A gift card checkout is already in progress for this cart.'], 409);
+                }
+            } catch (\Throwable $error) {
+                return response(['error' => 'Unable to verify checkout status.'], 503);
+            }
+        }
+        $cartData = $cart->toArray();
+        $virtual = !empty($cartData['products']) && ($cartData['is_virtual'] ?? false) === true;
+        $carrierId = $virtual ? 0 : filter_var($payload['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($carrierId === false) {
+            return response(['error' => 'A valid carrier ID is required'], 422);
+        }
+        $payload['id_carrier'] = $carrierId;
 
         // Create payment session
         try {
@@ -214,9 +413,72 @@ class OrderController extends CartController
                 $codes,
                 $checkout
             );
-            $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray());
+            $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray(), $giftCode !== null);
             if (empty($orderSession->metadata['payment_module'])) {
                 throw new \InvalidArgumentException('A payment module must be selected or configured.');
+            }
+
+            if ($giftCode !== null) {
+                $totalCents = (int) round($orderSession->payableTotal() * 100);
+                if ($totalCents < 1) {
+                    throw new \InvalidArgumentException('The order total must be positive.');
+                }
+                // A preview is non-binding; never charge a different total without renewed consent.
+                $expected = $payload['gift_card_expected'] ?? null;
+                if ($expected !== null) {
+                    if (!is_array($expected) || !is_int($expected['total_cents'] ?? null)
+                        || !is_int($expected['applied_cents'] ?? null) || $expected['total_cents'] < 1
+                        || $expected['applied_cents'] < 1 || $expected['applied_cents'] > $expected['total_cents']) {
+                        throw new \InvalidArgumentException('Invalid gift card preview.');
+                    }
+                    if ($expected['total_cents'] !== $totalCents) {
+                        return response(['error' => ['code' => 'checkout_changed'],
+                            'actual_total_cents' => $totalCents], 409);
+                    }
+                }
+                $giftCards = ($this->giftCardClientFactory)();
+                $reservation = $giftCards->reserve($giftCode, (int) $payload['id_cart'],
+                    $customerId === null ? null : (int) $customerId, $totalCents,
+                    'reserve:' . bin2hex(random_bytes(16)), 604800);
+                $tender = GiftCardTender::fromReservation($reservation, (int) $payload['id_cart'],
+                    $customerId === null ? null : (int) $customerId, $totalCents, time());
+                if ($expected !== null && $expected['applied_cents'] !== $tender->giftCardCents) {
+                    // A previous checkout may already have issued a Stripe session using this hold.
+                    if (($existingGift['payload']['gift_card']['reservation_id'] ?? null) === $tender->reservationId) {
+                        return response(['error' => ['code' => 'cart_reserved']], 409);
+                    }
+                    $giftCards->release($tender->reservationId, 'release:quote-changed:' . $tender->reservationId);
+                    return response(['error' => ['code' => 'checkout_changed'], 'actual_total_cents' => $totalCents,
+                        'actual_applied_cents' => $tender->giftCardCents], 409);
+                }
+                $orderSession->attachGiftCardTender($tender);
+                $giftSummary = ['total_cents' => $totalCents, 'applied_cents' => $tender->giftCardCents,
+                    'remaining_cents' => $tender->stripeCents, 'platform_cents' => $tender->platformCents, 'expires_at' => $tender->expiresAt];
+                if ($tender->stripeCents === 0) {
+                    $snapshot = $this->checkoutSnapshots->create($orderSession, $cart->toArray());
+                    $this->checkoutSnapshots->markGiftCardPaymentVerified($snapshot['id']);
+                    try {
+                        $orderId = ($this->giftCardSettlementFactory)()->settle($snapshot['id']);
+                    } catch (\Throwable $error) {
+                        Log::error('Gift card checkout will be recovered asynchronously.', [
+                            'snapshot_id' => $snapshot['id'], 'exception_type' => get_class($error),
+                        ]);
+                        return response(['checkout_status' => 'pending', 'gift_card' => $giftSummary], 202);
+                    }
+                    return response(['checkout_status' => 'confirmed', 'gift_card' => $giftSummary,
+                        'order' => $this->orderService->giftCardOrderSummary($orderId, (int) $payload['id_cart'])], 201);
+                }
+                $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray());
+                $stripeExpires = (int) $orderSession->get('expires_at');
+                if ($stripeExpires > time()) {
+                    $giftSummary['expires_at'] = gmdate('Y-m-d\TH:i:s\Z', min($stripeExpires, strtotime($tender->expiresAt)));
+                }
+                $created = $this->checkoutSnapshots->giftCardSnapshotForCart((int) $payload['id_cart']);
+                if (($created['payload']['gift_card']['reservation_id'] ?? null) !== $tender->reservationId) {
+                    throw new \RuntimeException('Gift card checkout snapshot is unavailable.');
+                }
+                return response(['checkout_status' => 'payment_required', 'gift_card' => $giftSummary,
+                    'checkout_snapshot_id' => $created['id'], 'payment_url' => $checkoutUrl], 201);
             }
 
             $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray());
@@ -225,6 +487,8 @@ class OrderController extends CartController
                 'order' => $cart->toArray(),
                 'payment_url' => $checkoutUrl
             ], 201);
+        } catch (GiftCardApiException $e) {
+            return response(['error' => ['code' => $e->errorCode]], $e->httpStatus);
         } catch (\InvalidArgumentException $e) {
             Log::critical('Error on create order', ['exception_type' => get_class($e)]);
             return response([
@@ -300,11 +564,15 @@ class OrderController extends CartController
         };
 
         $cache = Cache::getFacadeRoot();
-        if (!is_object($cache) || !method_exists($cache, 'lock')) {
+        $store = is_object($cache) && method_exists($cache, 'getStore') ? $cache->getStore() : null;
+        if (!is_object($store) || !method_exists($store, 'lock')) {
+            if ($orderSession->giftCardTender() !== null) {
+                throw new \RuntimeException('Gift card checkout requires a shared lock.');
+            }
             return $callback();
         }
 
-        $lock = $cache->lock('stripe-checkout-attempt:' . $fingerprint, 15);
+        $lock = $store->lock('stripe-checkout-attempt:' . $fingerprint, 60);
         if (!is_object($lock) || !method_exists($lock, 'get') || !method_exists($lock, 'release')) {
             return $callback();
         }

@@ -29,6 +29,103 @@ final class StripeConnectServiceTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function test_gift_card_transfers_split_charge_and_platform_funding_idempotently(): void
+    {
+        $previousFlow = $_ENV['STRIPE_PAYMENT_FLOW'] ?? null;
+        $previousEnabled = $_ENV['STRIPE_CONNECT_ENABLED'] ?? null;
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+        try {
+            $db = new Manager(new \Illuminate\Container\Container());
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->setAsGlobal();
+            $db->bootEloquent();
+            $this->createTransferTables($db);
+            $db->schema()->create('stripe_checkout_snapshots', function ($table): void {
+                $table->string('gift_card_reservation_id');
+                $table->unsignedBigInteger('order_id');
+                $table->dateTime('gift_card_settled_at')->nullable();
+            });
+            $reservationId = str_repeat('a', 32);
+            $db->table('stripe_checkout_snapshots')->insert(['gift_card_reservation_id' => $reservationId,
+                'order_id' => 42, 'gift_card_settled_at' => '2026-11-11 09:00:00']);
+            $paymentIntents = new class {
+                public function retrieve(string $id, array $params): \Stripe\PaymentIntent
+                {
+                    return \Stripe\PaymentIntent::constructFrom(['id' => $id, 'status' => 'succeeded',
+                        'amount_received' => 2500, 'currency' => 'eur', 'latest_charge' => 'ch_test123']);
+                }
+            };
+            $transfers = new class {
+                public array $calls = [];
+                public function create(array $params, array $options): \Stripe\Transfer {
+                    $this->calls[] = $params;
+                    return \Stripe\Transfer::constructFrom(['id' => 'tr_test' . count($this->calls)]);
+                }
+            };
+            $stripe = new class($paymentIntents, $transfers) extends \Stripe\StripeClient {
+                public function __construct(private object $intents, private object $transfers) { parent::__construct('sk_test_123'); }
+                public function getService($name) {
+                    return match ($name) { 'paymentIntents' => $this->intents, 'transfers' => $this->transfers, default => parent::getService($name) };
+                }
+            };
+            $service = new StripeConnectService($db, null, $stripe);
+            $snapshot = ['currency' => 'EUR', 'totals' => ['grand_total_cents' => 7500, 'shipping_cents' => 0],
+                'sellers' => [['manufacturer_id' => 7, 'gross_cents' => 7500, 'commission_basis_points' => 2000]],
+                'gift_card' => ['reservation_id' => $reservationId, 'gift_card_cents' => 5000, 'stripe_cents' => 2500]];
+            $service->createTransfersForOrder(42, 'pi_test123', 'dz_cart_42', new DateTimeImmutable(), $snapshot);
+            $service->createTransfersForOrder(42, 'pi_test123', 'dz_cart_42', new DateTimeImmutable(), $snapshot);
+            $rows = $db->table('stripe_connect_transfers')->orderBy('amount')->get()->all();
+            self::assertCount(2, $rows);
+            self::assertSame(2000, (int) $rows[0]->amount);
+            self::assertSame('ch_test123', $rows[0]->stripe_charge_id);
+            self::assertSame(4000, (int) $rows[1]->amount);
+            self::assertNull($rows[1]->stripe_charge_id);
+
+            $fullReservation = str_repeat('c', 32);
+            $db->table('stripe_checkout_snapshots')->insert(['gift_card_reservation_id' => $fullReservation,
+                'order_id' => 43, 'gift_card_settled_at' => '2026-11-11 09:00:00']);
+            $snapshot['gift_card'] = ['reservation_id' => $fullReservation, 'gift_card_cents' => 7500, 'stripe_cents' => 0];
+            $service->createTransfersForOrder(43, 'gc_' . $fullReservation, 'dz_cart_43', new DateTimeImmutable(), $snapshot);
+            $full = $db->table('stripe_connect_transfers')->where('order_id', 43)->get()->all();
+            self::assertCount(1, $full);
+            self::assertSame(6000, (int) $full[0]->amount);
+            self::assertNull($full[0]->stripe_charge_id);
+
+            $coveredReservation = str_repeat('d', 32);
+            $db->table('stripe_checkout_snapshots')->insert(['gift_card_reservation_id' => $coveredReservation,
+                'order_id' => 44, 'gift_card_settled_at' => '2026-11-11 09:00:00']);
+            $snapshot['gift_card'] = ['reservation_id' => $coveredReservation, 'gift_card_cents' => 7470,
+                'stripe_cents' => 0, 'platform_cents' => 30];
+            $service->createTransfersForOrder(44, 'gc_' . $coveredReservation, 'dz_cart_44', new DateTimeImmutable(), $snapshot);
+            $service->createTransfersForOrder(44, 'gc_' . $coveredReservation, 'dz_cart_44', new DateTimeImmutable(), $snapshot);
+            $covered = $db->table('stripe_connect_transfers')->where('order_id', 44)->get()->all();
+            self::assertCount(1, $covered);
+            self::assertSame(6000, (int) $covered[0]->amount);
+            self::assertNull($covered[0]->stripe_charge_id);
+            $now = gmdate('Y-m-d H:i:s');
+            $db->table('stripe_connect_accounts')->insert(['manufacturer_id' => 7, 'stripe_account_id' => 'acct_test123',
+                'account_type' => 'express', 'country' => 'IT', 'details_submitted' => false, 'charges_enabled' => false,
+                'payouts_enabled' => false, 'transfers_enabled' => false, 'created_at' => $now, 'updated_at' => $now]);
+            $account = \Stripe\Account::constructFrom(['id' => 'acct_test123', 'type' => 'express', 'country' => 'IT',
+                'details_submitted' => true, 'charges_enabled' => true, 'payouts_enabled' => true,
+                'capabilities' => ['transfers' => 'active'], 'requirements' => ['currently_due' => []]]);
+            self::assertSame(4, $service->handleAccountUpdated($account, new DateTimeImmutable()));
+            $byAmount = [];
+            foreach ($transfers->calls as $call) $byAmount[$call['amount']] = $call;
+            self::assertSame('ch_test123', $byAmount[2000]['source_transaction']);
+            self::assertArrayNotHasKey('source_transaction', $byAmount[4000]);
+            self::assertArrayNotHasKey('source_transaction', $byAmount[6000]);
+        } finally {
+            $this->restoreEnvironment('STRIPE_PAYMENT_FLOW', $previousFlow);
+            $this->restoreEnvironment('STRIPE_CONNECT_ENABLED', $previousEnabled);
+        }
+    }
+
     public function test_creates_one_express_account_per_manufacturer(): void
     {
         $db = new Manager();

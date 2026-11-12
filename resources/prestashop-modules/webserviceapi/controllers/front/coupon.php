@@ -97,7 +97,7 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
                 throw new MlabFactoryApiException('Carrier is required for checkout.', 422);
             }
             $cart->id_carrier = $carrierId;
-            if ((int) $cart->id_address_delivery > 0) {
+            if ($carrierId > 0 && (int) $cart->id_address_delivery > 0) {
                 $cart->setDeliveryOption(array((int) $cart->id_address_delivery => $carrierId . ','));
             }
             if (!$cart->update()) {

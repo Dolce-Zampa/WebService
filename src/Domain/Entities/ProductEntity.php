@@ -148,7 +148,7 @@ class ProductEntity extends Entity implements ObjectInterface
         $this->calculateFullPrice();
 
         // Compare the tax-inclusive prices supplied by PrestaShop.
-        $originalePrice = round((float)$this->data['original_price'], 2, PHP_ROUND_HALF_UP);
+        $originalePrice = round((float)($this->data['original_price'] ?? $this->data['price'] ?? 0), 2, PHP_ROUND_HALF_UP);
         $currentPrice = round((float)$this->data['price'], 2, PHP_ROUND_HALF_UP);
         $this->data['on_sale'] = $originalePrice < $currentPrice;
 
