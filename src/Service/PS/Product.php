@@ -11,6 +11,7 @@ use PS\Webservice\Domain\Entities\EntityExceptions;
 use PS\Webservice\Domain\Entities\FilterEntity;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Filter;
+use PS\Webservice\Service\PS\ProductPromotionDates;
 
 class Product extends PrestashopService implements PrestashopServiceInterface
 {
@@ -45,7 +46,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     private function productCacheKey(string $key, array $tags): string
     {
-        return 'product-cache:v3:' . $this->contextKey() . ':' . self::revisionFor($tags) . ':' . $key;
+        return 'product-cache:v4:' . $this->contextKey() . ':' . self::revisionFor($tags) . ':' . $key;
     }
 
     /** TTL is in minutes; zero means forever. */
@@ -60,8 +61,13 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         if ($cached !== null && ($valid === null || $valid($cached))) {
             return $cached;
         }
+        if ($cached !== null) {
+            // Do not leave entries which are no longer eligible for this
+            // request (for example a product that has been deactivated).
+            $store->forget($key);
+        }
         // Also guard loads of products that embed a bundle modified during this request.
-        $revision = self::revisionFor(array_merge($tags, ['product-catalog']));
+        $revision = self::revisionFor(array_merge($tags, ['product-catalog', 'product-catalog-writes']));
         $namespace = $store->getTags()->getNamespace();
         $lock = Cache::lock('product-cache-lock:' . sha1($namespace . $key), 120);
         $deadline = microtime(true) + 30;
@@ -76,8 +82,11 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             if ($cached !== null && ($valid === null || $valid($cached))) {
                 return $cached;
             }
+            if ($cached !== null) {
+                $store->forget($key);
+            }
             $data = $loader();
-            if ($data !== null && $store->getTags()->getNamespace() === $namespace && self::revisionFor(array_merge($tags, ['product-catalog'])) === $revision) {
+            if ($data !== null && $store->getTags()->getNamespace() === $namespace && self::revisionFor(array_merge($tags, ['product-catalog', 'product-catalog-writes'])) === $revision) {
                 if ($ttl === 0) {
                     $store->forever($key, $data);
                 } else {
@@ -122,6 +131,18 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         return is_array($snapshot) && $this->snapshotIsCurrent($snapshot);
     }
 
+    /** Return the complete snapshot only if it is already cached and current. */
+    private function cachedCompleteProductSnapshot(int $id): ?array
+    {
+        if (env('APP_DISABLE_CACHE', false)) {
+            return null;
+        }
+        $tags = ['product:' . $id];
+        $snapshot = Cache::tags($tags)->get($this->productCacheKey('detail:' . $id, $tags));
+        return is_array($snapshot) && $this->snapshotIsCurrent($snapshot)
+            ? $snapshot['product'] : null;
+    }
+
     public function reserveWarmup(int $id): bool
     {
         return Cache::add('product-warm-pending:' . $this->contextKey() . ':' . $id, true, 86400);
@@ -134,6 +155,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function getCompleteProductById(int $id): ?ProductEntity
     {
+        $wasCached = $this->hasCompleteProductCached($id);
         $snapshot = $this->cachedProductData('detail:' . $id, ['product:' . $id], function () use ($id) {
             $product = $this->getProductById($id);
             if ($product === null) {
@@ -150,7 +172,40 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             }
             return ['product' => $data, 'dependencies' => $dependencies];
         }, 0, fn (array $cached) => $this->snapshotIsCurrent($cached));
-        return $snapshot === null ? null : ProductEntity::fromSnapshot($snapshot['product'], $this, true);
+        if ($snapshot === null) {
+            return null;
+        }
+        $data = $snapshot['product'];
+        $promotions = (new ProductPromotionDates())->forProduct($id);
+        $listingPromotion = ListingPromotion::fromSnapshot($data, $promotions);
+        if ($listingPromotion !== null) {
+            $data['listing_promotion'] = $listingPromotion;
+        }
+        // A previously cached category may have been built before this detail
+        // existed. Refresh it once a new discounted snapshot is available.
+        if (!$wasCached && !env('APP_DISABLE_CACHE', false) && $listingPromotion !== null) {
+            $ids = array_column($data['associations']['categories'] ?? [], 'id');
+            if (isset($data['id_category_default'])) {
+                $ids[] = $data['id_category_default'];
+            }
+            $ids = array_filter($ids, static fn ($id): bool => is_numeric($id) && (int) $id > 0);
+            $tags = $ids !== []
+                ? array_merge(['product-catalog-unscoped'], array_slice(CatalogCacheTags::forCategories(implode('|', $ids)), 1))
+                : ['product-catalog'];
+            self::invalidateCacheTags($tags);
+            Cache::tags($tags)->flush();
+        }
+        $base = $promotions[0] ?? null;
+        $data['promotion'] = $base;
+        $data['promotion_start'] = $base['start'] ?? null;
+        $data['promotion_end'] = $base['end'] ?? null;
+        foreach ($data['associations']['combinations'] ?? [] as $index => $combination) {
+            $promotion = $promotions[(int) $combination['id']] ?? $base;
+            $data['associations']['combinations'][$index]['promotion'] = $promotion;
+            $data['associations']['combinations'][$index]['promotion_start'] = $promotion['start'] ?? null;
+            $data['associations']['combinations'][$index]['promotion_end'] = $promotion['end'] ?? null;
+        }
+        return ProductEntity::fromSnapshot($data, $this, true);
     }
 
     /**
@@ -183,7 +238,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     public function countProducts(array $filter = []): int
     {
         $queryString = http_build_query(['display' => '[id]'] + $filter);
-        $products = $this->productApiData("/products?{$queryString}")['products'] ?? [];
+        $products = $this->productApiData("/products?{$queryString}", CatalogCacheTags::fromFilter($filter))['products'] ?? [];
         return count($products);
     }
 
@@ -195,20 +250,42 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function productsList(array $displayOptions = ['display' => 'full'], ?Filter $filter = null): Collection
     {
-        $cacheKey = 'list:' . json_encode([$displayOptions, $filter?->data]);
-        $snapshots = $this->cachedProductData($cacheKey, ['product-catalog'], function () use ($displayOptions, $filter) {
+        $cacheKey = 'list:v2:' . json_encode([$displayOptions, $filter?->data]);
+        $tags = CatalogCacheTags::fromFilter($displayOptions);
+        $snapshots = $this->cachedProductData($cacheKey, $tags, function () use ($displayOptions, $filter, $tags) {
             $sorting = $displayOptions['sort'] ?? 'date_add_DESC';
             $displayOptions['sort'] = "[$sorting]";
             $queryString = http_build_query($displayOptions);
-            $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&date=1")['products'] ?? [];
+            $products = $this->productApiData("/products?{$queryString}&price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&date=1", $tags)['products'] ?? [];
             $snapshots = [];
+            $details = [];
+            $needsLookup = [];
             foreach ($products as $productData) {
                 $productFilter = $filter ?? new Filter([]);
                 if (!$productFilter->match($productData)) {
                     continue;
                 }
-                $snapshots[] = ProductEntity::create($productFilter->productData, $this)->toArray();
+                $data = ProductEntity::create($productFilter->productData, $this)->toArray();
+                $id = (int) $data['id'];
+                $detail = $this->cachedCompleteProductSnapshot($id);
+                if ($detail !== null) {
+                    $details[$id] = $detail;
+                    if (ListingPromotion::needsPromotionLookup($detail)) {
+                        $needsLookup[] = $id;
+                    }
+                }
+                $snapshots[] = $data;
             }
+            // A single batch query for old snapshots, never a PrestaShop API
+            // request per product or combination. Category lists are cached.
+            $promotions = (new ProductPromotionDates())->forProducts($needsLookup);
+            foreach ($snapshots as &$data) {
+                $id = (int) $data['id'];
+                if (isset($details[$id]) && ($promotion = ListingPromotion::fromSnapshot($details[$id], $promotions[$id] ?? [])) !== null) {
+                    $data['listing_promotion'] = $promotion;
+                }
+            }
+            unset($data);
             return $snapshots;
         });
         return new Collection(array_map(fn (array $data) => ProductEntity::fromSnapshot($data, $this), $snapshots));
@@ -308,7 +385,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
     {
         $productRevision = self::revisionFor(['product:' . $id]);
         $data = $this->cachedProductData('base:' . $id, ['product:' . $id], function () use ($id) {
-            $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&display=full");
+            $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&display=full");
             $response = $this->httpService->invoke('GET');
             if ($response->failed()) {
                 if ($response->getHttpCode() === 404) {
@@ -316,12 +393,21 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 }
                 throw new PrestashopConnectorException($this->httpService);
             }
-            $product = new ProductEntity($response->toArray()['products'][0], $this);
+            $productData = $response->toArray()['products'][0] ?? null;
+            if (!is_array($productData) || !array_key_exists('active', $productData)) {
+                throw new \RuntimeException('Incomplete upstream product payload: ' . $id);
+            }
+            if ((int) $productData['active'] !== 1) {
+                // Inactive products must not appear in artisan catalogues and
+                // must never populate the product cache.
+                return null;
+            }
+            $product = new ProductEntity($productData, $this);
             if (!\PS\Webservice\Domain\Entities\Validations\ProductValidator::isValid($product)) {
                 throw new \RuntimeException('Incomplete upstream product payload: ' . $id);
             }
             return $product->toArray();
-        });
+        }, 0, static fn (array $cached): bool => (int) ($cached['active'] ?? 0) === 1);
         if (self::revisionFor(['product:' . $id]) === $productRevision && $data !== null && !empty($data['link_rewrite']) && is_string($data['link_rewrite']) && !env('APP_DISABLE_CACHE', false)) {
             Cache::forever('product-slug:v3:' . $this->contextKey() . ':' . sha1($data['link_rewrite']), [
                 'id' => $id, 'revision' => $productRevision,
@@ -337,7 +423,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             return null;
         }
 
-        $payload = $this->productApiData("/filters?id_category={$categoryId}");
+        $payload = $this->productApiData("/filters?id_category={$categoryId}", CatalogCacheTags::forCategories((string) $categoryId));
         if (empty($payload['data']['filters'])) {
             Log::warning("No filters found for category ID {$categoryId}");
             return null; // No filters found for the category
@@ -357,15 +443,15 @@ class Product extends PrestashopService implements PrestashopServiceInterface
                 return (int) $mapping['id'];
             }
         }
-        $catalogRevision = self::revisionFor(['product-catalog']);
-        $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug))['data'] ?? [];
+        $catalogRevision = self::revisionFor(['product-catalog', 'product-catalog-writes']);
+        $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug), CatalogCacheTags::forCategories(null))['data'] ?? [];
         if (empty($products)) {
             return null; // No product found with the given slug
         }
 
         $id = (int) $products['id_product'];
         $productRevision = self::revisionFor(['product:' . $id]);
-        if (!env('APP_DISABLE_CACHE', false) && self::revisionFor(['product-catalog']) === $catalogRevision) {
+        if (!env('APP_DISABLE_CACHE', false) && self::revisionFor(['product-catalog', 'product-catalog-writes']) === $catalogRevision) {
             Cache::forever($key, ['id' => $id, 'revision' => $productRevision]);
         }
         return $id;
@@ -373,7 +459,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
 
     public function searchProducts(string $query): Collection
     {
-        $this->httpService->setUrl("/search?query={$query}&language=1&display=full");
+        $this->httpService->setUrl('/search?' . http_build_query(['query' => $query, 'language' => 1, 'display' => 'full']));
         $response = $this->httpService->invoke('GET');
 
         if ($response->failed()) {
@@ -429,7 +515,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
      */
     public function uploadProductImage(int $productId, string $imageUrl): bool
     {
-        $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 60]); // FIXME: enable verify in production
+        $client = new \GuzzleHttp\Client(['verify' => true, 'timeout' => 60]);
 
         $tmpFile = null;
         $namedTmp = null;

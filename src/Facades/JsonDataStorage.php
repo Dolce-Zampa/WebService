@@ -27,11 +27,6 @@ final class JsonDataStorage
         return new DbService('requests');
     }
 
-    public static function productBundles(): DbService
-    {
-        return new DbService('product_bundles');
-    }
-
     public static function subdomains(): DbService
     {
         return new DbService('subdomains');

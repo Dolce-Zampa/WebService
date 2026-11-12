@@ -19,6 +19,9 @@ RUN composer install \
 # Copia tutto il codice
 COPY . .
 
+# Include le classi dell'applicazione nella classmap di produzione.
+RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts
+
 # Installa Supervisor
 RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
 

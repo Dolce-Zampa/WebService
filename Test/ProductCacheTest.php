@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\WebserviceConfig;
+use PS\Webservice\Commands\ClearProductCacheCommand;
 use PS\Webservice\Http\Controller\ConfigController;
 use PS\Webservice\Http\Middleware\CachingMiddleware;
 use PS\Webservice\Service\HttpServiceInterface;
@@ -17,6 +18,7 @@ use PS\Webservice\Service\RedisQueue;
 use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Factory\ServerRequestFactory;
 use Slim\Psr7\Response;
+use Symfony\Component\Console\Command\Command;
 
 final class ProductCacheTest extends TestCase
 {
@@ -63,6 +65,110 @@ final class ProductCacheTest extends TestCase
         return $http;
     }
 
+    public function test_listing_uses_cached_combination_without_more_prestashop_requests(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['id'] = 261;
+        $data['associations']['categories'][] = ['id' => 17];
+        $data['price'] = 50;
+        $data['regular_price'] = '50.000000';
+        $data['original_price'] = '50.000000';
+        $data['id_default_combination'] = 2884;
+        $data['associations']['combinations'] = [['id' => 2884, 'price' => '0', 'regular_price' => '25.000000', 'original_price' => '25.000000']];
+        $http = $this->http(['products' => [$data]], 2);
+        $service = $this->getMockBuilder(Product::class)->setConstructorArgs([$http])->onlyMethods(['getProductById'])->getMock();
+        $service->expects($this->once())->method('getProductById')->willReturn(ProductEntity::fromSnapshot($data, $service, true));
+
+        // The first category is cached before the detail exists.
+        $this->assertArrayNotHasKey('listing_promotion', $service->getProductByCategory('17')->first()->toArray());
+        $service->getCompleteProductById(261);
+        $listing = $service->getProductByCategory('17')->first()->toArray();
+        $this->assertSame(2884, $listing['listing_promotion']['combination_id']);
+        $this->assertSame(50.0, $listing['listing_promotion']['regular_price']);
+        $this->assertSame(25.0, $listing['listing_promotion']['sale_price']);
+        $this->assertFalse($listing['listing_promotion']['multiple_combinations']);
+    }
+
+    public function test_listing_selects_lowest_discounted_combination_using_its_own_regular_price(): void
+    {
+        $promotion = \PS\Webservice\Service\PS\ListingPromotion::fromSnapshot([
+            'price' => 50, 'id_default_combination' => 1,
+            'associations' => ['combinations' => [
+                ['id' => 1, 'original_price' => 50],
+                ['id' => 2, 'price' => 10, 'regular_price' => 62, 'original_price' => 30],
+                ['id' => 3, 'price' => -10, 'regular_price' => 40, 'original_price' => 20],
+                ['id' => 4, 'price' => 5, 'original_price' => 10], // no trustworthy regular price
+            ]],
+        ]);
+        $this->assertSame(3, $promotion['combination_id']);
+        $this->assertSame(40.0, $promotion['regular_price']);
+        $this->assertSame(20.0, $promotion['sale_price']);
+        $this->assertTrue($promotion['multiple_combinations']);
+        $this->assertNull(\PS\Webservice\Service\PS\ListingPromotion::fromSnapshot(['associations' => ['combinations' => [['id' => 2, 'price' => 5, 'original_price' => 10]]]]));
+    }
+
+    public function test_legacy_thurdra_uses_an_undiscounted_variant_with_the_same_impact(): void
+    {
+        $fixture = json_decode(file_get_contents(__DIR__ . '/product-245-legacy-pricing.json'), true);
+        $promotions = array_fill_keys($fixture['promoted_ids'], ['start' => null, 'end' => null]);
+        $this->assertTrue(\PS\Webservice\Service\PS\ListingPromotion::needsPromotionLookup($fixture));
+        $this->assertNull(\PS\Webservice\Service\PS\ListingPromotion::fromSnapshot($fixture));
+        $result = \PS\Webservice\Service\PS\ListingPromotion::fromSnapshot($fixture, $promotions);
+        $this->assertSame(2357, $result['combination_id']);
+        $this->assertSame(38.0, $result['regular_price']);
+        $this->assertSame(25.0, $result['sale_price']);
+        $this->assertTrue($result['multiple_combinations']);
+    }
+
+    public function test_legacy_comparison_does_not_use_another_promoted_variant_as_reference(): void
+    {
+        $fixture = ['id_default_combination' => 1, 'price' => 34, 'associations' => ['combinations' => [
+            ['id' => 2, 'price' => '4', 'ecotax' => '0', 'original_price' => '25'],
+            ['id' => 3, 'price' => '4', 'ecotax' => '0', 'original_price' => '28'],
+        ]]];
+        $promotions = [2 => ['start' => null, 'end' => null], 3 => ['start' => null, 'end' => null]];
+        $this->assertNull(\PS\Webservice\Service\PS\ListingPromotion::fromSnapshot($fixture, $promotions));
+    }
+
+    public function test_category_reads_legacy_variant_promotion_with_one_batch_query(): void
+    {
+        $connection = Illuminate\Database\Capsule\Manager::connection();
+        $connection->getSchemaBuilder()->create('specific_price', function ($table): void {
+            $table->increments('id_specific_price');
+            $table->integer('id_product');
+            $table->integer('id_product_attribute')->default(0);
+            $table->integer('id_cart')->default(0);
+            $table->integer('id_customer')->default(0);
+            $table->integer('from_quantity')->default(1);
+            $table->decimal('reduction', 10, 2)->default(0);
+            $table->decimal('price', 10, 2)->default(-1);
+            $table->dateTime('from');
+            $table->dateTime('to');
+        });
+        $fixture = json_decode(file_get_contents(__DIR__ . '/product-245-legacy-pricing.json'), true);
+        foreach ($fixture['promoted_ids'] as $id) {
+            $connection->table('specific_price')->insert([
+                'id_product' => 245, 'id_product_attribute' => $id, 'reduction' => 0.5,
+                'from' => '0000-00-00 00:00:00', 'to' => '0000-00-00 00:00:00',
+            ]);
+        }
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['id'] = 245;
+        $service = $this->getMockBuilder(Product::class)->setConstructorArgs([$this->http(['products' => [$data]], 1)])->onlyMethods(['getProductById'])->getMock();
+        $service->expects($this->once())->method('getProductById')->willReturn(ProductEntity::fromSnapshot($fixture, $service, true));
+        $service->getCompleteProductById(245);
+        $connection->flushQueryLog();
+        $connection->enableQueryLog();
+        $listing = $service->getProductByCategory('17')->first()->toArray();
+        $queries = array_filter($connection->getQueryLog(), fn (array $entry) => str_contains($entry['query'], 'specific_price'));
+        $this->assertCount(1, $queries);
+        $this->assertSame(2357, $listing['listing_promotion']['combination_id']);
+        $this->assertSame(38.0, $listing['listing_promotion']['regular_price']);
+        $this->assertSame(25.0, $listing['listing_promotion']['sale_price']);
+        $service->getProductByCategory('17');
+        $this->assertCount(1, array_filter($connection->getQueryLog(), fn (array $entry) => str_contains($entry['query'], 'specific_price')));
+    }
+
     public function test_filters_without_a_valid_category_do_not_call_prestashop(): void
     {
         $http = $this->http([], 0);
@@ -85,6 +191,89 @@ final class ProductCacheTest extends TestCase
         $service->getProductByCategory('12', ['page' => 1]);
         $service->getProductByCategory('12', ['page' => 1]);
         $service->getProductByCategory('12', ['page' => 2]);
+    }
+
+    public function test_product_change_invalidates_only_affected_category_pages_and_their_data(): void
+    {
+        $db = Illuminate\Database\Capsule\Manager::connection();
+        $db->statement('CREATE TABLE product_bundles (bundled_product_id INTEGER)');
+        $db->statement('CREATE TABLE accessory (id_product_2 INTEGER)');
+        $db->statement('CREATE TABLE pack (id_product_item INTEGER)');
+        $service = new Product($this->http(['products' => []], 7));
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->exactly(7))->method('handle')->willReturnCallback(function ($request) use ($service) {
+            $params = $request->getQueryParams();
+            $service->getProductByCategory($params['category'], ['page' => $params['page'], 'limit' => 12]);
+            return response(['page' => $params['page']]);
+        });
+        $queue = $this->createMock(RedisQueue::class);
+        $queue->expects($this->exactly(2))->method('push');
+        Facade::getFacadeApplication()->instance('queue-service', $queue);
+        $factory = new ServerRequestFactory();
+        $middleware = new CachingMiddleware('products');
+        $requests = [];
+        foreach ([['13|17', 1], ['13|17', 3], ['11', 1], ['32', 1]] as [$category, $page]) {
+            $requests[] = $factory->createServerRequest('GET', '/api/products')->withQueryParams([
+                'category' => $category, 'page' => $page, 'per_page' => 12, 'active' => 1,
+            ]);
+        }
+        foreach ($requests as $request) {
+            $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+            $this->assertSame('HIT', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+        }
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $webhook = $factory->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody([
+            'category_context_complete' => true,
+            'cache' => [['tags' => ['product:7']], ['category' => [17, 32]]],
+        ]);
+        $this->assertSame(200, $controller->clearCache($webhook, new Response(), [])->getStatusCode());
+        $this->assertSame('MISS', $middleware->process($requests[0], $handler)->getHeaderLine('X-Cache'));
+        $this->assertSame('MISS', $middleware->process($requests[1], $handler)->getHeaderLine('X-Cache'));
+        $this->assertSame('HIT', $middleware->process($requests[2], $handler)->getHeaderLine('X-Cache'));
+        $this->assertSame('MISS', $middleware->process($requests[3], $handler)->getHeaderLine('X-Cache'));
+    }
+
+    public function test_incomplete_category_context_invalidates_the_entire_catalog(): void
+    {
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->exactly(2))->method('handle')->willReturn(response(['products' => []]));
+        $queue = $this->createMock(RedisQueue::class);
+        Facade::getFacadeApplication()->instance('queue-service', $queue);
+        $factory = new ServerRequestFactory();
+        $request = $factory->createServerRequest('GET', '/api/products')->withQueryParams(['category' => '11']);
+        $middleware = new CachingMiddleware('products');
+        $middleware->process($request, $handler);
+        $this->assertSame('HIT', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $clear = $factory->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody([
+            'cache' => [['tags' => ['product:7']], ['category' => [17]]],
+        ]);
+        $controller->clearCache($clear, new Response(), []);
+        $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+    }
+
+    public function test_dependent_bundle_keeps_the_conservative_catalog_invalidation(): void
+    {
+        $db = Illuminate\Database\Capsule\Manager::connection();
+        $db->statement('CREATE TABLE product_bundles (bundled_product_id INTEGER)');
+        $db->statement('CREATE TABLE accessory (id_product_2 INTEGER)');
+        $db->statement('CREATE TABLE pack (id_product_item INTEGER)');
+        $db->table('product_bundles')->insert(['bundled_product_id' => 7]);
+        $factory = new ServerRequestFactory();
+        $handler = $this->createMock(RequestHandlerInterface::class);
+        $handler->expects($this->exactly(2))->method('handle')->willReturn(response(['products' => []]));
+        Facade::getFacadeApplication()->instance('queue-service', $this->createMock(RedisQueue::class));
+        $middleware = new CachingMiddleware('products');
+        $request = $factory->createServerRequest('GET', '/api/products')->withQueryParams(['category' => '11']);
+        $middleware->process($request, $handler);
+        $this->assertSame('HIT', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
+        $clear = $factory->createServerRequest('POST', '/api/webhooks/clear-cache')->withParsedBody([
+            'category_context_complete' => true,
+            'cache' => [['tags' => ['product:7']], ['category' => [17]]],
+        ]);
+        $controller = (new ReflectionClass(ConfigController::class))->newInstanceWithoutConstructor();
+        $controller->clearCache($clear, new Response(), []);
+        $this->assertSame('MISS', $middleware->process($request, $handler)->getHeaderLine('X-Cache'));
     }
 
     public function test_counts_are_cached_and_invalidated_by_catalog_tag(): void
@@ -185,9 +374,69 @@ final class ProductCacheTest extends TestCase
         $service = new Product($this->http(['products' => [$data]]));
         $first = $service->getProductById((int) $data['id']);
         $second = $service->getProductById((int) $data['id']);
-        $this->assertSame((float) $data['price'] * 1.22, $first->getPrice());
+        $this->assertSame((float) $data['price'], $first->getPrice());
         $this->assertSame($first->toArray(), $second->toArray());
         $this->assertNotSame($first, $second);
+    }
+
+    public function test_uses_upstream_tax_inclusive_regular_price_before_calculating_discount(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['price'] = '100.000000';
+        $data['regular_price'] = '122.000000';
+        $data['original_price'] = '109.800000';
+        $http = $this->http(['products' => [$data]]);
+        $http->expects($this->once())->method('setUrl')->with($this->callback(function (string $url): bool {
+            parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+            return ($query['price']['regular_price'] ?? []) === ['use_tax' => '1', 'use_reduction' => '0']
+                && ($query['price']['original_price'] ?? []) === ['use_tax' => '1', 'use_reduction' => '1'];
+        }));
+        $product = (new Product($http))->getProductById((int) $data['id']);
+        $this->assertSame(122.0, $product->getPrice());
+        $this->assertTrue($product->toArray()['on_sale']);
+        $this->assertSame('109.800000', $product->toArray()['original_price']);
+    }
+
+    public function test_tax_exempt_base_price_is_not_increased_and_is_not_on_sale(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['price'] = '37.000000';
+        $data['original_price'] = '37.000000';
+        $data['id_tax_rules_group'] = 5;
+        $service = new Product($this->http(['products' => [$data]]));
+        $product = $service->getProductById((int) $data['id']);
+        $this->assertSame(37.0, $product->getPrice());
+        $this->assertFalse($product->toArray()['on_sale']);
+        $this->assertSame('37.000000', $product->toArray()['original_price']);
+    }
+
+    public function test_inactive_product_is_not_cached_or_validated_as_an_incomplete_payload(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        $data['id'] = 251;
+        $data['active'] = 0;
+        unset($data['description']);
+
+        $http = $this->http(['products' => [$data]], 2);
+        $service = new Product($http);
+
+        $this->assertNull($service->getProductById(251));
+        $this->assertNull($service->getProductById(251));
+    }
+
+    public function test_empty_upstream_payload_is_not_treated_as_an_inactive_product(): void
+    {
+        $service = new Product($this->http(['products' => []]));
+        $this->expectExceptionMessage('Incomplete upstream product payload: 251');
+        $service->getProductById(251);
+    }
+
+    public function test_active_product_can_be_loaded_without_optional_catalog_fields(): void
+    {
+        $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);
+        unset($data['reference'], $data['description'], $data['description_short'], $data['id_manufacturer'], $data['id_supplier'], $data['id_category_default']);
+        $service = new Product($this->http(['products' => [$data]]));
+        $this->assertSame((int) $data['id'], $service->getProductById((int) $data['id'])->getId());
     }
 
     public function test_unfiltered_category_keeps_all_products(): void
@@ -310,6 +559,46 @@ final class ProductCacheTest extends TestCase
         $this->assertFalse($service->reserveWarmup(7));
         $service->releaseWarmup(7);
         $this->assertTrue($service->reserveWarmup(7));
+    }
+
+    public function test_clear_product_cache_command_invalidates_only_the_requested_product_and_catalog(): void
+    {
+        Cache::tags(['product:7'])->forever('product-7', 'cached');
+        Cache::tags(['product:8'])->forever('product-8', 'cached');
+        $productSevenRevision = Product::revisionFor(['product:7']);
+        $productEightRevision = Product::revisionFor(['product:8']);
+        $catalogRevision = Product::revisionFor(['product-catalog']);
+
+        $products = $this->getMockBuilder(Product::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCompleteProductById'])
+            ->getMock();
+        $products->expects($this->once())
+            ->method('getCompleteProductById')
+            ->with(7)
+            ->willReturn(ProductEntity::fromSnapshot(['id' => 7, 'price' => 122.0], $products, true));
+        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand($products));
+        $this->assertSame(Command::SUCCESS, $tester->execute(['product-id' => '7']));
+
+        $this->assertStringContainsString('rigenerata per il prodotto 7', $tester->getDisplay());
+        $this->assertNull(Cache::tags(['product:7'])->get('product-7'));
+        $this->assertSame('cached', Cache::tags(['product:8'])->get('product-8'));
+        $this->assertNotSame($productSevenRevision, Product::revisionFor(['product:7']));
+        $this->assertSame($productEightRevision, Product::revisionFor(['product:8']));
+        $this->assertNotSame($catalogRevision, Product::revisionFor(['product-catalog']));
+    }
+
+    public function test_clear_product_cache_command_rejects_invalid_product_id(): void
+    {
+        $products = $this->getMockBuilder(Product::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['getCompleteProductById'])
+            ->getMock();
+        $products->expects($this->never())->method('getCompleteProductById');
+        $tester = new Symfony\Component\Console\Tester\CommandTester(new ClearProductCacheCommand($products));
+
+        $this->assertSame(Command::INVALID, $tester->execute(['product-id' => '0']));
+        $this->assertStringContainsString('intero positivo', $tester->getDisplay());
     }
     public function test_webhook_invalidates_base_snapshot_and_old_slug(): void
     {

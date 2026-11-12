@@ -15,6 +15,13 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         $payload = $this->getJsonPayload();
         MlabFactoryApiHelper::requireFields($payload, array('id_cart'));
 
+        if (isset($payload['action']) && $payload['action'] === 'settle_stripe_bank_transfer') {
+            return $this->settleStripeBankTransfer($payload);
+        }
+        if (isset($payload['action']) && $payload['action'] === 'settle_gift_card') {
+            return $this->settleGiftCard($payload);
+        }
+
         $cart = new Cart((int) $payload['id_cart']);
         if (!Validate::isLoadedObject($cart)) {
             throw new MlabFactoryApiException('Cart not found.', 404, array('id_cart' => (int) $payload['id_cart']));
@@ -76,6 +83,13 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         $paymentModuleName = (string) MlabFactoryApiHelper::getValue($payload, 'payment_module', Configuration::get(webserviceapi::CONFIG_PAYMENT_MODULE));
         $paymentModule = MlabFactoryApiHelper::resolvePaymentModule($paymentModuleName);
         $orderStateId = (int) MlabFactoryApiHelper::getValue($payload, 'id_order_state');
+        if (!empty($payload['stripe_bank_transfer_pending'])) {
+            $pendingState = new OrderState($orderStateId);
+            if ($orderStateId <= 0 || $orderStateId === 2
+                || !Validate::isLoadedObject($pendingState) || $pendingState->paid || $pendingState->logable || $pendingState->invoice) {
+                throw new MlabFactoryApiException('Bank transfer pending state is not configured.', 500);
+            }
+        }
         $paymentLabel = (string) MlabFactoryApiHelper::getValue($payload, 'payment_label', $paymentModule->displayName);
         $amountPaid = (float) MlabFactoryApiHelper::getValue($payload, 'amount_paid', $cart->getOrderTotal(true, Cart::BOTH));
 
@@ -128,6 +142,11 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             $this->addCustomCartRule($cart, $amountPaid);
         }
 
+        $checkoutSnapshotId = (string) MlabFactoryApiHelper::getValue($payload, 'checkout_snapshot_id', '');
+        if ($checkoutSnapshotId !== '') {
+            $this->assertCheckoutSnapshotMatchesCart($cart, $checkoutSnapshotId, $carrierId, $amountPaid);
+        }
+
 
         $paymentModule->validateOrder(
             (int) $cart->id,
@@ -153,6 +172,173 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             'cart' => MlabFactoryApiHelper::serializeCart($cart),
             'guest_registered' => $isGuest,
         );
+    }
+
+    /** Complete a pending order only after both payment sources are recorded. */
+    private function settleGiftCard(array $payload)
+    {
+        $cartId = (int) $payload['id_cart'];
+        $snapshotId = (string) ($payload['checkout_snapshot_id'] ?? '');
+        $pendingState = (int) ($payload['pending_state_id'] ?? 0);
+        if ($cartId <= 0 || !preg_match('/^[a-f0-9]{32}$/D', $snapshotId) || $pendingState <= 0 || $pendingState === 2) {
+            throw new MlabFactoryApiException('Invalid gift card settlement.', 422);
+        }
+        $lockName = 'mlabgc-settle-' . $cartId;
+        $db = Db::getInstance();
+        if ((int) $db->getValue("SELECT GET_LOCK('" . pSQL($lockName) . "', 5)") !== 1) {
+            throw new MlabFactoryApiException('Order settlement is busy.', 409);
+        }
+        try {
+            $snapshot = $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'stripe_checkout_snapshots` WHERE `id`=\''
+                . pSQL($snapshotId) . '\' AND `cart_id`=' . $cartId);
+            if (!$snapshot || empty($snapshot['gift_card_payment_verified_at'])) {
+                throw new MlabFactoryApiException('Gift card payment is not verified.', 409);
+            }
+            $verification = json_decode((string) $snapshot['verification_payload'], true);
+            $gift = $verification['gift_card'] ?? null;
+            $reservationId = $gift['reservation_id'] ?? null;
+            $giftCents = $gift['gift_card_cents'] ?? null;
+            $stripeCents = $gift['stripe_cents'] ?? null;
+            $platformCents = $gift['platform_cents'] ?? 0;
+            $totalCents = $verification['totals']['grand_total_cents'] ?? null;
+            if (!is_string($reservationId) || !preg_match('/^[a-f0-9]{32}$/D', $reservationId)
+                || $reservationId !== ($snapshot['gift_card_reservation_id'] ?? null)
+                || !is_int($giftCents) || $giftCents <= 0 || !is_int($stripeCents) || $stripeCents < 0
+                || !is_int($platformCents) || $platformCents < 0 || $platformCents >= 50
+                || ($platformCents > 0 && $stripeCents !== 0)
+                || !is_int($totalCents) || $giftCents + $stripeCents + $platformCents !== $totalCents) {
+                throw new MlabFactoryApiException('Invalid gift card checkout snapshot.', 409);
+            }
+            $rows = $db->executeS('SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders` WHERE `id_cart`=' . $cartId);
+            if (!is_array($rows) || count($rows) !== 1) {
+                throw new MlabFactoryApiException('Order requires manual reconciliation.', 409);
+            }
+            $order = new Order((int) $rows[0]['id_order']);
+            $reservation = $db->getRow('SELECT * FROM `' . _DB_PREFIX_ . 'mlabgc_reservations` WHERE `id`=\''
+                . pSQL($reservationId) . '\' AND `id_shop`=' . (int) $order->id_shop);
+            if (!Validate::isLoadedObject($order) || !$reservation || $reservation['status'] !== 'captured'
+                || (int) $reservation['order_id'] !== (int) $order->id || (int) $reservation['cart_id'] !== $cartId
+                || (int) $reservation['amount_cents'] !== $giftCents || (int) $reservation['refunded_cents'] !== 0
+                || $this->minorAmount($order->total_paid_tax_incl) !== $totalCents
+                || strtoupper((string) (new Currency((int) $order->id_currency))->iso_code) !== (string) $verification['currency']) {
+                throw new MlabFactoryApiException('Captured gift card does not match the order.', 409);
+            }
+            $state = new OrderState($pendingState);
+            $paidState = new OrderState(2);
+            if (!Validate::isLoadedObject($state) || $state->paid || $state->logable || $state->invoice
+                || !Validate::isLoadedObject($paidState) || !$paidState->paid || !$paidState->logable) {
+                throw new MlabFactoryApiException('Gift card order states are not configured.', 500);
+            }
+            $stripeId = (string) ($snapshot['stripe_payment_intent_id'] ?? '');
+            if ($stripeCents > 0 && !preg_match('/^pi_[A-Za-z0-9]+$/D', $stripeId)) {
+                throw new MlabFactoryApiException('Missing verified Stripe payment.', 409);
+            }
+            $expected = ['giftcard:' . $reservationId => ['Gift card', $giftCents]];
+            if ($stripeCents > 0) {
+                $expected[$stripeId] = ['Stripe', $stripeCents];
+            }
+            if ($platformCents > 0) {
+                $expected['platform:' . $reservationId] = ['Contributo piattaforma', $platformCents];
+            }
+            $recorded = [];
+            foreach ($order->getOrderPayments() as $payment) {
+                $reference = (string) $payment->transaction_id;
+                if (!isset($expected[$reference]) || isset($recorded[$reference])
+                    || $this->minorAmount($payment->amount) !== $expected[$reference][1]) {
+                    throw new MlabFactoryApiException('Order payment requires manual reconciliation.', 409);
+                }
+                $recorded[$reference] = true;
+            }
+            if ((int) $order->current_state !== 2) {
+                $outOfStockPending = (int) Configuration::get('PS_OS_OUTOFSTOCK_UNPAID');
+                $actualState = new OrderState((int) $order->current_state);
+                if (((int) $order->current_state !== $pendingState
+                    && ($outOfStockPending <= 0 || (int) $order->current_state !== $outOfStockPending))
+                    || !Validate::isLoadedObject($actualState) || $actualState->paid || $actualState->logable || $actualState->invoice
+                    || $order->hasInvoice()) {
+                    throw new MlabFactoryApiException('Order is no longer awaiting gift card payment.', 409);
+                }
+                foreach ($expected as $reference => [$label, $amount]) {
+                    if (!isset($recorded[$reference]) && !$order->addOrderPayment($amount / 100, $label, $reference)) {
+                        throw new MlabFactoryApiException('Unable to record order payment.', 500);
+                    }
+                }
+                $order->setCurrentState(2);
+                $order = new Order((int) $order->id);
+                if ((int) $order->current_state !== 2) {
+                    throw new MlabFactoryApiException('Unable to confirm gift card order.', 500);
+                }
+            } elseif (count($recorded) !== count($expected)) {
+                throw new MlabFactoryApiException('Paid order requires payment reconciliation.', 409);
+            }
+            if (!$db->execute('UPDATE `' . _DB_PREFIX_ . 'stripe_checkout_snapshots` SET `order_id`=' . (int) $order->id
+                . ', `gift_card_settled_at`=COALESCE(`gift_card_settled_at`, UTC_TIMESTAMP()), `updated_at`=UTC_TIMESTAMP()'
+                . ' WHERE `id`=\'' . pSQL($snapshotId) . '\'')) {
+                throw new MlabFactoryApiException('Unable to record gift card settlement.', 500);
+            }
+            return ['action' => 'settle_gift_card', 'order_id' => (int) $order->id];
+        } finally {
+            $db->getValue("SELECT RELEASE_LOCK('" . pSQL($lockName) . "')");
+        }
+    }
+
+    private function settleStripeBankTransfer(array $payload)
+    {
+        $cartId = (int) $payload['id_cart'];
+        $paymentIntent = isset($payload['payment_intent']) ? (string) $payload['payment_intent'] : '';
+        if ($cartId <= 0 || !preg_match('/^pi_[A-Za-z0-9]+$/D', $paymentIntent)) {
+            throw new MlabFactoryApiException('Invalid Stripe payment correlation.', 422);
+        }
+        $pendingState = isset($payload['pending_state_id']) ? (int) $payload['pending_state_id'] : 0;
+        $paidState = 2;
+        $state = new OrderState($pendingState);
+        $paidOrderState = new OrderState($paidState);
+        if ($pendingState <= 0 || $paidState <= 0 || $pendingState === $paidState
+            || !Validate::isLoadedObject($state) || $state->paid || $state->logable || $state->invoice
+            || !Validate::isLoadedObject($paidOrderState) || !$paidOrderState->paid || !$paidOrderState->logable) {
+            throw new MlabFactoryApiException('Bank transfer order states are not configured.', 500);
+        }
+        $rows = Db::getInstance()->executeS('SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders` WHERE `id_cart` = ' . $cartId);
+        if (empty($rows)) {
+            throw new MlabFactoryApiException('Order not found for cart.', 404);
+        }
+        // PrestaShop shares a payment reference across multishipping orders;
+        // do not guess how to split a single Stripe payment between them.
+        if (count($rows) !== 1) {
+            throw new MlabFactoryApiException('Multiple orders for this cart require manual payment reconciliation.', 409);
+        }
+        foreach ($rows as $row) {
+            $order = new Order((int) $row['id_order']);
+            if (!Validate::isLoadedObject($order) || (string) $order->payment !== 'Bonifico bancario (Stripe)') {
+                continue;
+            }
+            $paymentRecorded = false;
+            foreach ($order->getOrderPayments() as $payment) {
+                if ((string) $payment->transaction_id === $paymentIntent) {
+                    $paymentRecorded = true;
+                    break;
+                }
+            }
+            if ((int) $order->current_state === $paidState || ($paymentRecorded && $order->hasBeenPaid())) {
+                continue;
+            }
+            $outOfStockPending = (int) Configuration::get('PS_OS_OUTOFSTOCK_UNPAID');
+            if ((int) $order->current_state !== $pendingState && ($outOfStockPending <= 0 || (int) $order->current_state !== $outOfStockPending)) {
+                throw new MlabFactoryApiException('Bank transfer order is no longer awaiting payment.', 409);
+            }
+            if ($order->hasInvoice()) {
+                throw new MlabFactoryApiException('Bank transfer order with an existing invoice requires manual payment reconciliation.', 409);
+            }
+            if (!$paymentRecorded && !$order->addOrderPayment((float) $order->total_paid_tax_incl, 'Bonifico bancario (Stripe)', $paymentIntent)) {
+                throw new MlabFactoryApiException('Unable to record Stripe bank transfer payment.', 500);
+            }
+            $order->setCurrentState($paidState);
+            $order = new Order((int) $row['id_order']);
+            if ((int) $order->current_state !== $paidState) {
+                throw new MlabFactoryApiException('Unable to update bank transfer order state.', 500);
+            }
+        }
+        return array('action' => 'settle_stripe_bank_transfer');
     }
 
     /**
@@ -340,6 +526,87 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
 
         return new Order($orderId);
     }
+
+    /**
+     * A buyer may have completed Stripe Checkout while the PrestaShop cart is
+     * still editable. Confirm only when that cart still equals the immutable
+     * server quote stored with the Checkout Session.
+     */
+    private function assertCheckoutSnapshotMatchesCart(Cart $cart, $snapshotId, $carrierId, $amountPaid)
+    {
+        if (!is_string($snapshotId) || !preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
+            throw new MlabFactoryApiException('Invalid checkout snapshot identifier.', 422);
+        }
+
+        $row = Db::getInstance()->getRow(
+            'SELECT `verification_payload` FROM `' . _DB_PREFIX_ . 'stripe_checkout_snapshots`'
+            . ' WHERE `id` = \'' . pSQL($snapshotId) . '\''
+        );
+        if (!$row || empty($row['verification_payload'])) {
+            throw new MlabFactoryApiException('Checkout snapshot not found.', 409);
+        }
+        $snapshot = json_decode((string) $row['verification_payload'], true);
+        if (!is_array($snapshot) || !isset($snapshot['totals']) || !is_array($snapshot['totals']) || !isset($snapshot['lines']) || !is_array($snapshot['lines'])) {
+            throw new MlabFactoryApiException('Checkout snapshot is invalid.', 409);
+        }
+
+        $currency = new Currency((int) $cart->id_currency);
+        if ((int) ($snapshot['cart_id'] ?? 0) !== (int) $cart->id
+            || (int) ($snapshot['carrier_id'] ?? 0) !== (int) $carrierId
+            || strtoupper((string) ($snapshot['currency'] ?? '')) !== strtoupper((string) $currency->iso_code)
+            || (int) ($snapshot['totals']['grand_total_cents'] ?? -1) !== $this->minorAmount($amountPaid)) {
+            throw new MlabFactoryApiException('Checkout snapshot does not match the order confirmation.', 409);
+        }
+
+        if ($this->minorAmount($cart->getOrderTotal(true, Cart::BOTH)) !== (int) ($snapshot['totals']['grand_total_cents'] ?? -1)) {
+            throw new MlabFactoryApiException('Cart total changed after Checkout was created.', 409);
+        }
+
+        $expectedLines = array();
+        foreach ($snapshot['lines'] as $line) {
+            if (!is_array($line)) {
+                throw new MlabFactoryApiException('Checkout snapshot is invalid.', 409);
+            }
+            $expectedLines[] = array(
+                'product_id' => (int) ($line['product_id'] ?? 0),
+                'product_attribute_id' => (int) ($line['product_attribute_id'] ?? 0),
+                'customization_id' => (int) ($line['customization_id'] ?? 0),
+                'quantity' => (int) ($line['quantity'] ?? 0),
+                'unit_amount_tax_incl_cents' => (int) ($line['unit_amount_tax_incl_cents'] ?? -1),
+                'total_amount_tax_incl_cents' => (int) ($line['total_amount_tax_incl_cents'] ?? -1),
+            );
+        }
+        $actualLines = array();
+        foreach ($cart->getProducts() as $line) {
+            $actualLines[] = array(
+                'product_id' => (int) ($line['id_product'] ?? 0),
+                'product_attribute_id' => (int) ($line['id_product_attribute'] ?? 0),
+                'customization_id' => (int) ($line['id_customization'] ?? 0),
+                'quantity' => (int) ($line['cart_quantity'] ?? 0),
+                'unit_amount_tax_incl_cents' => $this->minorAmount($line['price_wt'] ?? null),
+                'total_amount_tax_incl_cents' => $this->minorAmount($line['total_wt'] ?? null),
+            );
+        }
+        usort($expectedLines, array($this, 'sortSnapshotLines'));
+        usort($actualLines, array($this, 'sortSnapshotLines'));
+        if ($expectedLines !== $actualLines) {
+            throw new MlabFactoryApiException('Cart products changed after Checkout was created.', 409);
+        }
+    }
+
+    private function sortSnapshotLines($left, $right)
+    {
+        return strcmp(json_encode($left), json_encode($right));
+    }
+
+    private function minorAmount($amount)
+    {
+        if (!is_numeric($amount) || !is_finite((float) $amount) || (float) $amount < 0) {
+            throw new MlabFactoryApiException('Invalid checkout amount.', 409);
+        }
+        return (int) round((float) $amount * 100, 0, PHP_ROUND_HALF_UP);
+    }
+
     /**
      * Applica una cart rule (coupon) al carrello
      * 

@@ -9,6 +9,7 @@ use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Service\GiftCard\GiftCardTender;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
 
@@ -17,6 +18,7 @@ class OrderSession implements ObjectInterface
     use UuidGenerator;
     protected array $data;
     private ?float $payableTotal = null;
+    private ?GiftCardTender $giftCardTender = null;
     private Order $service;
 
     private CustomerEntity $customer;
@@ -61,7 +63,8 @@ class OrderSession implements ObjectInterface
         }
 
         $carrierId = $data['id_carrier'] ?? null;
-        if (!is_numeric($carrierId) || (int) $carrierId <= 0) {
+        $isVirtual = ($data['is_virtual'] ?? false) === true;
+        if (!is_numeric($carrierId) || ((int) $carrierId <= 0 && !($isVirtual && (int) $carrierId === 0))) {
             throw new \InvalidArgumentException('A valid carrier ID is required for payment session');
         }
 
@@ -72,6 +75,7 @@ class OrderSession implements ObjectInterface
             'id_customer' => (string) ($data['id_customer'] ?? ''),
             'id_guest' => (string) ($data['id_guest'] ?? ''),
             'id_carrier' => (string) $data['id_carrier'],
+            'is_virtual' => $isVirtual ? 'true' : 'false',
             'coupon_code' => (string) ($data['discounts'][0]['coupon'] ?? ''),
             'recovery_attempt' => $this->metadataBoolean($data['recovery_attempt'] ?? false, 'recovery_attempt'),
             'create_account' => $this->metadataBoolean($data['create_account'] ?? false, 'create_account'),
@@ -193,7 +197,7 @@ class OrderSession implements ObjectInterface
         ];
     }
 
-    public function applyCouponCart(array $cart): void
+    public function applyCouponCart(array $cart, bool $giftCardCheckout = false): void
     {
         if (empty($cart['currency_iso'])) {
             throw new \InvalidArgumentException('Cart currency is required.');
@@ -216,7 +220,7 @@ class OrderSession implements ObjectInterface
         }
         $code = (string) ($cart['cart_rules'][0]['code'] ?? '');
         $this->data['metadata']['coupon_code'] = $code;
-        if ($discount > 0) {
+        if ($discount > 0 && !$giftCardCheckout) {
             $this->addDiscount(new Discount('Cart ' . $cart['id'] . ' discount', $discount, $code, type: 'amount'));
         }
         $this->payableTotal = (float) $grandTotal;
@@ -237,6 +241,46 @@ class OrderSession implements ObjectInterface
     public function payableTotal(): float
     {
         return $this->payableTotal ?? $this->total();
+    }
+
+    public function attachGiftCardTender(GiftCardTender $tender): void
+    {
+        if ($tender->cartId !== (int) ($this->data['metadata']['cart_id'] ?? 0)
+            || $tender->totalCents !== (int) round($this->payableTotal() * 100)
+            || $this->giftCardTender !== null) {
+            throw new \InvalidArgumentException('Gift card reservation does not match the order.');
+        }
+        $this->giftCardTender = $tender;
+    }
+
+    public function giftCardTender(): ?GiftCardTender
+    {
+        return $this->giftCardTender;
+    }
+
+    /** Stripe collects only the residual; the snapshot retains the complete cart and discounts. */
+    public function toStripePaymentArray(): array
+    {
+        $payload = $this->toArray();
+        if ($this->giftCardTender === null) {
+            return $payload;
+        }
+        if ($this->giftCardTender->stripeCents <= 0) {
+            throw new \InvalidArgumentException('A fully covered order must not create a Stripe Checkout Session.');
+        }
+        $payload['line_items'] = [[
+            'price_data' => [
+                'currency' => 'eur',
+                'product_data' => ['name' => 'Saldo ordine'],
+                'unit_amount' => $this->giftCardTender->stripeCents,
+            ],
+            'quantity' => 1,
+        ]];
+        // Asynchronous payment methods can settle after a reservation expires.
+        $payload['payment_method_types'] = ['card'];
+        // The residual already includes all commercial discounts and shipping.
+        unset($payload['discounts'], $payload['shipping_options']);
+        return $payload;
     }
 
     public function addDiscount(Discount $discount): void
@@ -317,6 +361,30 @@ class OrderSession implements ObjectInterface
         return $this->customer;
     }
 
+    /** Marks this platform Checkout payment as a Connect separate-charge flow. */
+    public function enableStripeConnect(string $transferGroup): void
+    {
+        if (!preg_match('/^[A-Za-z0-9_-]{1,191}$/', $transferGroup)) {
+            throw new \InvalidArgumentException('Invalid Stripe transfer group.');
+        }
+        $this->data['metadata']['stripe_connect'] = 'true';
+        $this->data['metadata']['transfer_group'] = $transferGroup;
+        $this->data['payment_intent_data'] = ['transfer_group' => $transferGroup];
+    }
+
+    /**
+     * The identifier points to the encrypted, server-generated checkout
+     * snapshot. It is safe to place in Stripe metadata and lets the webhook
+     * retrieve the exact quote instead of re-reading a mutable cart.
+     */
+    public function setCheckoutSnapshotId(string $snapshotId): void
+    {
+        if (!preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
+            throw new \InvalidArgumentException('Invalid checkout snapshot identifier.');
+        }
+        $this->data['metadata']['checkout_snapshot_id'] = $snapshotId;
+    }
+
     public function toCacheData(): array
     {
         return [
@@ -325,6 +393,63 @@ class OrderSession implements ObjectInterface
                 'customer' => $this->customer->toArray(),
             ],
         ];
+    }
+
+    /**
+     * Returns a stable identifier for an equivalent Checkout request.
+     *
+     * The fingerprint deliberately excludes the Stripe Checkout expiry and the
+     * attempt key itself. Both are assigned by the checkout controller and can
+     * change when an expired attempt is replaced; prices, quantities, shipping,
+     * discounts and the cart owner remain part of the fingerprint.
+     */
+    public function checkoutAttemptFingerprint(): string
+    {
+        $payload = $this->data;
+        unset($payload['expires_at']);
+        unset($payload['metadata']['checkout_attempt_key']);
+
+        if ($this->giftCardTender !== null) {
+            $payload['gift_card_tender'] = $this->giftCardTender->toArray();
+        }
+
+        return hash('sha256', json_encode($this->sortCheckoutPayload($payload), JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Makes the Checkout Session payload repeatable for a single attempt.
+     *
+     * Stripe treats a repeated idempotency key with different request
+     * parameters as an error. Keeping the expiry on the session makes
+     * concurrent API requests submit the same payload as well as the same key.
+     */
+    public function setCheckoutAttempt(string $attemptKey, int $expiresAt): void
+    {
+        if (!preg_match('/^dz_checkout_v1_[a-f0-9]{64}_[1-9][0-9]*$/', $attemptKey)) {
+            throw new \InvalidArgumentException('Invalid Stripe checkout attempt key.');
+        }
+        if ($expiresAt <= time()) {
+            throw new \InvalidArgumentException('Stripe checkout attempt expiry must be in the future.');
+        }
+
+        $this->data['metadata']['checkout_attempt_key'] = $attemptKey;
+        $this->data['expires_at'] = $expiresAt;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function sortCheckoutPayload(array $payload): array
+    {
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $payload[$key] = $this->sortCheckoutPayload($value);
+            }
+        }
+
+        if (!array_is_list($payload)) {
+            ksort($payload);
+        }
+
+        return $payload;
     }
 
     public function hash(): string

@@ -19,6 +19,10 @@ final class AppScheduleProvider implements ScheduleProviderInterface
         $financialTimezone = (string) env('FINANCIAL_SUMMARY_TIMEZONE', 'UTC');
 
         return (new Schedule())
+            ->add(RecurringMessage::cron('* * * * *', new ScheduledPromotionCacheMessage()))
+            ->add(RecurringMessage::cron('* * * * *', new GiftCardMaintenanceMessage()))
+            ->add(RecurringMessage::cron('* * * * *', new RecoverGiftCardCheckoutsMessage()))
+            ->add(RecurringMessage::cron('0 4 * * *', new ReconcileProductIndexMessage(), 'Europe/Rome'))
             ->add(RecurringMessage::cron('0 3 * * *', new WarmProductCacheMessage(), 'Europe/Rome'))
             ->add(
                 // Esegue ogni giorno alla mezzanotte (Europe/Rome)
@@ -26,6 +30,15 @@ final class AppScheduleProvider implements ScheduleProviderInterface
             )
             ->add(
                 RecurringMessage::cron('10 * * * *', new GenerateSitemap())
+            )
+            ->add(
+                // PrestaShop can acknowledge order creation before its order
+                // row is readable. Durable allocation jobs close that gap.
+                RecurringMessage::cron('*/5 * * * *', new RetryQueuedStripeConnectTransferAllocationsMessage())
+            )
+            ->add(
+                // Reconciliation fallback for delayed or redelivered Connect events.
+                RecurringMessage::cron('*/15 * * * *', new RetryPendingStripeConnectTransfersMessage())
             )
             ->add(
                 // Monday morning: reports always describe the preceding local calendar week.

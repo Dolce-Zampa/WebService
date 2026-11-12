@@ -89,6 +89,10 @@ class OptionEntity extends Entity implements ObjectInterface
 			$type = 'material';
 		}
 
+		if($this->data['id_attribute_group'] == 11) {
+			$type = 'color';
+		}
+
 		$this->data = [
 			'id' => (int) ($this->data['id'] ?? 0),
 			'id_attribute_group' => (int) ($this->data['id_attribute_group'] ?? 0),

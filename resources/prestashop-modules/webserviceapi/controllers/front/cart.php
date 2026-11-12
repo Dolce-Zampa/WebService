@@ -399,7 +399,7 @@ class webserviceapicartModuleFrontController extends MlabFactoryApiBaseModuleFro
 
         $linkedOrder = (int) Db::getInstance()->getValue(
             'SELECT `id_order` FROM `' . _DB_PREFIX_ . 'orders`
-             WHERE `id_cart` = ' . $idCart . ' LIMIT 1'
+             WHERE `id_cart` = ' . $idCart
         );
         if ($linkedOrder > 0) {
             throw new MlabFactoryApiException(

@@ -6,6 +6,7 @@ use PS\Webservice\Repositories\OrderRepository;
 use PS\Webservice\Service\MailerInterface;
 use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
+use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\PS\Order;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -46,6 +47,7 @@ final class StripeWebhookControllerTest extends TestCase
             'queue-service' => $this->createMock(\PS\Webservice\Service\RedisQueue::class)  
         ]);
         \Illuminate\Support\Facades\Facade::clearResolvedInstance('log');
+        \Illuminate\Support\Facades\Facade::clearResolvedInstance('cache');
 
         $this->cache = $cache;
         $this->taggedCache = $taggedCache;
@@ -92,6 +94,8 @@ final class StripeWebhookControllerTest extends TestCase
         return new class($service, $mailjet, $stripe, $mailer, $orderRepo, $event, $ledgerFailure) extends StripeWebhookController {
             private \Stripe\Event $stubbedEvent;
             private ?\Throwable $ledgerFailure;
+            /** @var array<string, int> */
+            private array $confirmedCheckoutSessions = [];
 
             public function __construct(
                 Order $orderService,
@@ -125,6 +129,33 @@ final class StripeWebhookControllerTest extends TestCase
             protected function constructStripeEvent(string $payload, string $sigHeader, string $secret): \Stripe\Event
             {
                 return $this->stubbedEvent;
+            }
+
+            protected function isBankTransferCheckoutSession(\Stripe\StripeObject $session): bool
+            {
+                return ($session->toArray()['metadata']['test_bank_transfer'] ?? null) === 'true';
+            }
+
+            protected function sendBankTransferInstructions(\Stripe\StripeObject $session, int $cartId): void {}
+
+            public function useEvent(\Stripe\Event $event): void
+            {
+                $this->stubbedEvent = $event;
+            }
+
+            protected function withCheckoutConfirmationLock(string $checkoutSessionId, callable $callback): mixed
+            {
+                return $callback();
+            }
+
+            protected function checkoutConfirmationIsRecorded(string $checkoutSessionId): bool
+            {
+                return array_key_exists($checkoutSessionId, $this->confirmedCheckoutSessions);
+            }
+
+            protected function recordCheckoutConfirmation(string $checkoutSessionId, int $cartId): void
+            {
+                $this->confirmedCheckoutSessions[$checkoutSessionId] = $cartId;
             }
 
             protected function recordFinancialWebhook(\Stripe\Event $event): void
@@ -321,6 +352,7 @@ final class StripeWebhookControllerTest extends TestCase
             'id' => 'cs_test_1',
             'amount_total' => 5000,
             'currency' => 'eur',
+            'payment_status' => 'paid',
             'metadata' => [
                 'cart_id' => '42',
                 'id_customer' => '7',
@@ -342,6 +374,99 @@ final class StripeWebhookControllerTest extends TestCase
         $result = $controller->handleWebhook($request, $this->createMock(ResponseInterface::class), []);
 
         $this->assertSame(200, $result->getStatusCode());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('snapshotCarrierCases')]
+    public function test_checkout_snapshot_drives_confirmation_when_stripe_metadata_is_stale(int $carrierId, bool $virtual): void
+    {
+        $previousAppKey = getenv('APP_KEY');
+        putenv('APP_KEY=webhook-snapshot-test-key');
+        $_ENV['APP_KEY'] = 'webhook-snapshot-test-key';
+        try {
+            $db = new \Illuminate\Database\Capsule\Manager();
+            $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+            $db->bootEloquent();
+            $db->setAsGlobal();
+            $db->schema()->create('manufacturer_details', function ($table): void {
+                $table->unsignedInteger('id_manufacturer')->primary();
+                $table->string('commission');
+            });
+            $db->schema()->create('stripe_checkout_snapshots', function ($table): void {
+                $table->string('id', 32)->primary();
+                $table->unsignedInteger('cart_id');
+                $table->string('checkout_session_id')->nullable()->unique();
+                $table->string('stripe_payment_intent_id')->nullable()->unique();
+                $table->unsignedBigInteger('order_id')->nullable();
+                $table->string('transfer_group')->nullable();
+                $table->string('currency', 3);
+                $table->text('payload_ciphertext');
+                $table->string('payload_hash', 64);
+                $table->text('verification_payload');
+                $table->dateTime('created_at');
+                $table->dateTime('updated_at');
+            });
+            $db->table('manufacturer_details')->insert(['id_manufacturer' => 7, 'commission' => '20.00']);
+
+            $orderService = $this->createMock(Order::class);
+            $checkout = \PS\Webservice\Domain\Object\OrderSession::create([
+                'cart_id' => 42, 'id_customer' => 7, 'id_carrier' => $carrierId, 'is_virtual' => $virtual, 'payment_module' => 'webserviceapi',
+                'customer' => \PS\Webservice\Domain\Entities\CustomerEntity::create([
+                    'email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Snapshot',
+                    'delivery_address' => ['address1' => 'Via Roma 1', 'city' => 'Roma', 'postcode' => '00100', 'country' => 'IT'],
+                ], $orderService),
+            ], $orderService);
+            $checkout->addCartLineItem(['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '50.00', 'quantity' => 1]);
+            $snapshotService = new CheckoutSnapshotService($db);
+            $snapshot = $snapshotService->create($checkout, [
+                'currency_iso' => 'EUR', 'is_virtual' => $virtual,
+                'products' => [['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '50.00', 'quantity' => 1]],
+                'totals' => ['shipping_tax_incl' => '0.00'],
+            ]);
+
+            $orderService->expects($this->once())->method('confirmSessionOrder')->with(
+                42, 7, null, $carrierId, null, 'buyer@example.test', 'Buyer', 'Snapshot',
+                $this->isType('object'), 50.0, 'Online payment', $snapshot['id'],
+            );
+            $controller = new class(
+                $orderService,
+                $this->createMock(MailjetService::class),
+                $this->createMock(PaymentGatewayInterface::class),
+                $this->createMock(MailerInterface::class),
+                null,
+                null,
+                null,
+                null,
+                null,
+                $snapshotService,
+            ) extends StripeWebhookController {
+                protected function withCheckoutConfirmationLock(string $checkoutSessionId, callable $callback): mixed
+                {
+                    return $callback();
+                }
+            };
+            $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
+                'id' => 'cs_snapshot_confirmation', 'amount_total' => 5000, 'currency' => 'eur', 'payment_status' => 'paid',
+                // These metadata values are deliberately wrong. The session is
+                // bound to the snapshot and confirmation must use the latter.
+                'metadata' => [
+                    'checkout_snapshot_id' => $snapshot['id'], 'cart_id' => '999', 'id_customer' => '99',
+                    'id_carrier' => '99', 'coupon_code' => 'WRONG', 'payment_module' => 'wrong_module',
+                ],
+            ]));
+        } finally {
+            if ($previousAppKey === false) {
+                putenv('APP_KEY');
+                unset($_ENV['APP_KEY']);
+            } else {
+                putenv('APP_KEY=' . $previousAppKey);
+                $_ENV['APP_KEY'] = $previousAppKey;
+            }
+        }
+    }
+
+    public static function snapshotCarrierCases(): array
+    {
+        return ['physical' => [3, false], 'virtual' => [0, true]];
     }
 
     public function test_logs_ledger_failure_without_retrying_a_confirmed_checkout(): void
@@ -370,6 +495,7 @@ final class StripeWebhookControllerTest extends TestCase
             'id' => 'cs_ledger_failure',
             'amount_total' => 5000,
             'currency' => 'eur',
+            'payment_status' => 'paid',
             'metadata' => [
                 'cart_id' => '42',
                 'id_customer' => '7',
@@ -393,6 +519,255 @@ final class StripeWebhookControllerTest extends TestCase
         );
 
         $this->assertSame(200, $result->getStatusCode());
+    }
+
+    public function test_completed_but_unpaid_checkout_does_not_confirm_an_order(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
+
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->never())->method('confirmSessionOrder');
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_unpaid_1',
+            'amount_total' => 5000,
+            'currency' => 'eur',
+            'payment_status' => 'unpaid',
+            'metadata' => [
+                'cart_id' => '42',
+                'id_customer' => '7',
+                'id_carrier' => '3',
+            ],
+        ]);
+        $event = \Stripe\Event::constructFrom([
+            'id' => 'evt_unpaid_1',
+            'type' => 'checkout.session.completed',
+            'data' => ['object' => $session->toArray()],
+        ]);
+
+        $result = $this->buildControllerWithEvent($event, $orderService)->handleWebhook(
+            $this->buildRequest('{}', 'sig'),
+            $this->createMock(ResponseInterface::class),
+            [],
+        );
+
+        self::assertSame(200, $result->getStatusCode());
+    }
+
+    public function test_async_payment_success_confirms_once_after_an_unpaid_completion(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
+        putenv('MAILJET_CLIENTI_LIST_ID');
+        unset($_ENV['MAILJET_CLIENTI_LIST_ID'], $_SERVER['MAILJET_CLIENTI_LIST_ID']);
+
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->once())->method('confirmSessionOrder');
+        $unpaidSession = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_async_1',
+            'amount_total' => 5000,
+            'currency' => 'eur',
+            'payment_status' => 'unpaid',
+            'metadata' => [
+                'cart_id' => '42',
+                'id_customer' => '7',
+                'id_carrier' => '3',
+                'customer_email' => 'john.doe@example.com',
+            ],
+        ]);
+        $paidSession = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_async_1',
+            'payment_intent' => 'pi_test123',
+            'amount_total' => 5000,
+            'currency' => 'eur',
+            'payment_status' => 'paid',
+            'metadata' => [
+                'cart_id' => '42',
+                'id_customer' => '7',
+                'id_carrier' => '3',
+                'customer_email' => 'john.doe@example.com',
+            ],
+        ]);
+        $controller = $this->buildControllerWithEvent(\Stripe\Event::constructFrom([
+            'id' => 'evt_async_completed_1',
+            'type' => 'checkout.session.completed',
+            'data' => ['object' => $unpaidSession->toArray()],
+        ]), $orderService);
+
+        $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), []);
+        $controller->useEvent(\Stripe\Event::constructFrom([
+            'id' => 'evt_async_success_1',
+            'type' => 'checkout.session.async_payment_succeeded',
+            'data' => ['object' => $paidSession->toArray()],
+        ]));
+        $result = $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), []);
+
+        self::assertSame(200, $result->getStatusCode());
+    }
+
+    public function test_bank_transfer_creates_pending_order_and_settles_it_once_paid(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->once())->method('confirmSessionOrder')->with(
+            42, 7, null, 3, null, 'john.doe@example.com', 'Mario', 'Rossi',
+            $this->isType('object'), 50.0, 'Bonifico bancario (Stripe)', null, true,
+        );
+        $orderService->expects($this->once())->method('settleStripeBankTransfer')->with(42, 'pi_test123');
+        $session = [
+            'id' => 'cs_bank_transfer', 'payment_intent' => 'pi_test123',
+            'amount_total' => 5000, 'currency' => 'eur', 'payment_status' => 'unpaid',
+            'metadata' => ['cart_id' => '42', 'id_customer' => '7', 'id_carrier' => '3', 'test_bank_transfer' => 'true'],
+        ];
+        $controller = $this->buildControllerWithEvent(\Stripe\Event::constructFrom([
+            'id' => 'evt_bank_pending', 'type' => 'checkout.session.completed', 'data' => ['object' => $session],
+        ]), $orderService);
+        self::assertSame(200, $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+        $session['payment_status'] = 'paid';
+        $controller->useEvent(\Stripe\Event::constructFrom([
+            'id' => 'evt_bank_paid', 'type' => 'checkout.session.async_payment_succeeded', 'data' => ['object' => $session],
+        ]));
+        self::assertSame(200, $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+    }
+
+    public function test_unpaid_checkout_uses_selected_payment_method_not_available_methods(): void
+    {
+        $controller = new class(
+            $this->createMock(Order::class), $this->createMock(MailjetService::class),
+            $this->createMock(PaymentGatewayInterface::class), $this->createMock(MailerInterface::class),
+        ) extends StripeWebhookController {
+            public array $intentData = [];
+            public function isBank(\Stripe\StripeObject $session): bool { return $this->isBankTransferCheckoutSession($session); }
+            protected function retrieveCheckoutPaymentIntent(string $intentId): \Stripe\PaymentIntent
+            {
+                return \Stripe\PaymentIntent::constructFrom($this->intentData);
+            }
+        };
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'payment_intent' => 'pi_test123', 'payment_method_types' => ['card', 'customer_balance'],
+        ]);
+        $controller->intentData = ['payment_method' => ['type' => 'card']];
+        self::assertFalse($controller->isBank($session));
+        $controller->intentData = ['payment_method' => ['type' => 'customer_balance']];
+        self::assertTrue($controller->isBank($session));
+        $controller->intentData = ['next_action' => ['type' => 'display_bank_transfer_instructions']];
+        self::assertTrue($controller->isBank($session));
+    }
+
+    public function test_bank_transfer_email_uses_details_from_stripe(): void
+    {
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects($this->once())->method('sendStripeBankTransferInstructions')->with(
+            'buyer@example.test', 'Mario', [
+                'amount' => '95,10 EUR', 'beneficiary' => 'Beneficiario Stripe',
+                'iban' => 'IE00TEST123', 'bic' => 'TESTBIC', 'reference' => 'REF123',
+            ],
+        );
+        $controller = new class(
+            $this->createMock(Order::class), $this->createMock(MailjetService::class),
+            $this->createMock(PaymentGatewayInterface::class), $mailer,
+        ) extends StripeWebhookController {
+            public function sendInstructions(\Stripe\StripeObject $session): void { $this->sendBankTransferInstructions($session, 42); }
+            protected function withCheckoutConfirmationLock(string $id, callable $callback): mixed { return $callback(); }
+            protected function retrieveCheckoutPaymentIntent(string $id): \Stripe\PaymentIntent
+            {
+                return \Stripe\PaymentIntent::constructFrom([
+                    'status' => 'requires_action', 'next_action' => ['display_bank_transfer_instructions' => [
+                        'amount_remaining' => 9510, 'currency' => 'eur', 'reference' => 'REF123',
+                        'financial_addresses' => [['type' => 'iban', 'iban' => [
+                            'iban' => 'IE00TEST123', 'bic' => 'TESTBIC', 'account_holder_name' => 'Beneficiario Stripe',
+                        ]]],
+                    ]],
+                ]);
+            }
+            protected function getCheckoutCustomer(int $cartId, ?int $customerId, ?int $guestId, ?\Stripe\StripeObject $stripeSession = null): object
+            {
+                return (object) ['email' => 'buyer@example.test', 'firstname' => 'Mario'];
+            }
+        };
+        $controller->sendInstructions(\Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_test', 'payment_intent' => 'pi_test', 'metadata' => ['id_customer' => '7'],
+        ]));
+    }
+
+    public function test_instruction_email_retries_after_failure_and_skips_already_paid(): void
+    {
+        $mailer = $this->createMock(MailerInterface::class);
+        $attempts = 0;
+        $mailer->expects($this->exactly(2))->method('sendStripeBankTransferInstructions')
+            ->willReturnCallback(function () use (&$attempts): void {
+                if (++$attempts === 1) {
+                    throw new \RuntimeException('mail unavailable');
+                }
+            });
+        $this->cache->expects($this->once())->method('put');
+        $controller = new class(
+            $this->createMock(Order::class), $this->createMock(MailjetService::class),
+            $this->createMock(PaymentGatewayInterface::class), $mailer,
+        ) extends StripeWebhookController {
+            public bool $paid = false;
+            public function sendInstructions(\Stripe\StripeObject $session): void { $this->sendBankTransferInstructions($session, 42); }
+            protected function withCheckoutConfirmationLock(string $id, callable $callback): mixed { return $callback(); }
+            protected function retrieveCheckoutPaymentIntent(string $id): \Stripe\PaymentIntent
+            {
+                return \Stripe\PaymentIntent::constructFrom([
+                    'status' => $this->paid ? 'succeeded' : 'requires_action',
+                    'next_action' => ['display_bank_transfer_instructions' => [
+                        'amount_remaining' => 9510, 'currency' => 'eur',
+                        'financial_addresses' => [['type' => 'iban', 'iban' => [
+                            'iban' => 'IE00TEST123', 'account_holder_name' => 'Beneficiario Stripe',
+                        ]]],
+                    ]],
+                ]);
+            }
+            protected function getCheckoutCustomer(int $cartId, ?int $customerId, ?int $guestId, ?\Stripe\StripeObject $stripeSession = null): object
+            {
+                return (object) ['email' => 'buyer@example.test', 'firstname' => 'Mario'];
+            }
+        };
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_retry', 'payment_intent' => 'pi_test', 'metadata' => ['id_customer' => '7'],
+        ]);
+        try {
+            $controller->sendInstructions($session);
+            self::fail('The first mail attempt must fail.');
+        } catch (\RuntimeException $e) {
+            self::assertSame('mail unavailable', $e->getMessage());
+        }
+        $controller->sendInstructions($session);
+        $controller->paid = true;
+        $controller->sendInstructions($session);
+    }
+
+    public function test_replayed_paid_checkout_does_not_confirm_a_second_order(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test123';
+        putenv('MAILJET_CLIENTI_LIST_ID');
+        unset($_ENV['MAILJET_CLIENTI_LIST_ID'], $_SERVER['MAILJET_CLIENTI_LIST_ID']);
+
+        $orderService = $this->createMock(Order::class);
+        $orderService->expects($this->once())->method('confirmSessionOrder');
+        $session = \Stripe\Checkout\Session::constructFrom([
+            'id' => 'cs_replayed_1',
+            'amount_total' => 5000,
+            'currency' => 'eur',
+            'payment_status' => 'paid',
+            'metadata' => [
+                'cart_id' => '42',
+                'id_customer' => '7',
+                'id_carrier' => '3',
+                'customer_email' => 'john.doe@example.com',
+            ],
+        ]);
+        $event = \Stripe\Event::constructFrom([
+            'id' => 'evt_replayed_1',
+            'type' => 'checkout.session.completed',
+            'data' => ['object' => $session->toArray()],
+        ]);
+        $controller = $this->buildControllerWithEvent($event, $orderService);
+
+        $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), []);
+        $result = $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), []);
+
+        self::assertSame(200, $result->getStatusCode());
     }
 
     // ---------------------------------------------------------------------------
@@ -443,6 +818,7 @@ final class StripeWebhookControllerTest extends TestCase
             'id' => 'cs_test_missing_carrier',
             'amount_total' => 5000,
             'currency' => 'eur',
+            'payment_status' => 'paid',
             'metadata' => ['cart_id' => '42'],
         ]));
     }
@@ -458,6 +834,7 @@ final class StripeWebhookControllerTest extends TestCase
             'id' => 'cs_test_4',
             'amount_total' => 0,
             'currency' => 'eur',
+            'payment_status' => 'paid',
             'metadata' => [
                 'cart_id' => '42',
                 'id_carrier' => '3',
@@ -493,6 +870,7 @@ final class StripeWebhookControllerTest extends TestCase
             'id' => 'cs_test_5',
             'amount_total' => 5000,
             'currency' => 'jpy',
+            'payment_status' => 'paid',
             'metadata' => [
                 'cart_id' => '42',
                 'id_carrier' => '3',
@@ -540,6 +918,7 @@ final class StripeWebhookControllerTest extends TestCase
         ]]);
         $controller->handleCheckoutSessionCompleted(\Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_test_guest', 'amount_total' => 10400, 'currency' => 'eur',
+            'payment_status' => 'paid',
             'metadata' => [
                 'cart_id' => '621',
                 'id_guest' => '359',
@@ -580,6 +959,7 @@ final class StripeWebhookControllerTest extends TestCase
             'id' => 'cs_test_invalid_address',
             'amount_total' => 10400,
             'currency' => 'eur',
+            'payment_status' => 'paid',
             'metadata' => ['cart_id' => '621', 'id_guest' => '359', 'id_carrier' => '15'],
             'shipping_details' => ['address' => ['line1' => 'Via Consegna 1']],
         ]));
@@ -633,6 +1013,7 @@ final class StripeWebhookControllerTest extends TestCase
     {
         return \Stripe\Checkout\Session::constructFrom([
             'id' => 'cs_test_guest', 'amount_total' => 10400, 'currency' => 'eur',
+            'payment_status' => 'paid',
             'metadata' => ['cart_id' => '621', 'id_guest' => '359', 'id_carrier' => '15'],
         ]);
     }
@@ -650,6 +1031,20 @@ final class StripeWebhookControllerTest extends TestCase
             protected function getFromCache(string $key): mixed
             {
                 return $this->cached;
+            }
+
+            protected function withCheckoutConfirmationLock(string $checkoutSessionId, callable $callback): mixed
+            {
+                return $callback();
+            }
+
+            protected function checkoutConfirmationIsRecorded(string $checkoutSessionId): bool
+            {
+                return false;
+            }
+
+            protected function recordCheckoutConfirmation(string $checkoutSessionId, int $cartId): void
+            {
             }
         };
     }

@@ -82,7 +82,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if($response->failed()) {
-            Log::error("Failed to create cart for customer {$payload->getId()}, code:" . $response->getHttpCode() . ", body: " . $response->getBody());
+            Log::error('Failed to create cart', ['status' => $response->getHttpCode()]);
             throw new PrestashopConnectorException($response);
         }
 
@@ -94,7 +94,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
      * Never use prices provided by the frontend; always fetch from the server to prevent price manipulation.
      *
      * @param int $productId The product ID
-     * @return float The product price including 22% VAT
+     * @return float The effective product price including the applicable tax
      * @throws \RuntimeException When the product is not found or the API call fails
      */
     public function getProductPriceById(int $productId): float
@@ -102,6 +102,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         $queryString = http_build_query([
             'display' => '[id,price]',
             'filter[id]' => $productId,
+            'price' => ['original_price' => ['use_tax' => 1, 'use_reduction' => 1]],
         ]);
         $this->httpService->setUrl("/products?{$queryString}");
 
@@ -117,9 +118,11 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             throw new \RuntimeException("Product #{$productId} not found in catalog. Ensure the product exists and is published.");
         }
 
-        $basePrice = (float) ($products[0]['price'] ?? 0.0);
-        // Apply 22% VAT — consistent with ProductManipulation::calculateFullPrice()
-        return round($basePrice * 1.22, 2);
+        if (!isset($products[0]['original_price']) || !is_numeric($products[0]['original_price'])) {
+            throw new \RuntimeException("Missing calculated price for product #{$productId}");
+        }
+
+        return round((float) $products[0]['original_price'], 2);
     }
 
     /**
@@ -131,7 +134,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     public function updateCart(array $product, $cartId, $customerId, bool $isGuest = false, ?string $op = 'up'): HttpServiceInterface
     {
         $type = $isGuest ? 'guest' : 'customer';
-        $this->httpService->setUrl("/carts?ws_key={$this->httpService->getConfig()->apikey}");
+        $this->httpService->setUrl('/carts');
 
         //create a payload
         $products = [
@@ -169,7 +172,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if($response->failed()) {
-            Log::error("Failed to update cart for customer {$payload->getId()}, code:" . $response->getHttpCode() . ", body: " . $response->getBody());
+            Log::error('Failed to update cart', ['status' => $response->getHttpCode()]);
             throw new PrestashopConnectorException($response);
         }
 
@@ -244,7 +247,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             $codes = [''];
         }
         foreach ($codes as $code) {
-            $this->httpService->setUrl('/cart_rules?' . http_build_query(['ws_key' => $this->httpService->getConfig()->apikey]));
+            $this->httpService->setUrl('/cart_rules');
             $response = $this->httpService->invoke('POST', [
                 'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId,
                 'id_carrier' => $carrierId, 'checkout' => true, 'code' => $code,
@@ -256,7 +259,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             ]);
             $data = $response->toArray();
             if ($response->failed() || empty($data['data']['cart'])) {
-                throw new \InvalidArgumentException($data['error']['message'] ?? 'Unable to validate coupon cart.');
+                throw new \InvalidArgumentException('Unable to validate coupon cart.');
             }
         }
         return CartEntity::create($data['data']['cart'], $this);
@@ -329,7 +332,6 @@ class Cart extends Carrier implements PrestashopServiceInterface {
      */
     private function invokeCartRules(array $queryParams): ?array
     {
-        $queryParams['ws_key'] = $this->httpService->getConfig()->apikey;
         $queryString = http_build_query($queryParams);
         $this->httpService->setUrl("/cart_rules?{$queryString}");
 
@@ -341,7 +343,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if ($response->failed()) {
-            Log::error("Failed to retrieve cart rules, code:" . $response->getHttpCode() . ", body: " . $response->getBody());
+            Log::error('Failed to retrieve cart rules', ['status' => $response->getHttpCode()]);
             return null;
         }
 
@@ -353,7 +355,6 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     {
         $queryParams = [
             'id_cart' => $cartId,
-            'ws_key' => $this->httpService->getConfig()->apikey,
         ];
 
         $payload = [

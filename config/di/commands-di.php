@@ -4,10 +4,22 @@
 
 $container->set(\PS\Webservice\Service\MailerInterface::class, \DI\get(\PS\Webservice\Service\PS\Mailer::class));
 
+$container->set(\PS\Webservice\Commands\GiftCardMaintenanceCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\GiftCardMaintenanceCommand(
+        $c->get(\PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHandler::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\SendReviewRequestMailCommand::class, function ($c) {
     return new \PS\Webservice\Commands\SendReviewRequestMailCommand(
         $c->get(\PS\Webservice\Service\MailerInterface::class),
         $c->get(\PS\Webservice\Service\RedisQueue::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\ResetCustomerPasswordCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\ResetCustomerPasswordCommand(
+        $c->get(\PS\Webservice\Service\MailerInterface::class)
     );
 });
 
@@ -32,6 +44,30 @@ $container->set(\PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::cla
     );
 });
 
+$container->set(\PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand(
+        $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class, function ($c) {
     return new \PS\Webservice\Commands\ElasticSearch\CreateIndexElk(
         $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
@@ -44,6 +80,12 @@ $container->set(\PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class, f
         $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
         $c->get(\PS\Webservice\Service\ElkService::class),
         $c->get(\PS\Webservice\Service\RedisQueue::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\ElasticSearch\AuditProductIndex::class, function ($c) {
+    return new \PS\Webservice\Commands\ElasticSearch\AuditProductIndex(
+        $c->get(\Elastic\Elasticsearch\ClientBuilder::class)
     );
 });
 
@@ -66,5 +108,11 @@ $container->set(\PS\Webservice\Commands\WarmProductCacheCommand::class, function
     return new \PS\Webservice\Commands\WarmProductCacheCommand(
         $c->get(\PS\Webservice\Service\PS\Product::class),
         $c->get(\PS\Webservice\Service\RedisQueue::class)
+    );
+});
+
+$container->set(\PS\Webservice\Commands\ClearProductCacheCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\ClearProductCacheCommand(
+        $c->get(\PS\Webservice\Service\PS\Product::class)
     );
 });

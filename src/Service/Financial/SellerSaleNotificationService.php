@@ -108,13 +108,15 @@ final class SellerSaleNotificationService
             ->where('orders.id_order', $orderId)
             ->whereNotNull('seller.email')
             ->select([
-                'orders.id_order', 'orders.reference', 'orders.date_add',
+                'orders.id_order', 'orders.id_cart', 'orders.id_lang', 'orders.reference', 'orders.date_add',
                 'seller.id_manufacturer as seller_id', 'seller.email as seller_email', 'seller.name as seller_name',
-                'detail.product_name', 'detail.product_quantity',
+                'detail.product_id', 'detail.product_attribute_id', 'detail.product_name', 'detail.product_quantity',
                 'detail.total_price_tax_incl', 'detail.unit_price_tax_incl',
             ])
             ->get();
 
+        $variantDetails = $this->variantDetails($rows);
+        $customizationDetails = $this->customizationDetails($rows);
         $sales = [];
         foreach ($rows as $row) {
             $sellerId = (int) $row->seller_id;
@@ -142,15 +144,151 @@ final class SellerSaleNotificationService
 
             $quantity = max(1, (int) $row->product_quantity);
             $lineAmount = $this->lineAmount($row, $quantity);
+            $detailKey = $this->itemDetailKey((int) $row->product_id, (int) $row->product_attribute_id);
             $sales[$sellerId]['items'][] = [
                 'name' => (string) $row->product_name,
                 'quantity' => $quantity,
                 'amount' => $lineAmount,
+                'details' => $this->uniqueDetails([
+                    ...($variantDetails[(int) $row->product_attribute_id] ?? []),
+                    ...($customizationDetails[$detailKey] ?? []),
+                ]),
             ];
             $sales[$sellerId]['amount'] = bcadd($sales[$sellerId]['amount'], $lineAmount, 2);
         }
 
         return array_values($sales);
+    }
+
+    /**
+     * Returns the ordered combination values (for example, "Colore: Rosso"
+     * and "Taglia: M") keyed by product attribute ID.
+     *
+     * @param iterable<object> $orderRows
+     * @return array<int, array<int, string>>
+     */
+    private function variantDetails(iterable $orderRows): array
+    {
+        $attributeIds = [];
+        $languageId = null;
+        foreach ($orderRows as $row) {
+            $attributeId = (int) ($row->product_attribute_id ?? 0);
+            if ($attributeId > 0) {
+                $attributeIds[] = $attributeId;
+            }
+            if ($languageId === null && (int) ($row->id_lang ?? 0) > 0) {
+                $languageId = (int) $row->id_lang;
+            }
+        }
+        $attributeIds = array_values(array_unique($attributeIds));
+        if ($attributeIds === [] || $languageId === null) {
+            return [];
+        }
+
+        $rows = $this->db->table('product_attribute_combination as combination')
+            ->join('attribute as attribute_value', 'attribute_value.id_attribute', '=', 'combination.id_attribute')
+            ->join('attribute_lang as attribute_language', function ($join) use ($languageId): void {
+                $join->on('attribute_language.id_attribute', '=', 'attribute_value.id_attribute')
+                    ->where('attribute_language.id_lang', '=', $languageId);
+            })
+            ->join('attribute_group_lang as attribute_group_language', function ($join) use ($languageId): void {
+                $join->on('attribute_group_language.id_attribute_group', '=', 'attribute_value.id_attribute_group')
+                    ->where('attribute_group_language.id_lang', '=', $languageId);
+            })
+            ->whereIn('combination.id_product_attribute', $attributeIds)
+            ->orderBy('combination.id_product_attribute')
+            ->orderBy('attribute_value.id_attribute_group')
+            ->select([
+                'combination.id_product_attribute',
+                'attribute_group_language.name as group_name',
+                'attribute_language.name as attribute_name',
+            ])
+            ->get();
+
+        $details = [];
+        foreach ($rows as $row) {
+            $details[(int) $row->id_product_attribute][] = $this->detailLabel(
+                (string) $row->group_name,
+                (string) $row->attribute_name,
+            );
+        }
+
+        return array_map(fn (array $values): array => $this->uniqueDetails($values), $details);
+    }
+
+    /**
+     * Returns the customer-entered text customizations keyed by product and
+     * combination. Customization data belongs to the cart even after the
+     * order has been created, so the cart ID is used to avoid mixing carts.
+     *
+     * @param iterable<object> $orderRows
+     * @return array<string, array<int, string>>
+     */
+    private function customizationDetails(iterable $orderRows): array
+    {
+        $cartId = null;
+        $languageId = null;
+        foreach ($orderRows as $row) {
+            if ($cartId === null && (int) ($row->id_cart ?? 0) > 0) {
+                $cartId = (int) $row->id_cart;
+            }
+            if ($languageId === null && (int) ($row->id_lang ?? 0) > 0) {
+                $languageId = (int) $row->id_lang;
+            }
+        }
+        if ($cartId === null || $languageId === null) {
+            return [];
+        }
+
+        $rows = $this->db->table('customization as customization')
+            ->join('customized_data as customization_data', 'customization_data.id_customization', '=', 'customization.id_customization')
+            ->join('customization_field as customization_field', 'customization_field.id_customization_field', '=', 'customization_data.index')
+            ->leftJoin('customization_field_lang as customization_field_language', function ($join) use ($languageId): void {
+                $join->on('customization_field_language.id_customization_field', '=', 'customization_field.id_customization_field')
+                    ->where('customization_field_language.id_lang', '=', $languageId);
+            })
+            ->where('customization.id_cart', $cartId)
+            ->where('customization_data.type', 1)
+            ->orderBy('customization.id_customization')
+            ->orderBy('customization_data.index')
+            ->select([
+                'customization.id_product',
+                'customization.id_product_attribute',
+                'customization_field_language.name as field_name',
+                'customization_data.value',
+            ])
+            ->get();
+
+        $details = [];
+        foreach ($rows as $row) {
+            $details[$this->itemDetailKey((int) $row->id_product, (int) $row->id_product_attribute)][] = $this->detailLabel(
+                trim((string) ($row->field_name ?? '')),
+                (string) $row->value,
+            );
+        }
+
+        return array_map(fn (array $values): array => $this->uniqueDetails($values), $details);
+    }
+
+    private function itemDetailKey(int $productId, int $productAttributeId): string
+    {
+        return $productId . ':' . $productAttributeId;
+    }
+
+    private function detailLabel(string $label, string $value): string
+    {
+        $label = trim($label);
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        return $label === '' ? $value : $label . ': ' . $value;
+    }
+
+    /** @param array<int, string> $details @return array<int, string> */
+    private function uniqueDetails(array $details): array
+    {
+        return array_values(array_unique(array_filter($details, static fn (string $detail): bool => $detail !== '')));
     }
 
     /** @param object $detail */

@@ -253,7 +253,7 @@ class MlabFactoryApiHelper
         // Fetch metadata once for the whole cart, including repeated variants.
         if (!empty($productIds)) {
             $metadata = Db::getInstance()->executeS(
-                'SELECT p.id_product, p.id_manufacturer, p.id_supplier,
+                'SELECT p.id_product, p.id_manufacturer, p.id_supplier, p.is_virtual,
                     m.name AS manufacturer_name, pl.link_rewrite
                 FROM `' . _DB_PREFIX_ . 'product` p
                 LEFT JOIN `' . _DB_PREFIX_ . 'manufacturer` m ON m.id_manufacturer = p.id_manufacturer
@@ -283,6 +283,7 @@ class MlabFactoryApiHelper
                 'id_customization' => (int) $product['id_customization'],
                 'notes' => MlabFactoryCartNotes::get($cart, (int) $product['id_product'], (int) $product['id_customization']),
                 'name' => (string) $product['name'],
+                'is_virtual' => (bool) ($metadata['is_virtual'] ?? $product['is_virtual'] ?? false),
                 'id_manufacturer' => (int) ($metadata['id_manufacturer'] ?? $product['id_manufacturer'] ?? 0),
                 'manufacturer_name' => (string) ($metadata['manufacturer_name'] ?? ''),
                 'id_supplier' => (int) ($metadata['id_supplier'] ?? $product['id_supplier'] ?? 0),
@@ -290,6 +291,11 @@ class MlabFactoryApiHelper
                 'reference' => (string) $product['reference'],
                 'attributes' => (string) ($product['attributes'] ?? ''),
                 'quantity' => (int) $product['cart_quantity'],
+                // price_wt/total_wt are tax-inclusive. Preserve the
+                // corresponding tax-exclusive values when PrestaShop exposes
+                // them so an immutable checkout snapshot can retain both.
+                'price_tax_excl' => isset($product['price']) ? (float) $product['price'] : null,
+                'total_tax_excl' => isset($product['total']) ? (float) $product['total'] : null,
                 'price_wt' => (float) $product['price_wt'],
                 'total_wt' => (float) $product['total_wt'],
             );
@@ -317,6 +323,7 @@ class MlabFactoryApiHelper
             'id_address_delivery' => (int) $cart->id_address_delivery,
             'id_address_invoice' => (int) $cart->id_address_invoice,
             'id_carrier' => (int) $cart->id_carrier,
+            'is_virtual' => !empty($products) && (bool) $cart->isVirtualCart(),
             'secure_key' => (string) $cart->secure_key,
             'totals' => array(
                 'products_tax_incl' => (float) $cart->getOrderTotal(true, Cart::ONLY_PRODUCTS),

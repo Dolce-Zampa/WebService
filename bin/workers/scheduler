@@ -19,6 +19,8 @@ use PS\Webservice\Commands\Scheduler\AppScheduleProvider;
 use PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessageHandler;
 use PS\Webservice\Commands\Scheduler\GenerateSitemapHandler;
 use PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSummaryMessageHandler;
+use PS\Webservice\Commands\Scheduler\RetryPendingStripeConnectTransfersMessageHandler;
+use PS\Webservice\Commands\Scheduler\RetryQueuedStripeConnectTransferAllocationsMessageHandler;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
 use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
@@ -32,6 +34,12 @@ $generateSitemapHandler = $container->get(GenerateSitemapHandler::class);
 
 $warmProductCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\WarmProductCacheMessageHandler::class);
 $weeklySellerSummaryHandler = $container->get(SendWeeklySellerFinancialSummaryMessageHandler::class);
+$retryPendingStripeConnectTransfersHandler = $container->get(RetryPendingStripeConnectTransfersMessageHandler::class);
+$retryQueuedStripeConnectTransferAllocationsHandler = $container->get(RetryQueuedStripeConnectTransferAllocationsMessageHandler::class);
+$scheduledPromotionCacheHandler = $container->get(\PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessageHandler::class);
+$reconcileProductIndexHandler = $container->get(\PS\Webservice\Commands\Scheduler\ReconcileProductIndexMessageHandler::class);
+$giftCardMaintenanceHandler = $container->get(\PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHandler::class);
+$giftCardRecoveryHandler = $container->get(\PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessageHandler::class);
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(new HandlersLocator([
@@ -39,6 +47,12 @@ $bus = new MessageBus([
         \PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessage::class => [$handler],
         \PS\Webservice\Commands\Scheduler\GenerateSitemap::class => [$generateSitemapHandler],
         \PS\Webservice\Commands\Scheduler\SendWeeklySellerFinancialSummaryMessage::class => [$weeklySellerSummaryHandler],
+        \PS\Webservice\Commands\Scheduler\RetryPendingStripeConnectTransfersMessage::class => [$retryPendingStripeConnectTransfersHandler],
+        \PS\Webservice\Commands\Scheduler\RetryQueuedStripeConnectTransferAllocationsMessage::class => [$retryQueuedStripeConnectTransferAllocationsHandler],
+        \PS\Webservice\Commands\Scheduler\ScheduledPromotionCacheMessage::class => [$scheduledPromotionCacheHandler],
+        \PS\Webservice\Commands\Scheduler\ReconcileProductIndexMessage::class => [$reconcileProductIndexHandler],
+        \PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessage::class => [$giftCardMaintenanceHandler],
+        \PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessage::class => [$giftCardRecoveryHandler],
     ])),
 ]);
 

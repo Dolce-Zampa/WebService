@@ -14,6 +14,7 @@ class webserviceapi extends PaymentModule
     const CONFIG_CHATGPT_TEXT_PROMPT = 'MLABFACTORYAPI_CHATGPT_TEXT_PROMPT';
     const CONFIG_CHATGPT_IMAGE_PROMPT = 'MLABFACTORYAPI_CHATGPT_IMAGE_PROMPT';
     private static array $productWebhookDispatched = [];
+    private static array $previousProductCategories = [];
     private $configuratorFormBuilt = false;
     public function __construct()
     {
@@ -57,9 +58,9 @@ class webserviceapi extends PaymentModule
             PRIMARY KEY (`id_product`, `id_shop`)
         ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=utf8mb4')
             && $this->registerHook(array(
-                'displayAdminProductsExtra', 'actionProductFormBuilderModifier',
+                'displayAdminProductsExtra', 'actionProductFormBuilderModifier', 'actionBeforeUpdateProductFormHandler',
                 'actionAfterCreateProductFormHandler', 'actionAfterUpdateProductFormHandler',
-                'actionObjectProductDeleteAfter', 'actionObjectProductAddBefore', 'actionObjectProductUpdateBefore',
+                'actionObjectProductDeleteBefore', 'actionObjectProductDeleteAfter', 'actionObjectProductAddBefore', 'actionObjectProductUpdateBefore',
             ));
     }
 
@@ -121,11 +122,27 @@ class webserviceapi extends PaymentModule
     public function hookActionAfterCreateProductFormHandler($params)
     {
         $this->saveConfiguratorForm($params);
+        if ((int) ($params['id'] ?? 0) > 0) {
+            $this->clearCacheWebhook(new Product((int) $params['id']), []);
+        }
+    }
+
+    public function hookActionBeforeUpdateProductFormHandler($params)
+    {
+        $id = (int) ($params['id'] ?? 0);
+        if ($id > 0 && !array_key_exists($id, self::$previousProductCategories)) {
+            $this->captureProductCategories($id);
+        }
     }
 
     public function hookActionAfterUpdateProductFormHandler($params)
     {
         $this->saveConfiguratorForm($params);
+        $id = (int) ($params['id'] ?? 0);
+        if ($id > 0) {
+            $this->clearCacheWebhook(new Product($id), self::$previousProductCategories[$id] ?? null);
+            unset(self::$previousProductCategories[$id]);
+        }
     }
 
     private function saveConfiguratorForm($params)
@@ -133,7 +150,6 @@ class webserviceapi extends PaymentModule
         $data = $params['form_data']['webserviceapi_configurator'] ?? ($params['form_data']['options'] ?? $params['form_data']);
         if (array_key_exists('configurator_json', $data)) {
             $this->saveProductConfigurator((int) $params['id'], !empty($data['configurator_active']), (string) $data['configurator_json']);
-            $this->clearCacheWebhook(new Product((int) $params['id']));
         }
     }
 
@@ -150,6 +166,32 @@ class webserviceapi extends PaymentModule
     public function hookActionObjectProductUpdateBefore($params)
     {
         $this->validateLegacyConfigurator();
+        $this->rememberProductCategories($params);
+    }
+
+    public function hookActionObjectProductDeleteBefore($params)
+    {
+        $this->rememberProductCategories($params);
+    }
+
+    private function rememberProductCategories(array $params): void
+    {
+        if (isset($params['object']) && $params['object'] instanceof Product && (int) $params['object']->id > 0) {
+            $id = (int) $params['object']->id;
+            if (!array_key_exists($id, self::$previousProductCategories)) {
+                $this->captureProductCategories($id);
+            }
+        }
+    }
+
+    private function captureProductCategories(int $id): void
+    {
+        $categories = Product::getProductCategories($id);
+        $oldProduct = new Product($id);
+        if ((int) ($oldProduct->id_category_default ?? 0) > 0) {
+            $categories[] = (int) $oldProduct->id_category_default;
+        }
+        self::$previousProductCategories[$id] = array_values(array_unique($categories));
     }
 
     private function validateLegacyConfigurator()
@@ -178,7 +220,10 @@ class webserviceapi extends PaymentModule
     {
         if (isset($params['object']) && $params['object'] instanceof Product) {
             Db::getInstance()->delete('webserviceapi_configurator', 'id_product = ' . (int) $params['object']->id);
-            $this->clearCacheWebhook($params['object']);
+            $id = (int) $params['object']->id;
+            $previous = self::$previousProductCategories[$id] ?? null;
+            unset(self::$previousProductCategories[$id]);
+            $this->clearCacheWebhook($params['object'], $previous);
         }
     }
 
@@ -239,7 +284,7 @@ class webserviceapi extends PaymentModule
         }
         $this->saveLegacyConfigurator($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
-        $this->clearCacheWebhook($params['object']);
+        $this->clearCacheWebhook($params['object'], []);
     }
 
     /**
@@ -252,7 +297,9 @@ class webserviceapi extends PaymentModule
         }
         $this->saveLegacyConfigurator($params['object']);
         $this->notifyProductSavedWebhook($params['object']);
-        $this->clearCacheWebhook($params['object']);
+        $id = (int) $params['object']->id;
+        $previous = self::$previousProductCategories[$id] ?? null;
+        $this->clearCacheWebhook($params['object'], $previous);
     }
 
     /**
@@ -336,11 +383,11 @@ class webserviceapi extends PaymentModule
 
     }
 
-    protected function clearCacheWebhook(Product $product)
+    protected function clearCacheWebhook(Product $product, ?array $previousCategories = null)
     {
         $webhookEnabled = (bool) Configuration::get(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED);
         if (!$webhookEnabled) {
-            return;
+            return false;
         }
 
         $webhookBaseUrl = rtrim((string) Configuration::get(self::CONFIG_WEBSERVICE_URL), '/');
@@ -354,12 +401,18 @@ class webserviceapi extends PaymentModule
                 'Product',
                 (int) $product->id
             );
-            return;
+            return false;
         }
 
         $link = str_replace("http://aidyis-prod-backoffice.dolcezampa.com", "", $this->context->link->getProductLink($product));
         $productUrl = "api_cache:/api" . $link . "?";
         $categories = Product::getProductCategories((int) $product->id);
+        if ((int) ($product->id_category_default ?? 0) > 0) {
+            $categories[] = (int) $product->id_category_default;
+        }
+        if ($previousCategories !== null) {
+            $categories = array_unique(array_merge($categories, $previousCategories));
+        }
         $brandName = $this->getBrandNameFromProduct($product, (int) Configuration::get('PS_LANG_DEFAULT'));
 
         $tags = [];
@@ -384,7 +437,7 @@ class webserviceapi extends PaymentModule
 
         $url = $webhookBaseUrl . '/api/webhooks/clear-cache';
         $payload = json_encode(
-            ["cache" => $tags]
+            ["cache" => $tags, "category_context_complete" => $previousCategories !== null]
         );
 
         $ch = curl_init($url);
@@ -404,11 +457,24 @@ class webserviceapi extends PaymentModule
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if ($result === false || $httpCode >= 400) {
+        if ($result === false || $httpCode < 200 || $httpCode >= 300) {
             PrestaShopLogger::addLog(
-                "[webserviceapi] Webhook failed fto clear cahce",
+                "[webserviceapi] Cache webhook failed for product #" . (int) $product->id . " (HTTP {$httpCode}).",
             );
+            return false;
         }
+        return true;
+    }
+
+    /** Called by the CLI scheduler; failures must be retried before advancing its checkpoint. */
+    public function clearScheduledPromotionCache($productId)
+    {
+        $product = new Product((int) $productId);
+        if (!Validate::isLoadedObject($product)) {
+            // A deleted product cannot be refreshed and must not block subsequent runs.
+            return true;
+        }
+        return $this->clearCacheWebhook($product);
     }
 
     /**
@@ -765,56 +831,45 @@ class webserviceapi extends PaymentModule
         return (string) $manufacturer->name;
     }
 
-    // nuovo metodo
     public function hookActionGetExtraMailTemplateVars($params)
     {
-        // Intervenire solo sul template shipped
-        if ($params['template'] !== 'shipped') {
-            return;
+        if (($params['template'] ?? '') === 'order_conf') {
+            $this->addOrderProductionTimes($params);
         }
+    }
 
-        // Ottenere l'ID dell'ordine
+    private function addOrderProductionTimes(array $params)
+    {
         $orderId = (int) ($params['template_vars']['{id_order}'] ?? 0);
         if (!$orderId) {
             return;
         }
 
-        $order = new Order($orderId);
-        if (!Validate::isLoadedObject($order)) {
-            return;
+        try {
+            $order = new Order($orderId);
+            if (!Validate::isLoadedObject($order)) {
+                return;
+            }
+            $items = array();
+            foreach ($order->getProducts() as $line) {
+                $product = new Product((int) $line['product_id'], false, (int) $order->id_lang, (int) $order->id_shop);
+                $seller = (int) $product->id_manufacturer > 0 ? new Manufacturer((int) $product->id_manufacturer) : null;
+                $items[] = array(
+                    'name' => (string) $line['product_name'],
+                    'seller' => $seller && Validate::isLoadedObject($seller) ? (string) $seller->name : '',
+                    'available_now' => $product->available_now ?? '',
+                );
+            }
+            if (!$items) {
+                return;
+            }
+            require_once __DIR__ . '/classes/MlabOrderProductionTimes.php';
+            list($html, $text) = MlabOrderProductionTimes::format($items);
+            $params['extra_template_vars']['{products}'] = ($params['template_vars']['{products}'] ?? '') . $html;
+            $params['extra_template_vars']['{products_txt}'] = ($params['template_vars']['{products_txt}'] ?? '') . $text;
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog('Unable to add order production times: ' . $e->getMessage(), 3);
         }
-
-        // Ottenere il numero di tracking dal record OrderCarrier
-        $trackingNumber = '';
-        $orderCarriers = OrderCarrier::getOrderCarriers($orderId);
-        if (!empty($orderCarriers)) {
-            $trackingNumber = (string) ($orderCarriers[0]->tracking_number ?? '');
-        }
-
-        if ($trackingNumber === '') {
-            return; // Nessun numero di tracking, non generare il link
-        }
-
-        // Generare il link di tracking in base all'ID del corriere
-        $carrierId = (int) $order->id_carrier;
-        $trackingUrl = '';
-
-        switch ($carrierId) {
-            case 1: // Sostituire con l'ID effettivo del tuo corriere
-                $trackingUrl = 'https://carrier-a.com/track/' . $trackingNumber;
-                break;
-            case 2:
-                $trackingUrl = 'https://carrier-b.com/trace?code=' . $trackingNumber;
-                break;
-            default:
-                $trackingUrl = 'https://default.com/track/' . $trackingNumber;
-        }
-
-        // Iniettare nell'array extra_template_vars
-        // Importante: utilizzare array_merge per preservare le variabili già iniettate da altri moduli
-        $params['extra_template_vars'] = array_merge(
-            $params['extra_template_vars'] ?? [],
-            ['{followup}' => $trackingUrl]
-        );
     }
+
 }

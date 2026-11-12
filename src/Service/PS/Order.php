@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Service\PS;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Capsule\Manager as Database;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Domain\Entities\OrderEntity;
@@ -113,8 +114,8 @@ class Order extends Cart implements PrestashopServiceInterface
         try {
             $response = $this->httpService->invoke('POST', $cart->generatePayload());
         } catch (\Exception $e) {
-            Log::error("Exception occurred while creating order for cart {$cart->getId()}: " . $e->getMessage());
-            throw new \RuntimeException("Failed to create order: " . $e->getMessage());
+            Log::error('Failed to create order', ['exception_type' => get_class($e)]);
+            throw new \RuntimeException('Failed to create order.');
         }
 
         return $cart;
@@ -127,7 +128,7 @@ class Order extends Cart implements PrestashopServiceInterface
             throw new \InvalidArgumentException('Validation failed: ' . implode(', ', $errors));
         }
 
-        $this->httpService->setUrl("/orders?ws_key={$this->httpService->getConfig()->apikey}");
+        $this->httpService->setUrl('/orders');
 
         $orderData = [
             'id_cart' => $confirmSession->id_cart,
@@ -137,6 +138,8 @@ class Order extends Cart implements PrestashopServiceInterface
             'amount_paid' => $confirmSession->amount_paid,
             'id_carrier' => $confirmSession->id_carrier,
             'coupon_code' => $confirmSession->coupon_code,
+            'checkout_snapshot_id' => $confirmSession->checkout_snapshot_id,
+            'stripe_bank_transfer_pending' => $confirmSession->stripe_bank_transfer_pending,
         ];
 
         // Add customer/guest identification
@@ -177,10 +180,10 @@ class Order extends Cart implements PrestashopServiceInterface
 
             $dataResponse = $response->toArray();
             if ($response->failed() || $dataResponse['success'] === false) {
-                throw new \RuntimeException("Order confirmation failed: " . $response->getBody() . ' code: ' . $response->getHttpCode());
+                throw new \RuntimeException('Order confirmation failed.');
             }
 
-            Log::debug("Order confirmation response for cart {$confirmSession->id_cart}: " . json_encode($dataResponse) . ' code: ' . $response->getHttpCode());
+            Log::debug('Order confirmation completed', ['status' => $response->getHttpCode()]);
 
             // setup reference in storage for later retrieval in getOrderByCartId
             JsonDataStorage::carts()->insert(
@@ -209,7 +212,7 @@ class Order extends Cart implements PrestashopServiceInterface
         }
     }
 
-    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment'): void
+    public function confirmSessionOrder($cartId, $customerId, $guestId, $carrierId, $couponCode, $email, $firstname, $lastname, $customerDetails, $amountPaid, $paymentMethod = 'Online payment', ?string $checkoutSnapshotId = null, bool $stripeBankTransferPending = false): void
     {
         // finalize the order with a "payment_success" state. This will trigger the creation of the order in PrestaShop.
         $confirmSession = ConfirmOrderSession::create(
@@ -217,14 +220,17 @@ class Order extends Cart implements PrestashopServiceInterface
                     'id_cart' => $cartId,
                     'id_customer' => $customerId,
                     'id_guest' => $guestId,
-                    'order_state' => ConfirmOrderSession::ORDER_STATE['confirm'],
+                    'order_state' => $stripeBankTransferPending ? $this->bankTransferPendingStateId() : ConfirmOrderSession::ORDER_STATE['confirm'],
+                    'stripe_bank_transfer_pending' => $stripeBankTransferPending,
                     'amount_paid' => $amountPaid,
                     'payment_module' => $customerDetails->payment_module ?? null,
                     'create_account' => $customerDetails->create_account ?? false,
                     'newsletter' => $customerDetails->newsletter ?? false,
                     'id_carrier' => $carrierId,
+                    'is_virtual' => $carrierId === 0,
                     'coupon_code' => $couponCode,
                     'payment_label' => $paymentMethod,
+                    'checkout_snapshot_id' => $checkoutSnapshotId,
                 ],
                 $this
             );
@@ -248,6 +254,97 @@ class Order extends Cart implements PrestashopServiceInterface
 
 
         $this->confirmOrder($confirmSession);
+    }
+
+    protected function bankTransferPendingStateId(): int
+    {
+        $pendingId = filter_var(env('STRIPE_BANK_TRANSFER_PENDING_STATE_ID', 21), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($pendingId === false || $pendingId === ConfirmOrderSession::ORDER_STATE['confirm']) {
+            throw new \RuntimeException('PrestaShop bank transfer order state is not configured.');
+        }
+        $state = Database::table('order_state')->where('id_order_state', $pendingId)->first(['paid', 'logable', 'invoice']);
+        if ($state === null || (int) $state->paid !== 0 || (int) $state->logable !== 0 || (int) $state->invoice !== 0) {
+            throw new \RuntimeException('PrestaShop bank transfer order state is not a pending payment state.');
+        }
+        return $pendingId;
+    }
+
+    public function giftCardPendingStateId(): int
+    {
+        return $this->bankTransferPendingStateId();
+    }
+
+    /** PrestaShop can accept an order even when its HTTP response is lost. */
+    public function giftCardOrderIdForCart(int $cartId, string $snapshotId): ?int
+    {
+        if ($cartId < 1) {
+            throw new \InvalidArgumentException('Invalid cart ID.');
+        }
+        $rows = Database::table('orders')->where('id_cart', $cartId)->get(['id_order', 'current_state', 'payment'])->all();
+        if ($rows === []) {
+            return null;
+        }
+        if (count($rows) !== 1 || (int) $rows[0]->id_order < 1 || (string) $rows[0]->payment !== 'Gift card') {
+            throw new \RuntimeException('Gift card order requires reconciliation.');
+        }
+        $id = (int) $rows[0]->id_order;
+        if ((int) $rows[0]->current_state === 2) {
+            $boundOrder = Database::table('stripe_checkout_snapshots')->where('id', $snapshotId)->value('order_id');
+            if ((int) $boundOrder !== $id) {
+                throw new \RuntimeException('Paid order is not bound to the gift card checkout.');
+            }
+        } elseif ((int) $rows[0]->current_state !== $this->giftCardPendingStateId()) {
+            $backorder = (int) Database::table('configuration')->where('name', 'PS_OS_OUTOFSTOCK_UNPAID')->value('value');
+            if ($backorder < 1 || (int) $rows[0]->current_state !== $backorder) {
+                throw new \RuntimeException('Gift card order is not pending settlement.');
+            }
+        }
+        return $id;
+    }
+
+    public function settleGiftCardOrder(int $cartId, string $snapshotId): void
+    {
+        if ($cartId < 1 || !preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
+            throw new \InvalidArgumentException('Invalid gift card settlement.');
+        }
+        $this->httpService->setUrl('/orders');
+        $response = $this->httpService->invoke('POST', [
+            'action' => 'settle_gift_card',
+            'id_cart' => $cartId,
+            'checkout_snapshot_id' => $snapshotId,
+            'pending_state_id' => $this->giftCardPendingStateId(),
+        ]);
+        $data = $response->toArray();
+        if ($response->failed() || ($data['success'] ?? false) !== true || ($data['data']['action'] ?? null) !== 'settle_gift_card') {
+            throw new \RuntimeException('Failed to settle gift card order.');
+        }
+    }
+
+    /** @return array{id:int,id_cart:int,current_state:int,reference:string} */
+    public function giftCardOrderSummary(int $orderId, int $cartId): array
+    {
+        $order = Database::table('orders')->where('id_order', $orderId)->where('id_cart', $cartId)
+            ->first(['id_order', 'id_cart', 'current_state', 'reference']);
+        if ($order === null || (int) $order->current_state !== 2) {
+            throw new \RuntimeException('Gift card order has not been confirmed.');
+        }
+        return ['id' => (int) $order->id_order, 'id_cart' => (int) $order->id_cart,
+            'current_state' => (int) $order->current_state, 'reference' => (string) $order->reference];
+    }
+
+    public function settleStripeBankTransfer(int $cartId, string $paymentIntentId): void
+    {
+        $this->httpService->setUrl('/orders');
+        $response = $this->httpService->invoke('POST', [
+            'action' => 'settle_stripe_bank_transfer',
+            'id_cart' => $cartId,
+            'payment_intent' => $paymentIntentId,
+            'pending_state_id' => $this->bankTransferPendingStateId(),
+        ]);
+        $data = $response->toArray();
+        if ($response->failed() || ($data['success'] ?? false) !== true || ($data['data']['action'] ?? null) !== 'settle_stripe_bank_transfer') {
+            throw new \RuntimeException('Failed to settle Stripe bank transfer order.');
+        }
     }
 
     public function createCouponCode(Discount $discount): string

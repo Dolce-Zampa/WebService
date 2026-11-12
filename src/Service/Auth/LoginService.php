@@ -76,6 +76,7 @@ class LoginService extends SignUpService
         }
 
         $user->sub = $sub;
+        $user->last_login = Carbon::now();
         $user->save();
 
         // put refresh token in cache

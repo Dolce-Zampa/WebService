@@ -1,0 +1,507 @@
+{
+  "id": 245,
+  "price": 34,
+  "regular_price": "34.000000",
+  "id_default_combination": 2298,
+  "associations": {
+    "combinations": [
+      {
+        "id": 2298,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2299,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2300,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2301,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2302,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2303,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2304,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2305,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2306,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2307,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2308,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2309,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2310,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2311,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2312,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2313,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2314,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2315,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2316,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2317,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2318,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2319,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2320,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2321,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2322,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2323,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2324,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2325,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2326,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2327,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2328,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2329,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2330,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2331,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2332,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2333,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2334,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2335,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2336,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2337,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2338,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2339,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2340,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2341,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2342,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2343,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2344,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2345,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2346,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2347,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2348,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2349,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2350,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2351,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2352,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2353,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2354,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2355,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2356,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2357,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "25.000000"
+      },
+      {
+        "id": 2358,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2359,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2360,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2361,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2362,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2363,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2364,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2365,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2366,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2367,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2368,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2369,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2370,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "28.500000"
+      },
+      {
+        "id": 2371,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2372,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2373,
+        "price": "0.000000",
+        "ecotax": "0.000000",
+        "original_price": "34.000000"
+      },
+      {
+        "id": 2374,
+        "price": "1.000000",
+        "ecotax": "0.000000",
+        "original_price": "35.000000"
+      },
+      {
+        "id": 2375,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      },
+      {
+        "id": 2376,
+        "price": "3.000000",
+        "ecotax": "0.000000",
+        "original_price": "37.000000"
+      },
+      {
+        "id": 2377,
+        "price": "4.000000",
+        "ecotax": "0.000000",
+        "original_price": "38.000000"
+      },
+      {
+        "id": 2880,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "25.000000"
+      },
+      {
+        "id": 2881,
+        "price": "2.000000",
+        "ecotax": "0.000000",
+        "original_price": "36.000000"
+      }
+    ]
+  },
+  "promoted_ids": [
+    2357,
+    2370,
+    2880
+  ]
+}

@@ -328,8 +328,14 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
      */
     public function getProductAddToCart(int $idManufacturer): \Illuminate\Support\Collection
     {
-        $results = $this->db->table('v_manufacturer_cart_products_stats')
-            ->where('id_manufacturer', $idManufacturer)
+        $results = $this->db->table('v_manufacturer_cart_products_stats as stats')
+            // The statistics view can contain historical, inactive products.
+            // Do not pass them to the artisan product list, which would also
+            // cause an unnecessary upstream product lookup and cache attempt.
+            ->join('product as product', 'product.id_product', '=', 'stats.id_product')
+            ->where('stats.id_manufacturer', $idManufacturer)
+            ->where('product.active', 1)
+            ->select('stats.*')
             ->get();
 
         return $results;

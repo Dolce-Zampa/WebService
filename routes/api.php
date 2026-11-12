@@ -65,8 +65,10 @@ $app->group('/api', function () use ($app) {
     /** Order api */
     $app->get('/api/order/{orderId}', PS\Webservice\Http\Controller\OrderController::class . ':getOrder')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
     $app->get('/api/order/history/{customerId}', PS\Webservice\Http\Controller\OrderController::class . ':orderHistory')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->post('/api/order', PS\Webservice\Http\Controller\OrderController::class . ':createOrder');
-    $app->post('/api/order/confirm', PS\Webservice\Http\Controller\OrderController::class . ':confirmOrder');
+    $app->post('/api/order/gift-card/preview', PS\Webservice\Http\Controller\OrderController::class . ':previewGiftCard')->add(new \PS\Webservice\Http\Middleware\OptionalAuthenticationMiddleware());
+    $app->post('/api/order/gift-card/cancel', PS\Webservice\Http\Controller\OrderController::class . ':cancelGiftCardCheckout')->add(new \PS\Webservice\Http\Middleware\OptionalAuthenticationMiddleware());
+    $app->post('/api/order', PS\Webservice\Http\Controller\OrderController::class . ':createOrder')->add(new \PS\Webservice\Http\Middleware\OptionalAuthenticationMiddleware());
+    $app->post('/api/order/confirm', PS\Webservice\Http\Controller\OrderController::class . ':confirmOrder')->add(new \PS\Webservice\Http\Middleware\OptionalAuthenticationMiddleware());
 
     /** Carriers api */
     $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
@@ -115,6 +117,7 @@ $app->group('/api/seller', function() use ($app) {
     $app->post('/api/seller/auth/refresh', PS\Webservice\Http\Controller\Seller\SellerController::class . ':refresh');
     $app->get('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':me')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',10));
     $app->patch('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateMe');
+    $app->get('/api/seller/orders', PS\Webservice\Http\Controller\Seller\SellerController::class . ':orders');
     $app->get('/api/seller/dashboard/summary', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardSummary')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
     $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
     $app->post('/api/seller/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':products');
@@ -128,6 +131,10 @@ $app->group('/api/seller', function() use ($app) {
     $app->get('/api/seller/promotions/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':promotableProducts');
     $app->post('/api/seller/promotions', PS\Webservice\Http\Controller\Seller\SellerController::class . ':createPromotion');
     $app->post('/api/seller/promotions/{promotionId}/checkout', PS\Webservice\Http\Controller\Seller\SellerController::class . ':createPromotionCheckoutSession');
+    $app->post('/api/seller/stripe-connect/accounts', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':createAccount');
+    $app->post('/api/seller/stripe-connect/onboarding', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':onboarding');
+    $app->post('/api/seller/stripe-connect/login-link', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':loginLink');
+    $app->get('/api/seller/stripe-connect/status', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':status');
 
 })->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
@@ -150,9 +157,6 @@ $app->get('/api/admin/financial-analytics', PS\Webservice\Http\Controller\Financ
 
 $app->post('/api/admin/financial-expenses', PS\Webservice\Http\Controller\FinancialExpenseController::class . ':create')
     ->add($financialEmployeeAuthentication);
-
-/** tutte le url le mandiamo su prestashop */
-$app->get('/{routes:.+}', PS\Webservice\Http\Controller\CmsController::class . ':redirectToPrestashop');
 
 /** Stripe webhook */
 $app->post('/api/webhooks/stripe/checkout', PS\Webservice\Http\Controller\StripeWebhookController::class . ':handleWebhook');

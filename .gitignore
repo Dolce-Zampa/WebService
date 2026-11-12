@@ -3,3 +3,6 @@ vendor/
 .vscode/
 .DS_Store
 .phpunit.cache/
+s
+storage/*
+resources/prestashop-modules/mlabgiftcard/

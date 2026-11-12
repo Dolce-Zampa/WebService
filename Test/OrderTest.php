@@ -244,13 +244,15 @@ final class OrderTest extends TestCase
         $this->taggedCache->method('get')->willReturnCallback(function ($key) use($productMock) {
             return match ($key) {
                 '10379441e2371afb1ae23c4caffc79a91b3b5c4d' => $productMock->toArray(),
+                // This is the current encrypted-cache payload after decryption,
+                // not the legacy in-memory OrderSession object.
                 '40bd001563085fc35165329ea1ff5c5ecbdbbeef' => OrderSession::create([
-                    'cart_id' => 204,
-                    'id_customer' => null,
-                    'id_guest' => 123,
+                    'cart_id' => 123,
+                    'id_customer' => 456,
+                    'id_guest' => null,
                     'id_carrier' => 1,
                     'customer' => CustomerEntity::create([
-                        'id' => null,
+                        'id' => 456,
                         'email' => 'john.doe@example.com',
                         'firstname' => 'John',
                         'lastname' => 'Doe',
@@ -260,7 +262,7 @@ final class OrderTest extends TestCase
                         'newsletter' => false,
                         'invoice_address' => null,
                     ], $this->createMock(\PS\Webservice\Service\PS\Order::class))
-                ], $this->createMock(\PS\Webservice\Service\PS\Order::class)),
+                ], $this->createMock(\PS\Webservice\Service\PS\Order::class))->toCacheData(),
                 default => null,
             };
         });
@@ -326,7 +328,7 @@ final class OrderTest extends TestCase
         $orderServiceMock->method('getProductById')->willReturn(ProductEntity::create($productStub, $productServiceMock));
 
         $paymentServiceMock = $this->createMock(\PS\Webservice\Service\Payments\PaymentGatewayInterface::class);
-        $paymentServiceMock->method('createPaymentSession')->willReturnCallback(function (OrderSession $orderSession): string {
+        $paymentServiceMock->expects($this->once())->method('createPaymentSession')->willReturnCallback(function (OrderSession $orderSession): string {
             //check stripe keys
             //check Stripe payload is it correct
             $expectedSessionKeys = [
@@ -362,7 +364,7 @@ final class OrderTest extends TestCase
         });
 
         $mailerServiceMock = $this->createMock(\PS\Webservice\Service\MailerInterface::class);
-        $mailerServiceMock->method('sendRecoveryCartExpired')->willReturnCallback(function ($customerEmail, $paymentUrl, $lineItems, $orderTotal, $customerFirstName) {
+        $mailerServiceMock->expects($this->once())->method('sendRecoveryCartExpired')->willReturnCallback(function ($customerEmail, $paymentUrl, $lineItems, $orderTotal, $customerFirstName) {
             $this->assertEquals('john.doe@example.com', $customerEmail);
             $this->assertNotEmpty($paymentUrl);
             $this->assertNotEmpty($lineItems);

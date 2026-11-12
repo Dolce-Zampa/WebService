@@ -220,7 +220,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
             $this->httpService->setUrl('/mailer?debug=true');
             $this->httpService->invoke('POST', new PayloadServiceData([
                 'subject' => 'Il tuo riepilogo finanziario settimanale',
-                'to_email' => 'marco.defelice890@gmail.com', // $email
+                'to_email' => $email,
                 'to_name' => $sellerName,
                 'template' => TemplateMail::WEEKLY_SELLER_FINANCIAL_SUMMARY->value,
                 'template_vars' => [
@@ -241,13 +241,52 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
     {
         try {
             $this->httpService->setUrl('/mailer?debug=true');
-            $this->httpService->invoke('POST', new PayloadServiceData([
+            $response = $this->httpService->invoke('POST', new PayloadServiceData([
                 'subject' => 'Hai ricevuto una nuova vendita',
-                'to_email' => "marco.defelice890@gmail.com", //$email
+                'to_email' => $email,
                 'to_name' => $sellerName,
                 'template' => TemplateMail::SELLER_SALE->value,
-                'template_vars' => ['seller_name' => $sellerName, 'order_reference' => $orderReference, 'finalized_at' => $finalizedAt, 'items' => $items, 'amount' => $amount, 'status' => $status],
+                'template_vars' => [
+                    'seller_name' => $sellerName,
+                    'order_reference' => $orderReference,
+                    'finalized_at' => $finalizedAt,
+                    'items_html' => $this->sellerSaleItemsHtml($items),
+                    'items_text' => $this->sellerSaleItemsText($items),
+                    'amount' => $amount,
+                    'status' => $status,
+                ],
             ]));
+            if ($response->failed()) {
+                throw new \RuntimeException('PrestaShop rejected seller sale notification with HTTP ' . $response->getHttpCode() . '.');
+            }
+
+            $payload = $response->toArray();
+            if (($payload['success'] ?? false) !== true) {
+                throw new \RuntimeException('PrestaShop did not confirm seller sale notification delivery.');
+            }
+        } catch (\Throwable $e) {
+            throw new PrestashopConnectorException($this->httpService, $e);
+        }
+    }
+
+    public function sendStripeBankTransferInstructions(string $email, string $firstname, array $instructions): void
+    {
+        try {
+            $templateVars = ['firstname' => $firstname] + $instructions;
+            foreach ($templateVars as $key => $value) {
+                $templateVars[$key . '_html'] = htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+            $this->httpService->setUrl('/mailer?debug=true');
+            $response = $this->httpService->invoke('POST', new PayloadServiceData([
+                'subject' => 'Istruzioni per il bonifico del tuo ordine',
+                'to_email' => $email,
+                'to_name' => $firstname,
+                'template' => TemplateMail::STRIPE_BANK_TRANSFER->value,
+                'template_vars' => $templateVars,
+            ]));
+            if ($response->failed() || ($response->toArray()['success'] ?? false) !== true) {
+                throw new \RuntimeException('PrestaShop did not confirm bank transfer email delivery.');
+            }
         } catch (\Throwable $e) {
             throw new PrestashopConnectorException($this->httpService, $e);
         }
@@ -273,6 +312,69 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         }
 
         return $rows;
+    }
+
+    /** @param array<int, array{name?: mixed, quantity?: mixed, amount?: mixed, details?: array<int, mixed>}> $items */
+    private function sellerSaleItemsHtml(array $items): string
+    {
+        if ($items === []) {
+            return '<tr><td colspan="3" style="padding:14px 16px;color:#727272">Nessun prodotto disponibile.</td></tr>';
+        }
+
+        $rows = '';
+        foreach ($items as $item) {
+            $name = htmlspecialchars((string) ($item['name'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            $amount = htmlspecialchars((string) ($item['amount'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $details = $this->sellerSaleItemDetails($item);
+            $rows .= '<tr>'
+                . '<td style="padding:14px 16px;border-top:1px solid #E9E4DC;font-size:14px;color:#41403E">' . $name . $details . '</td>'
+                . '<td align="right" style="padding:14px 16px;border-top:1px solid #E9E4DC;font-size:14px;color:#41403E">' . $quantity . '</td>'
+                . '<td align="right" style="padding:14px 16px;border-top:1px solid #E9E4DC;font-size:14px;color:#41403E">' . $amount . '</td>'
+                . '</tr>';
+        }
+
+        return $rows;
+    }
+
+    /** @param array<int, array{name?: mixed, quantity?: mixed, amount?: mixed, details?: array<int, mixed>}> $items */
+    private function sellerSaleItemsText(array $items): string
+    {
+        if ($items === []) {
+            return 'Nessun prodotto disponibile.';
+        }
+
+        $lines = [];
+        foreach ($items as $item) {
+            $name = trim((string) ($item['name'] ?? 'Prodotto'));
+            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            $amount = trim((string) ($item['amount'] ?? ''));
+            $details = $this->sellerSaleItemDetails($item, false);
+            $lines[] = sprintf('- %s%s × %d: %s', $name, $details, $quantity, $amount);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** @param array{details?: array<int, mixed>} $item */
+    private function sellerSaleItemDetails(array $item, bool $html = true): string
+    {
+        $details = $item['details'] ?? [];
+        if (!is_array($details)) {
+            return '';
+        }
+        $details = array_values(array_filter(array_map(static fn (mixed $detail): string => trim((string) $detail), $details)));
+        if ($details === []) {
+            return '';
+        }
+
+        if (!$html) {
+            return ' (' . implode('; ', $details) . ')';
+        }
+
+        return '<br><span style="display:inline-block;margin-top:4px;font-size:12px;line-height:1.5;color:#727272">'
+            . implode('<br>', array_map(static fn (string $detail): string => htmlspecialchars($detail, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), $details))
+            . '</span>';
     }
 
     private function recoveryCartHtml(array $products): string

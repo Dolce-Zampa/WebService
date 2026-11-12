@@ -6,13 +6,22 @@
  */
 
 return [
+    \PS\Webservice\Commands\AddProductBundleCommand::class,
+    \PS\Webservice\Commands\ClearProductCacheCommand::class,
     \PS\Webservice\Commands\WarmProductCacheCommand::class,
     \PS\Webservice\Commands\GenerateSitemap::class,
     \PS\Webservice\Commands\SendReviewRequestMailCommand::class,
+    \PS\Webservice\Commands\GiftCardMaintenanceCommand::class,
+    \PS\Webservice\Commands\ResetCustomerPasswordCommand::class,
     \PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class,
     \PS\Webservice\Commands\BackfillFinancialOrdersCommand::class,
     \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class,
+    \PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class,
+    \PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand::class,
+    \PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand::class,
+    \PS\Webservice\Commands\RetryPendingStripeConnectRefundReversalsCommand::class,
     \PS\Webservice\Commands\ElasticSearch\CreateIndexElk::class,
+    \PS\Webservice\Commands\ElasticSearch\AuditProductIndex::class,
     \PS\Webservice\Commands\ElasticSearch\IndexBulkProduct::class,
     \PS\Webservice\Commands\ElasticSearch\IndexProduct::class,
 ];
