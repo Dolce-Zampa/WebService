@@ -650,10 +650,10 @@ class webserviceapi extends PaymentModule
                 'controller' => 'shippingpolicy',
                 'params' => $params,
             ),
-            'module-webserviceapi-shippingquote' => array(
-                'rule' => 'api/shipping_quote',
+            'module-webserviceapi-carrierrates' => array(
+                'rule' => 'api/carrier_rates',
                 'keywords' => array(),
-                'controller' => 'shippingquote',
+                'controller' => 'carrierrates',
                 'params' => $params,
             ),
             'module-webserviceapi-promotions' => array(

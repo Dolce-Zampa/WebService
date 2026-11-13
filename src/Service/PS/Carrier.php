@@ -26,17 +26,9 @@ class Carrier extends Product implements PrestashopServiceInterface {
      * @param array $displayOptions Optional display options for the API request
      * @return Collection The collection of carrier entities
      */
-    public function carriersList(array $displayOptions = ['display' => 'full']): Collection
+    public function carriersWithFixedRates(): Collection
     {
-
-        // Add filter for active carriers
-        if (!isset($displayOptions['filter[active]'])) {
-            $displayOptions['filter[active]'] = 1;
-            $displayOptions['filter[deleted]'] = 0;
-        }
-
-        $queryString = http_build_query($displayOptions);
-        $this->httpService->setUrl('/carriers' . ($queryString !== '' ? "?{$queryString}" : ''));
+        $this->httpService->setUrl('/carrier_rates');
 
         $response = $this->httpService->invoke('GET');
 
@@ -45,12 +37,31 @@ class Carrier extends Product implements PrestashopServiceInterface {
         }
 
         $collection = new Collection();
-        $carriers = $response->toArray()['carriers'] ?? [];
+        $data = $response->toArray();
+        $carriers = $data['data']['carriers'] ?? null;
+        if (!is_array($carriers)) throw new \RuntimeException('Invalid carrier rates response.');
         
         foreach ($carriers as $carrierData) {
             $collection->push(CarrierEntity::create($carrierData, $this));
         }
 
+        return $collection;
+    }
+
+    public function carriersList(array $displayOptions = ['display' => 'full']): Collection
+    {
+        if (!isset($displayOptions['filter[active]'])) {
+            $displayOptions['filter[active]'] = 1;
+            $displayOptions['filter[deleted]'] = 0;
+        }
+        $queryString = http_build_query($displayOptions);
+        $this->httpService->setUrl('/carriers' . ($queryString !== '' ? "?{$queryString}" : ''));
+        $response = $this->httpService->invoke('GET');
+        if ($response->failed()) throw new \RuntimeException('Failed to retrieve carriers: ' . $response->getHttpCode());
+        $collection = new Collection();
+        foreach ($response->toArray()['carriers'] ?? [] as $carrierData) {
+            $collection->push(CarrierEntity::create($carrierData, $this));
+        }
         return $collection;
     }
 

@@ -32,9 +32,9 @@ class CarrierController extends Controller
     public function carrierList(Request $request, Response $response): Response
     {
         try {
-            $carriers = $this->carrierService->carriersList();
+            $carriers = $this->carrierService->carriersWithFixedRates();
             
-            return response($carriers->toArray());
+            return response($carriers->toArray())->withHeader('Cache-Control', 'no-store');
         } catch (\Exception $e) {
             return response([
                 'success' => false,

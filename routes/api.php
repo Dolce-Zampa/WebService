@@ -74,8 +74,7 @@ $app->group('/api', function () use ($app) {
 
     /** Carriers api */
     $app->get('/api/shipping-policy', PS\Webservice\Http\Controller\CarrierController::class . ':shippingPolicy');
-    $app->post('/api/carriers/quote', PS\Webservice\Http\Controller\OrderController::class . ':shippingQuote')->add(new \PS\Webservice\Http\Middleware\OptionalAuthenticationMiddleware());
-    $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
+    $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList');
     $app->get('/api/carriers/available', PS\Webservice\Http\Controller\CarrierController::class . ':availableCarriers')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
     $app->get('/api/carriers/{id_carrier}', PS\Webservice\Http\Controller\CarrierController::class . ':getCarrier')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
 
