@@ -90,6 +90,8 @@ class SellerController
                 $join->on('sl.id_order_state', '=', 'o.current_state')->on('sl.id_lang', '=', 'o.id_lang');
             })->select('o.id_order', 'o.id_cart', 'o.id_lang', 'o.reference', 'o.date_add', 'o.current_state', 'sl.name as status', 'currency.iso_code as currency')
                 ->distinct()->orderByDesc('o.id_order')->offset(($page - 1) * $perPage)->limit($perPage)->get();
+            $trackingIds = $this->singleSellerOrderIds($db, $orders->pluck('id_order')->all(), $sellerId);
+            $tracking = $this->prestashopService->getTrackingForOrders($trackingIds);
             $items = [];
             foreach ($orders as $order) {
                 $lines = $db->table('order_detail as d')->join('product as p', 'p.id_product', '=', 'd.product_id')
@@ -132,13 +134,24 @@ class SellerController
                     }
                     $products[] = ['id' => (int) $line->id_order_detail, 'name' => (string) $line->product_name, 'image' => isset($images[(int) $line->product_id]) ? build_product_image_url($images[(int) $line->product_id], (string) $line->product_name, 'small_default') : null, 'quantity' => (int) $line->product_quantity, 'unit_price_tax_incl' => $line->unit_price_tax_incl === null ? null : (float) $line->unit_price_tax_incl, 'details' => $details];
                 }
-                $items[] = ['id' => (int) $order->id_order, 'reference' => (string) $order->reference, 'date' => (string) $order->date_add, 'status_id' => (int) $order->current_state, 'status' => $order->status ?: 'Stato ' . $order->current_state, 'currency' => $order->currency, 'items' => $products];
+                $items[] = ['id' => (int) $order->id_order, 'reference' => (string) $order->reference, 'date' => (string) $order->date_add, 'status_id' => (int) $order->current_state, 'status' => $order->status ?: 'Stato ' . $order->current_state, 'currency' => $order->currency, 'tracking' => $tracking[$order->id_order] ?? null, 'items' => $products];
             }
             return response(['items' => $items, 'statuses' => array_values($statuses), 'total' => $total, 'page' => $page, 'per_page' => $perPage]);
         } catch (\Throwable $e) {
             Log::error('Unable to load seller orders', ['exception' => $e::class]);
             return response(['message' => 'Unable to load seller orders'], 500);
         }
+    }
+
+    /** A single order-level tracking number cannot be attributed to multiple sellers. */
+    private function singleSellerOrderIds(\Illuminate\Database\ConnectionInterface $db, array $orderIds, int $sellerId): array
+    {
+        if ($orderIds === []) return [];
+        $manufacturer = $db->getQueryGrammar()->wrap('p.id_manufacturer');
+        return $db->table('order_detail as d')->leftJoin('product as p', 'p.id_product', '=', 'd.product_id')
+            ->whereIn('d.id_order', $orderIds)->groupBy('d.id_order')
+            ->havingRaw('COUNT(*) = COUNT(' . $manufacturer . ') AND COUNT(DISTINCT ' . $manufacturer . ') = 1 AND MIN(' . $manufacturer . ') = ?', [$sellerId])
+            ->pluck('d.id_order')->map(static fn ($id): int => (int) $id)->all();
     }
 
     /** Count each seller order once per state, including with a PrestaShop table prefix. */

@@ -81,7 +81,7 @@ class OrderEntity implements ObjectInterface
 		$data = [
 			'id' => $this->data['id'],
 			'id_carrier' => $this->data['id_carrier'], //
-			'id_guest' => $this->data['id_guest'],
+			'id_guest' => $this->data['id_guest'] ?? null,
 			'id_customer' => $this->data['id_customer'],
 			'reference' => (string) $this->data['reference'],
 			'id_cart' => $this->data['id_cart'],
@@ -95,6 +95,7 @@ class OrderEntity implements ObjectInterface
 			'expires_at' => $this->data['expires_at'] ?? time() + 3600,
 			'recovery_attempt' => $this->data['recovery_attempt'] ?? false,
 			'id_lang' => (int) $idLang,
+			'tracking' => $this->data['tracking'] ?? null,
 		];
 		$this->data = $data;
 	}

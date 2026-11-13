@@ -437,6 +437,10 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
 
     protected function handleGetRequest()
     {
+        $trackingIds = (string) Tools::getValue('tracking_order_ids', '');
+        if ($trackingIds !== '') {
+            return $this->getTrackingForOrders($trackingIds);
+        }
         $idOrder = (int) Tools::getValue('id_order');
         $reference = trim((string) Tools::getValue('reference'));
         $idCustomer = (int) Tools::getValue('id_customer');
@@ -473,10 +477,33 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
             }
         }
 
+        require_once dirname(__FILE__) . '/../../classes/MlabOrderTracking.php';
+        $orderData = MlabFactoryApiHelper::serializeOrder($order);
+        $orderData['tracking'] = MlabOrderTracking::forOrder($order);
+
         return array(
             'message' => 'Order retrieved successfully.',
-            'order' => MlabFactoryApiHelper::serializeOrder($order),
+            'order' => $orderData,
         );
+    }
+
+    private function getTrackingForOrders($rawIds)
+    {
+        if (!preg_match('/^[0-9]+(?:,[0-9]+){0,19}$/D', $rawIds)) {
+            throw new MlabFactoryApiException('Invalid tracking order IDs.', 422);
+        }
+        require_once dirname(__FILE__) . '/../../classes/MlabOrderTracking.php';
+        $result = array();
+        foreach (array_unique(array_map('intval', explode(',', $rawIds))) as $id) {
+            if ($id <= 0) {
+                throw new MlabFactoryApiException('Invalid tracking order IDs.', 422);
+            }
+            $order = new Order($id);
+            if (Validate::isLoadedObject($order)) {
+                $result[(string) $id] = MlabOrderTracking::forOrder($order);
+            }
+        }
+        return array('tracking_by_order' => $result);
     }
 
     protected function getOrderHistory(int $idCustomer, int $idGuest)

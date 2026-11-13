@@ -20,7 +20,9 @@ final class MailTemplateHookTest extends TestCase
             'extra_template_vars' => &$extra,
         ];
         $module->hookActionGetExtraMailTemplateVars($params);
-        self::assertSame(['{other}' => 'preserved'], $extra);
+        self::assertSame('preserved', $extra['{other}']);
+        self::assertStringContainsString('BRT123456', $extra['{tracking_block_html}']);
+        self::assertStringContainsString('BRT123456', $extra['{tracking_block_text}']);
         self::assertSame('https://carrier.example/track/123', $params['template_vars']['{followup}']);
 
         $params['template'] = 'order_conf';

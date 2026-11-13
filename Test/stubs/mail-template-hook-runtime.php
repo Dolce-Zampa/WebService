@@ -3,9 +3,12 @@ const _PS_VERSION_ = '9.0';
 class PaymentModule {}
 class Order
 {
+    public $id = 42;
+    public $id_carrier = 0;
     public $id_lang = 1;
     public $id_shop = 1;
     public function __construct($id) {}
+    public function getShippingNumber() { return 'BRT123456'; }
     public function getProducts() { return [['product_id' => 7, 'product_name' => 'Collare']]; }
 }
 class OrderCarrier {}

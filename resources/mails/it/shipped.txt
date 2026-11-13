@@ -8,7 +8,7 @@ Grazie per aver ordinato presso {shop_name}!
 
 Il tuo ordine con riferimento {order_name} è stato spedito.
 
-Numero di tracciamento (se disponibile): {shipping_number}
+{tracking_block_text}
 
 Segui il tuo ordine e scarica la tua fattura dal nostro negozio, vai alla sezione [Storico e dettagli degli ordini]({history_url}) della tua area cliente.
 
