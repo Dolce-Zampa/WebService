@@ -10,7 +10,7 @@ class Carrier extends Product implements PrestashopServiceInterface {
 
     public function shippingPolicy(): array
     {
-        $this->httpService->setUrl('/shipping_policy');
+        $this->httpService->setModuleController('shippingpolicy');
         $response = $this->httpService->invoke('GET');
         $result = $response->toArray();
         $threshold = $result['data']['free_shipping_threshold'] ?? null;
@@ -28,12 +28,12 @@ class Carrier extends Product implements PrestashopServiceInterface {
      */
     public function carriersWithFixedRates(): Collection
     {
-        $this->httpService->setUrl('/carrier_rates');
+        $this->httpService->setModuleController('carrierrates');
 
         $response = $this->httpService->invoke('GET');
 
         if ($response->failed()) {
-            throw new \RuntimeException("Failed to retrieve carriers: " . $response->getHttpCode());
+            throw new \RuntimeException('PrestaShop returned HTTP ' . $response->getHttpCode());
         }
 
         $collection = new Collection();

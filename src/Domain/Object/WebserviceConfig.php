@@ -35,6 +35,20 @@ final class WebserviceConfig {
         return $this->api . $api;
     }
 
+    public function moduleController(string $controller): string
+    {
+        $base = rtrim($this->base_uri, '/');
+        if (!str_ends_with($base, '/api')) {
+            throw new \LogicException('PrestaShop API base URL must end in /api.');
+        }
+
+        return substr($base, 0, -4) . '/index.php?' . http_build_query([
+            'fc' => 'module',
+            'module' => 'webserviceapi',
+            'controller' => $controller,
+        ], '', '&', PHP_QUERY_RFC3986);
+    }
+
     public function toArray(): array
     {
         return [

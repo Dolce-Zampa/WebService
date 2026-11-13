@@ -13,7 +13,7 @@ final class CarrierRatesApiTest extends TestCase
     public function test_list_contains_the_prestashop_prices_and_preserves_ranges(): void
     {
         $http = $this->createMock(HttpServiceInterface::class);
-        $http->expects(self::once())->method('setUrl')->with('/carrier_rates');
+        $http->expects(self::once())->method('setModuleController')->with('carrierrates');
         $http->method('invoke')->with('GET')->willReturnSelf();
         $http->method('failed')->willReturn(false);
         $carrier = ['id' => 20, 'name' => 'inPost', 'delay' => '3', 'grade' => 2,
@@ -31,5 +31,15 @@ final class CarrierRatesApiTest extends TestCase
         self::assertSame(3.9, $data[0]['price_with_tax']);
         self::assertSame(5, $data[0]['price_ranges'][0]['max']);
         self::assertFalse($data[0]['price_varies_by_range']);
+    }
+
+    public function test_shipping_policy_uses_the_module_controller(): void
+    {
+        $http = $this->createMock(HttpServiceInterface::class);
+        $http->expects(self::once())->method('setModuleController')->with('shippingpolicy');
+        $http->method('invoke')->with('GET')->willReturnSelf();
+        $http->method('failed')->willReturn(false);
+        $http->method('toArray')->willReturn(['success' => true, 'data' => ['free_shipping_threshold' => 99]]);
+        self::assertSame(['free_shipping_threshold' => 99.0], (new Carrier($http))->shippingPolicy());
     }
 }
