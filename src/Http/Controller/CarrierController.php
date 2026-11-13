@@ -16,6 +16,15 @@ class CarrierController extends Controller
         $this->carrierService = $carrierService;
     }
 
+    public function shippingPolicy(Request $request, Response $response): Response
+    {
+        try {
+            return response($this->carrierService->shippingPolicy())->withHeader('Cache-Control', 'no-store');
+        } catch (\Throwable $error) {
+            return response(['error' => 'Shipping policy unavailable'], 503);
+        }
+    }
+
     /**
      * Get list of all active carriers
      * GET /api/carriers

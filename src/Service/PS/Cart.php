@@ -265,6 +265,24 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return CartEntity::create($data['data']['cart'], $this);
     }
 
+    public function quoteShipping($cartId, $customerId, $guestId, int $carrierId, array $checkout): int
+    {
+        $this->httpService->setUrl('/shipping_quote');
+        $response = $this->httpService->invoke('POST', [
+            'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId, 'id_carrier' => $carrierId,
+            'delivery_address' => $checkout['delivery_address'] ?? null,
+            'invoice_address' => $checkout['invoice_address'] ?? null,
+            'firstname' => $checkout['customer']['firstname'] ?? null,
+            'lastname' => $checkout['customer']['lastname'] ?? null,
+        ]);
+        $data = $response->toArray();
+        $amount = $data['data']['shipping_cents'] ?? null;
+        if ($response->failed() || !is_int($amount) || $amount < 0) {
+            throw new \RuntimeException('Shipping quote unavailable.');
+        }
+        return $amount;
+    }
+
     public function validateCoupon(string $code, string $cartId, ?string $customerId = null, ?string $guestId = null): array|false
     {
         $query = [

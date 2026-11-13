@@ -493,6 +493,7 @@ final class OrderSecurityTest extends TestCase
             'id_cart' => 10,
             'id_customer' => 5,
             'id_carrier' => 2,
+            'shipping_expected_cents' => (int) round($expectedShipping * 100),
             'id_lang' => 1,
             'paymentMethod' => 'stripe',
             'reference' => 'REF123',
@@ -526,6 +527,30 @@ final class OrderSecurityTest extends TestCase
     }
 
     // -------------------------------------------------------- initiatePayment ownership
+
+    public function test_checkout_rejects_a_changed_shipping_quote_before_payment(): void
+    {
+        $service = $this->getMockBuilder(Order::class)->disableOriginalConstructor()
+            ->onlyMethods(['getCartFromId', 'prepareCouponCart'])->getMock();
+        $cart = CartEntity::create([
+            'id' => 10, 'products' => [['id_product' => 7, 'name' => 'Collare', 'quantity' => 1, 'price_wt' => 25]],
+            'totals' => ['shipping_tax_incl' => 7.80], 'cart_rules' => [],
+        ], $service);
+        $service->method('getCartFromId')->willReturn($cart);
+        $service->method('prepareCouponCart')->willReturn($cart);
+        $stripe = $this->createMock(PaymentGatewayInterface::class);
+        $stripe->expects($this->never())->method('createPaymentSession');
+        $request = $this->createMock(ServerRequestInterface::class);
+        $request->method('getParsedBody')->willReturn([
+            'id_cart' => 10, 'id_customer' => 5, 'id_carrier' => 20, 'id_lang' => 1,
+            'shipping_expected_cents' => 390,
+            'customer' => ['firstname' => 'Ada', 'lastname' => 'Rossi', 'email' => 'ada@example.com'],
+            'delivery_address' => ['address1' => 'Via Roma', 'id_country' => 10],
+            'invoice_address' => ['address1' => 'Via Roma', 'id_country' => 10],
+        ]);
+        $response = $this->createOrderController($service, $stripe)->createOrder($request, $this->createMock(ResponseInterface::class), []);
+        self::assertSame(409, $response->getStatusCode());
+    }
 
     public function test_initiate_payment_returns_403_when_no_owner_id_provided(): void
     {

@@ -107,6 +107,49 @@ class OrderController extends CartController
         return $this->customerRepository->findUserIdFromSub($sub);
     }
 
+    public function shippingQuote(Request $request, Response $response, array $argv): Response
+    {
+        $payload = $request->getParsedBody();
+        if (!is_array($payload)) return response(['error' => 'Invalid checkout'], 422);
+        $cartId = filter_var($payload['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $carrierId = filter_var($payload['id_carrier'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $customerId = $payload['id_customer'] ?? null;
+        $guestId = $payload['id_guest'] ?? null;
+        if ($cartId === false || $carrierId === false ||
+            ($customerId !== null && ($guestId !== null || $this->authenticatedCustomerId($request) !== (int) $customerId)) ||
+            ($customerId === null && filter_var($guestId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
+            return response(['error' => 'Invalid checkout'], 422);
+        }
+        try {
+            $existingCart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
+            if ($existingCart === null) return response(['error' => 'Cart not found'], 404);
+            if ($this->checkoutSnapshots !== null && $this->checkoutSnapshots->giftCardSnapshotForCart($cartId) !== null) {
+                return response(['error' => 'Checkout already in progress'], 409);
+            }
+            if ($this->inpostCheckout !== null) {
+                $payload = $this->inpostCheckout->prepare($payload, $carrierId);
+            } elseif (isset($payload['inpost_point_id'])) {
+                throw new \RuntimeException('InPost unavailable');
+            }
+            $payload['id_carrier'] = $carrierId;
+            $payload += [
+                'id' => 0, 'id_guest' => null, 'id_customer' => null, 'reference' => '',
+                'current_state' => 0, 'date_add' => '', 'total_paid_tax_incl' => 0, 'total_paid_tax_excl' => 0,
+                'id_lang' => $existingCart->toArray()['id_lang'] ?? null,
+            ];
+            $order = OrderEntity::create($payload, $this->orderService)->toArray();
+            $order['delivery_address'] = $order['customer']['delivery_address'] ?? null;
+            $order['invoice_address'] = $order['customer']['invoice_address'] ?? null;
+            $shipping = $this->orderService->quoteShipping($cartId, $customerId, $guestId, $carrierId, $order);
+            return response(['shipping_cents' => $shipping])->withHeader('Cache-Control', 'no-store');
+        } catch (\InvalidArgumentException $error) {
+            return response(['error' => $error->getMessage()], 422);
+        } catch (\Throwable $error) {
+            Log::error('Shipping quote unavailable', ['error_type' => get_class($error)]);
+            return response(['error' => 'Shipping quote unavailable'], 503);
+        }
+    }
+
     public function confirmOrder(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
@@ -429,6 +472,14 @@ class OrderController extends CartController
                 $codes,
                 $checkout
             );
+            if (array_key_exists('shipping_expected_cents', $payload)) {
+                $expectedShipping = $payload['shipping_expected_cents'];
+                $actualShipping = $cart->toArray()['totals']['shipping_tax_incl'] ?? null;
+                if (!is_int($expectedShipping) || $expectedShipping < 0 || !is_numeric($actualShipping)
+                    || $expectedShipping !== (int) round((float) $actualShipping * 100)) {
+                    return response(['error' => 'Shipping price changed'], 409);
+                }
+            }
             $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray(), $giftCode !== null);
             if (is_string($inpostPointId) && $inpostPointId !== '') {
                 $orderSession->setInpostPointId($inpostPointId);

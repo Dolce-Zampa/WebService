@@ -160,7 +160,19 @@ class CartController extends Controller {
     public function getCartRules(Request $request, Response $response, array $argv): Response
     {
         $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
-        $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->cartService);
+        $rules = json_decode($cartRuleSettings, true);
+        $threshold = $this->cartService->shippingPolicy()['free_shipping_threshold'];
+        foreach ($rules as $index => &$entry) {
+            if (($entry['rule']['rule'] ?? null) === 'free-shipping') {
+                if ($threshold <= 0) unset($rules[$index]);
+                else {
+                    $entry['rule']['conditions']['minimum-spend'] = $threshold;
+                    $entry['rule']['conditions']['scope'] = 'manufacturer';
+                }
+            }
+        }
+        unset($entry);
+        $cartRules = CartRuleEntity::create(array_values($rules), $this->cartService);
         return response($cartRules->toArray());
     }
 

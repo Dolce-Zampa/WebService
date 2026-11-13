@@ -4,6 +4,7 @@ if (!defined('_PS_VERSION_')) {
 }
 
 use PrestaShop\PrestaShop\Core\Payment\PaymentOption;
+require_once __DIR__ . '/classes/MlabMarketplaceShipping.php';
 
 class webserviceapi extends PaymentModule
 {
@@ -15,12 +16,13 @@ class webserviceapi extends PaymentModule
     const CONFIG_CHATGPT_IMAGE_PROMPT = 'MLABFACTORYAPI_CHATGPT_IMAGE_PROMPT';
     private static array $productWebhookDispatched = [];
     private static array $previousProductCategories = [];
+    private static bool $quotingArtisanShipping = false;
     private $configuratorFormBuilt = false;
     public function __construct()
     {
         $this->name = 'webserviceapi';
         $this->tab = 'administration';
-        $this->version = '1.1.1';
+        $this->version = '1.1.2';
         $this->author = 'MlabFactory - Marco De Felice';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -39,6 +41,7 @@ class webserviceapi extends PaymentModule
             && $this->registerHook('moduleRoutes')
             && $this->registerHook('paymentOptions')
             && $this->registerHook('paymentReturn')
+            && $this->installMarketplaceShipping()
             && $this->registerHook('actionObjectProductAddAfter')
             && $this->registerHook('actionObjectProductUpdateAfter')
             && Configuration::updateValue(self::CONFIG_PAYMENT_MODULE, $this->getDefaultPaymentModule())
@@ -46,6 +49,51 @@ class webserviceapi extends PaymentModule
             && Configuration::updateValue(self::CONFIG_CHATGPT_TEXT_PROMPT, '')
             && Configuration::updateValue(self::CONFIG_CHATGPT_IMAGE_PROMPT, '')
             && $this->registerHook('actionGetExtraMailTemplateVars');
+    }
+
+    public function installMarketplaceShipping()
+    {
+        return $this->registerHook(array('actionCartGetPackageShippingCost', 'actionOverrideShippingFreePrice', 'actionOverrideShippingFreeWeight'));
+    }
+
+    public function hookActionOverrideShippingFreePrice($params)
+    {
+        if (self::$quotingArtisanShipping) {
+            $params['shippingFreePrice'] = 0;
+        }
+    }
+
+    public function hookActionOverrideShippingFreeWeight($params)
+    {
+        if (self::$quotingArtisanShipping) {
+            $params['shippingFreeWeight'] = 0;
+        }
+    }
+
+    public function hookActionCartGetPackageShippingCost($params)
+    {
+        if (self::$quotingArtisanShipping || !empty($params['keepOrderPrices']) || $params['shippingCost'] === false) {
+            return;
+        }
+        $cart = $params['cart'];
+        $products = $params['product_list'] ?? $cart->getProducts();
+        $params['shippingCost'] = MlabMarketplaceShipping::calculate(
+            $products,
+            MlabMarketplaceShipping::threshold(),
+            function ($sellerId, $lines) use ($cart, $params) {
+                self::$quotingArtisanShipping = true;
+                try {
+                    // PrestaShop's request cache otherwise mixes whole-cart and artisan quotes.
+                    Cache::clean('getPackageShippingCost_' . (int) $cart->id . '_*');
+                    return $cart->getPackageShippingCost(
+                        $params['id_carrier'], $params['use_tax'], $params['default_country'],
+                        $lines, $params['id_zone'], false
+                    );
+                } finally {
+                    self::$quotingArtisanShipping = false;
+                }
+            }
+        );
     }
 
     public function installConfigurator()
@@ -594,6 +642,18 @@ class webserviceapi extends PaymentModule
                 'rule' => 'api/cart_rules',
                 'keywords' => array(),
                 'controller' => 'coupon',
+                'params' => $params,
+            ),
+            'module-webserviceapi-shippingpolicy' => array(
+                'rule' => 'api/shipping_policy',
+                'keywords' => array(),
+                'controller' => 'shippingpolicy',
+                'params' => $params,
+            ),
+            'module-webserviceapi-shippingquote' => array(
+                'rule' => 'api/shipping_quote',
+                'keywords' => array(),
+                'controller' => 'shippingquote',
                 'params' => $params,
             ),
             'module-webserviceapi-promotions' => array(

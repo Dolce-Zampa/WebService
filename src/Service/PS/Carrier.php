@@ -8,6 +8,18 @@ use Illuminate\Support\Collection;
 
 class Carrier extends Product implements PrestashopServiceInterface {
 
+    public function shippingPolicy(): array
+    {
+        $this->httpService->setUrl('/shipping_policy');
+        $response = $this->httpService->invoke('GET');
+        $result = $response->toArray();
+        $threshold = $result['data']['free_shipping_threshold'] ?? null;
+        if ($response->failed() || !is_numeric($threshold) || !is_finite((float) $threshold) || (float) $threshold < 0) {
+            throw new \RuntimeException('Shipping policy unavailable.');
+        }
+        return ['free_shipping_threshold' => (float) $threshold];
+    }
+
     /**
      * Retrieves a list of active carriers.
      *

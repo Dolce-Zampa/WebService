@@ -1,5 +1,6 @@
 <?php
 require_once dirname(__FILE__) . '/../../classes/MlabFactoryApiBaseModuleFrontController.php';
+require_once dirname(__FILE__) . '/../../classes/MlabMarketplaceShipping.php';
 
 class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleFrontController
 {
@@ -61,6 +62,7 @@ class webserviceapicouponModuleFrontController extends MlabFactoryApiBaseModuleF
         $idGuest = (int) MlabFactoryApiHelper::getValue($payload, 'id_guest', 0);
         $cart = $this->getOwnedCart($idCart, $idCustomer, $idGuest);
         if (!empty($payload['checkout'])) {
+            MlabMarketplaceShipping::ensureReady($this->module, $this->context);
             if (!empty($payload['delivery_address']) || !empty($payload['invoice_address'])) {
                 if ((int) $cart->id_customer > 0) {
                     $customer = MlabFactoryApiHelper::ensureCustomerExists((int) $cart->id_customer);
