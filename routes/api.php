@@ -9,6 +9,8 @@
 
 /** CLIENT APIs */
 $app->get('/api/health', PS\Webservice\Http\Controller\PrestashopController::class . ':healthCheck');
+$app->get('/api/inpost/config', PS\Webservice\Http\Controller\InpostPointsController::class . ':config');
+$app->get('/api/inpost/points', PS\Webservice\Http\Controller\InpostPointsController::class . ':index');
 
 /** Carts api */
 $app->get('/api/cart/product/upselling', PS\Webservice\Http\Controller\CartController::class . ':upsellingCart')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('upselling-cart'));
@@ -71,7 +73,8 @@ $app->group('/api', function () use ($app) {
     $app->post('/api/order/confirm', PS\Webservice\Http\Controller\OrderController::class . ':confirmOrder')->add(new \PS\Webservice\Http\Middleware\OptionalAuthenticationMiddleware());
 
     /** Carriers api */
-    $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
+    $app->get('/api/shipping-policy', PS\Webservice\Http\Controller\CarrierController::class . ':shippingPolicy');
+    $app->get('/api/carriers', PS\Webservice\Http\Controller\CarrierController::class . ':carrierList');
     $app->get('/api/carriers/available', PS\Webservice\Http\Controller\CarrierController::class . ':availableCarriers')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
     $app->get('/api/carriers/{id_carrier}', PS\Webservice\Http\Controller\CarrierController::class . ':getCarrier')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('carriers'));
 

@@ -19,6 +19,7 @@ final class AppScheduleProvider implements ScheduleProviderInterface
         $financialTimezone = (string) env('FINANCIAL_SUMMARY_TIMEZONE', 'UTC');
 
         return (new Schedule())
+            ->add(RecurringMessage::cron('30 2 * * *', new SyncInpostPointsMessage(), 'Europe/Rome'))
             ->add(RecurringMessage::cron('* * * * *', new ScheduledPromotionCacheMessage()))
             ->add(RecurringMessage::cron('* * * * *', new GiftCardMaintenanceMessage()))
             ->add(RecurringMessage::cron('* * * * *', new RecoverGiftCardCheckoutsMessage()))

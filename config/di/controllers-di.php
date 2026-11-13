@@ -1,5 +1,9 @@
 <?php
 
+$container->set(\PS\Webservice\Http\Controller\InpostPointsController::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Http\Controller\InpostPointsController($capsule->getConnection(), (int) env('INPOST_CATALOG_MAX_AGE_HOURS', 72), $c->get(\PS\Webservice\Service\PickupPoints\InpostCheckout::class)->carrierIds());
+});
+
 $container->set(\PS\Webservice\Http\Controller\ProductController::class, function ($c) {
     $productService = $c->get(\PS\Webservice\Service\PS\Product::class);
     $promotionService = $c->get(\PS\Webservice\Service\Promotions\PromotionService::class);
@@ -39,6 +43,7 @@ $container->set(\PS\Webservice\Http\Controller\OrderController::class, function 
         fn () => $c->get(\PS\Webservice\Service\GiftCard\GiftCardClient::class),
         fn () => $c->get(\PS\Webservice\Service\GiftCard\GiftCardSettlementService::class),
         new \PS\Webservice\Service\GiftCard\GiftCardCheckoutRateLimiter(),
+        $c->get(\PS\Webservice\Service\PickupPoints\InpostCheckout::class),
     );
 });
 

@@ -6,6 +6,7 @@
  */
 
 return [
+    \PS\Webservice\Commands\SyncInpostPointsCommand::class,
     \PS\Webservice\Commands\AddProductBundleCommand::class,
     \PS\Webservice\Commands\ClearProductCacheCommand::class,
     \PS\Webservice\Commands\WarmProductCacheCommand::class,

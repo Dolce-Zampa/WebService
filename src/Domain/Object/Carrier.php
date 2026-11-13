@@ -37,6 +37,8 @@ final class Carrier
             'max_depth' => $this->data['max_depth'],
             'max_weight' => $this->data['max_weight'],
             'price_with_tax' => $this->data['price_with_tax'] ?? null,
+            'price_ranges' => $this->data['price_ranges'] ?? [],
+            'price_varies_by_range' => $this->data['price_varies_by_range'] ?? false,
         ];
 
         $this->data = $carrier;

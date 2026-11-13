@@ -372,11 +372,14 @@ class OrderSession implements ObjectInterface
         $this->data['payment_intent_data'] = ['transfer_group' => $transferGroup];
     }
 
-    /**
-     * The identifier points to the encrypted, server-generated checkout
-     * snapshot. It is safe to place in Stripe metadata and lets the webhook
-     * retrieve the exact quote instead of re-reading a mutable cart.
-     */
+    /** Records the server-validated pickup point in the checkout metadata. */
+    public function setInpostPointId(string $pointId): void
+    {
+        if ($pointId === '' || strlen($pointId) > 100) throw new \InvalidArgumentException('Invalid InPost point ID.');
+        $this->data['metadata']['inpost_point_id'] = $pointId;
+    }
+
+    /** The ID links Stripe to the encrypted, server-generated checkout snapshot. */
     public function setCheckoutSnapshotId(string $snapshotId): void
     {
         if (!preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
@@ -408,6 +411,9 @@ class OrderSession implements ObjectInterface
         $payload = $this->data;
         unset($payload['expires_at']);
         unset($payload['metadata']['checkout_attempt_key']);
+        if (isset($payload['metadata']['inpost_point_id'])) {
+            $payload['inpost_delivery_address'] = $this->customer->delivery_address;
+        }
 
         if ($this->giftCardTender !== null) {
             $payload['gift_card_tender'] = $this->giftCardTender->toArray();

@@ -1291,9 +1291,11 @@ class StripeWebhookController extends OrderController
             throw new \RuntimeException('Checkout snapshot customer data is invalid.');
         }
 
-        $shippingAddress = $this->mapStripeAddress($stripeSession->shipping_details?->address ?? null, 'delivery');
-        if ($shippingAddress !== null) {
-            $customer['delivery_address'] = $shippingAddress;
+        if (empty($snapshot['inpost_point_id'])) {
+            $shippingAddress = $this->mapStripeAddress($stripeSession->shipping_details?->address ?? null, 'delivery');
+            if ($shippingAddress !== null) {
+                $customer['delivery_address'] = $shippingAddress;
+            }
         }
         $invoiceAddress = $this->mapStripeAddress($stripeSession->customer_details?->address ?? null, 'invoice');
         if ($invoiceAddress !== null) {

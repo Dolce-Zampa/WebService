@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace PS\Webservice\Domain\Entities;
 
-use PS\Webservice\Domain\Entities\CartRuleEntity;
 use PS\Webservice\Domain\Models\PS\Configuration;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
@@ -97,10 +96,6 @@ class OrderEntity implements ObjectInterface
 			'recovery_attempt' => $this->data['recovery_attempt'] ?? false,
 			'id_lang' => (int) $idLang,
 		];
-        $currentCartRule = $this->currentCartRule();
-        $data['cartRules'] = CartRuleEntity::create($currentCartRule, $this->service) ?? [];
-
-
 		$this->data = $data;
 	}
 
@@ -119,15 +114,4 @@ class OrderEntity implements ObjectInterface
         return md5(json_encode($this->data));
     }
 
-	public function getCartRules(): ?CartRuleEntity
-	{
-		return $this->data['cartRules'] ?? null;
-	}
-
-    private function currentCartRule(): array
-    {
-        $cartRuleSettings = file_get_contents(__DIR__ . '/../../../storage/configs/cart_rules.json');
-        $cartRules = CartRuleEntity::create(json_decode($cartRuleSettings, true), $this->service);
-        return $cartRules->toArray() ?? [];
-    }
 }

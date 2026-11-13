@@ -40,9 +40,11 @@ $scheduledPromotionCacheHandler = $container->get(\PS\Webservice\Commands\Schedu
 $reconcileProductIndexHandler = $container->get(\PS\Webservice\Commands\Scheduler\ReconcileProductIndexMessageHandler::class);
 $giftCardMaintenanceHandler = $container->get(\PS\Webservice\Commands\Scheduler\GiftCardMaintenanceMessageHandler::class);
 $giftCardRecoveryHandler = $container->get(\PS\Webservice\Commands\Scheduler\RecoverGiftCardCheckoutsMessageHandler::class);
+$inpostHandler = $container->get(\PS\Webservice\Commands\Scheduler\SyncInpostPointsMessageHandler::class);
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(new HandlersLocator([
+        \PS\Webservice\Commands\Scheduler\SyncInpostPointsMessage::class => [$inpostHandler],
         \PS\Webservice\Commands\Scheduler\WarmProductCacheMessage::class => [$warmProductCacheHandler],
         \PS\Webservice\Commands\Scheduler\SendReviewRequestMailMessage::class => [$handler],
         \PS\Webservice\Commands\Scheduler\GenerateSitemap::class => [$generateSitemapHandler],

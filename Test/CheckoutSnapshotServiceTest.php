@@ -46,6 +46,26 @@ final class CheckoutSnapshotServiceTest extends TestCase
         self::assertSame(0, $resolved['payload']['totals']['shipping_cents']);
     }
 
+    public function test_inpost_selection_is_in_the_encrypted_checkout_snapshot(): void
+    {
+        $db = $this->database();
+        $order = $this->createMock(Order::class);
+        $session = OrderSession::create([
+            'cart_id' => 42, 'id_guest' => 8, 'id_carrier' => 17,
+            'customer' => CustomerEntity::create(['email' => 'buyer@example.test', 'firstname' => 'Test', 'lastname' => 'Customer',
+                'delivery_address' => ['address1' => 'Via Locker', 'city' => 'Milano', 'postcode' => '20100', 'country' => 'IT']], $order),
+        ], $order);
+        $product = ['id_product' => 22, 'id_manufacturer' => 7, 'name' => 'Product', 'price_wt' => '20.00', 'quantity' => 1];
+        $session->addCartLineItem($product);
+        $before = $session->checkoutAttemptFingerprint();
+        $session->setInpostPointId('MI001');
+        self::assertNotSame($before, $session->checkoutAttemptFingerprint());
+        $service = new CheckoutSnapshotService($db);
+        $snapshot = $service->create($session, ['currency_iso' => 'EUR', 'products' => [$product], 'totals' => ['shipping_tax_incl' => 0]]);
+        self::assertSame('MI001', $snapshot['payload']['inpost_point_id']);
+        self::assertSame('Via Locker', $snapshot['payload']['customer']['delivery_address']['address1']);
+    }
+
     private string|false $previousAppKey;
 
     protected function setUp(): void

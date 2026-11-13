@@ -374,6 +374,9 @@ final class CheckoutSnapshotService
                 'grand_total_cents' => $grandTotalCents,
             ],
         ];
+        if (isset($metadata['inpost_point_id'])) {
+            $payload['inpost_point_id'] = (string) $metadata['inpost_point_id'];
+        }
         $tender = $session->giftCardTender();
         if ($tender !== null) {
             if ($tender->cartId !== $cartId || $tender->totalCents !== $grandTotalCents) {
