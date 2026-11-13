@@ -282,6 +282,11 @@ GET /api/orders?reference=ABCDEF&id_guest=34
 
 Il riepilogo include dati ordine, stato, totali, valuta, cliente, indirizzi e righe prodotto.
 Se passi `id_customer` o `id_guest`, l'API verifica che l'ordine appartenga davvero al soggetto richiesto.
+Il dettaglio include `tracking.number` e `tracking.url` quando disponibili. Per gli ordini Packlink si usa il link della singola spedizione; altrimenti si usa il numero salvato in PrestaShop e l'URL configurato sul corriere.
+
+Il WebService può richiedere fino a 20 tracking in una chiamata autenticata al modulo con `GET /api/orders?tracking_order_ids=99,100`. L'area artigiani invia solo ordini autorizzati e omette i tracking degli ordini con più venditori, finché non è disponibile un'associazione per venditore.
+
+Per le email di spedizione, distribuire anche i template `shipped` aggiornati e verificare che `webserviceapi` sia registrato all'hook `actionGetExtraMailTemplateVars`. Il modulo PrestaShop aggiornato deve essere disponibile prima del rilascio del WebService e del frontend.
 
 ### Area riservata: profilo, indirizzi, logout, storico ordini
 
@@ -388,7 +393,7 @@ Se imposti `webserviceapi`, le API ordine e il checkout PrestaShop usano il modu
 - Le risposte sono sempre in JSON.
 - L'endpoint `GET /api/carts` richiede `id_customer` oppure `id_guest`.
 - Gli endpoint wishlist richiedono le tabelle standard `wishlist` e `wishlist_product` del modulo wishlist PrestaShop.
-- L'endpoint `GET /api/orders` richiede `id_order` oppure `reference`.
+- Il dettaglio `GET /api/orders` richiede `id_order` oppure `reference`; storico e tracking in blocco usano i parametri descritti sopra.
 - Per finalizzare un ordine serve un carrello con prodotti, cliente valido e indirizzi di consegna/fatturazione impostati.
 - Se un carrello non virtuale non ha un vettore, l'endpoint ordine risponde con errore `422`.
 - Se vuoi usare il modulo come metodo di pagamento nel checkout standard, dopo l'aggiornamento conviene reinstallarlo oppure resettarlo dal back office per registrare i nuovi hook.

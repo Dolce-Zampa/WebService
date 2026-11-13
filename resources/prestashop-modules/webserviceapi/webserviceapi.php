@@ -895,7 +895,43 @@ class webserviceapi extends PaymentModule
     {
         if (($params['template'] ?? '') === 'order_conf') {
             $this->addOrderProductionTimes($params);
+        } elseif (($params['template'] ?? '') === 'shipped') {
+            $this->addOrderTracking($params);
         }
+    }
+
+    private function addOrderTracking(array $params)
+    {
+        $id = (int) ($params['template_vars']['{id_order}'] ?? 0);
+        $tracking = array('number' => null, 'url' => null);
+        try {
+            $order = $id > 0 ? new Order($id) : null;
+            if ($order && Validate::isLoadedObject($order)) {
+                require_once __DIR__ . '/classes/MlabOrderTracking.php';
+                $tracking = MlabOrderTracking::forOrder($order);
+            }
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog('Unable to retrieve order tracking.', 3);
+        }
+
+        $html = '';
+        $text = '';
+        if ($tracking['number'] !== null) {
+            $html .= '<p><span class="label">Numero di tracciamento:</span> <span class="value">'
+                . htmlspecialchars($tracking['number'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</span></p>';
+            $text .= "Numero di tracciamento: " . $tracking['number'] . "\n";
+        }
+        if ($tracking['url'] !== null) {
+            $html .= '<p><a href="' . htmlspecialchars($tracking['url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                . '" class="cta-button">Traccia la tua spedizione</a></p>';
+            $text .= "Traccia la tua spedizione: " . $tracking['url'] . "\n";
+        }
+        if ($html === '') {
+            $html = '<p>Il tracciamento non è ancora disponibile.</p>';
+            $text = "Il tracciamento non è ancora disponibile.\n";
+        }
+        $params['extra_template_vars']['{tracking_block_html}'] = $html;
+        $params['extra_template_vars']['{tracking_block_text}'] = $text;
     }
 
     private function addOrderProductionTimes(array $params)

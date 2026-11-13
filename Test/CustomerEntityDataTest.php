@@ -73,6 +73,7 @@ final class CustomerEntityDataTest extends TestCase
             'date_add' => '2026-01-01',
             'total_paid_tax_incl' => 10,
             'total_paid_tax_excl' => 8,
+            'tracking' => ['number' => 'BRT123', 'url' => 'https://carrier.example/track/BRT123'],
             'customer' => [
                 'email' => 'customer@example.com',
                 'firstname' => 'Ada',
@@ -85,6 +86,7 @@ final class CustomerEntityDataTest extends TestCase
         ], $this->service)->toArray();
 
         self::assertSame(3, $order['id_lang']);
+        self::assertSame(['number' => 'BRT123', 'url' => 'https://carrier.example/track/BRT123'], $order['tracking']);
         self::assertSame('222', $order['customer']['phone']);
         self::assertSame(44, $order['customer']['delivery_address']['id_country']);
         self::assertSame(44, $order['customer']['invoice_address']['id_country']);

@@ -32,6 +32,24 @@ class PrestashopService implements PrestashopServiceInterface {
         $this->productRepository = $repository;
     }
 
+    /** Read tracking only for order IDs already authorized by the caller. */
+    public function getTrackingForOrders(array $orderIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $orderIds), static fn (int $id): bool => $id > 0)));
+        if ($ids === []) return [];
+        $ids = array_slice($ids, 0, 20);
+        try {
+            $this->httpService->setUrl('/orders?' . http_build_query(['tracking_order_ids' => implode(',', $ids)]));
+            $response = $this->httpService->invoke('GET');
+            if ($response->failed()) return [];
+            $data = $response->toArray()['data']['tracking_by_order'] ?? [];
+            return is_array($data) ? array_intersect_key($data, array_flip($ids)) : [];
+        } catch (\Throwable $e) {
+            Log::warning('Unable to load order tracking', ['exception_type' => $e::class]);
+            return [];
+        }
+    }
+
 
     /**
      * Retrieves the image URL for a specific product image.
