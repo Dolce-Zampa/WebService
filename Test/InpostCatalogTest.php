@@ -6,6 +6,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response as GuzzleResponse;
 use Illuminate\Database\Capsule\Manager;
+use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase;
 use PS\Webservice\Http\Controller\InpostPointsController;
 use PS\Webservice\Service\PickupPoints\InpostCatalog;
@@ -89,13 +90,35 @@ final class InpostCatalogTest extends TestCase
         }
     }
 
-    public function test_absent_or_stale_catalog_and_bad_query_are_explicit(): void
+    public function test_absent_catalog_is_unavailable_and_stale_catalog_is_served_with_a_critical_log(): void
     {
         $controller = new InpostPointsController($this->db());
         $request = (new ServerRequestFactory())->createServerRequest('GET', '/')->withQueryParams(['city' => 'Milano']);
         self::assertSame(503, $controller->index($request, new Response())->getStatusCode());
+        $this->db()->table('inpost_points')->insert([
+            'point_id' => 'A', 'name' => 'Locker A', 'type' => 'locker', 'address' => 'Via Roma 1',
+            'city' => 'Milano', 'province' => null, 'postal_code' => '20100', 'latitude' => null,
+            'longitude' => null, 'opening_hours' => null,
+        ]);
         $this->db()->table('inpost_sync')->update(['last_success_at' => '2020-01-01 00:00:00']);
-        self::assertSame(503, $controller->index($request, new Response())->getStatusCode());
+        $previous = Facade::getFacadeApplication();
+        $logger = new class {
+            public array $entries = [];
+            public function critical(string $message, array $context): void { $this->entries[] = compact('message', 'context'); }
+        };
+        try {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication(['log' => $logger]);
+            $response = $controller->index($request, new Response());
+            $body = json_decode((string) $response->getBody(), true);
+            self::assertSame(200, $response->getStatusCode());
+            self::assertSame('A', $body['data']['items'][0]['point_id']);
+            self::assertSame('InPost catalog is outdated; serving the last successful snapshot.', $logger->entries[0]['message']);
+            self::assertSame('2020-01-01T00:00:00Z', $logger->entries[0]['context']['last_sync_at']);
+        } finally {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication($previous);
+        }
         self::assertSame(422, $controller->index($request->withQueryParams(['postal_code' => 'bad']), new Response())->getStatusCode());
     }
 
@@ -121,7 +144,7 @@ final class InpostCatalogTest extends TestCase
         $checkout->prepare(['inpost_point_id' => 'A'], 18);
     }
 
-    public function test_checkout_rejects_missing_unavailable_and_stale_point(): void
+    public function test_checkout_rejects_missing_or_unavailable_point_and_accepts_a_stale_catalog(): void
     {
         $page = $this->page([$this->point('A')]);
         $this->catalog([$page, $page])->sync();
@@ -131,6 +154,17 @@ final class InpostCatalogTest extends TestCase
             catch (InvalidArgumentException $error) { self::assertNotSame('', $error->getMessage()); }
         }
         $this->db()->table('inpost_sync')->update(['last_success_at' => '2020-01-01 00:00:00']);
+        $previous = Facade::getFacadeApplication();
+        try {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication(['log' => new \Psr\Log\NullLogger()]);
+            $result = $checkout->prepare(['inpost_point_id' => 'A', 'delivery_address' => ['country' => 'IT']], 17);
+            self::assertSame('InPost A', $result['delivery_address']['address2']);
+        } finally {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication($previous);
+        }
+        $this->db()->table('inpost_sync')->update(['last_success_at' => null]);
         $this->expectException(RuntimeException::class);
         $checkout->prepare(['inpost_point_id' => 'A', 'delivery_address' => ['country' => 'IT']], 17);
     }

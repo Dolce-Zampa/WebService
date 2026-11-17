@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Facades\Log;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -33,8 +34,14 @@ final class InpostPointsController
         $metadata = $this->db->table('inpost_sync')->where('id', 1)->first();
         $lastSync = $metadata->last_success_at ?? null;
         $time = $lastSync ? strtotime($lastSync . ' UTC') : false;
-        if ($time === false || $time < time() - max(1, $this->maxAgeHours) * 3600) {
+        if ($time === false) {
             return response(['error' => 'InPost catalog unavailable or outdated.', 'last_sync_at' => $lastSync ? str_replace(' ', 'T', $lastSync) . 'Z' : null], 503);
+        }
+        if ($time < time() - max(1, $this->maxAgeHours) * 3600) {
+            Log::critical('InPost catalog is outdated; serving the last successful snapshot.', [
+                'last_sync_at' => str_replace(' ', 'T', $lastSync) . 'Z',
+                'max_age_hours' => max(1, $this->maxAgeHours),
+            ]);
         }
         $query = $this->db->table('inpost_points');
         if ($postalCode !== '') {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Service\PickupPoints;
 
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Facades\Log;
 
 final class InpostCheckout
 {
@@ -36,7 +37,13 @@ final class InpostCheckout
         if (!is_string($id) || $id === '' || strlen($id) > 100) throw new \InvalidArgumentException('Seleziona un punto InPost valido.');
         $sync = $this->db->table('inpost_sync')->where('id', 1)->first();
         $last = isset($sync->last_success_at) ? strtotime($sync->last_success_at . ' UTC') : false;
-        if ($last === false || $last < time() - max(1, $this->maxAgeHours) * 3600) throw new \RuntimeException('InPost catalog unavailable or outdated.');
+        if ($last === false) throw new \RuntimeException('InPost catalog unavailable or outdated.');
+        if ($last < time() - max(1, $this->maxAgeHours) * 3600) {
+            Log::critical('InPost catalog is outdated; using the last successful snapshot for checkout.', [
+                'last_sync_at' => str_replace(' ', 'T', $sync->last_success_at) . 'Z',
+                'max_age_hours' => max(1, $this->maxAgeHours),
+            ]);
+        }
         $point = $this->db->table('inpost_points')->where('point_id', $id)->first();
         if (!$point) throw new \InvalidArgumentException('Il punto InPost selezionato non è più disponibile.');
         $payload['delivery_address'] = [
