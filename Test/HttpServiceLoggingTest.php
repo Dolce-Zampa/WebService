@@ -24,6 +24,30 @@ final class HttpServiceLoggingTest extends TestCase
         $this->checkFailure(new ConnectException('secret exception text', new Request('GET', 'http://prestashop')), null);
     }
 
+    public function test_explicitly_expected_404_is_not_logged_as_critical(): void
+    {
+        $previous = Facade::getFacadeApplication();
+        $logger = new class {
+            public array $critical = [];
+            public function debug(string $message, array $context): void {}
+            public function critical(string $message, array $context): void { $this->critical[] = $context; }
+        };
+        try {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication(['log' => $logger]);
+            $client = new Client(['handler' => HandlerStack::create(new MockHandler([new Response(404)]))]);
+            $service = new HttpService(new WebserviceConfig('http://prestashop/api'), $client);
+            $service->setUrl('/catalog');
+            $service->invoke('GET', [], [404]);
+            self::assertTrue($service->failed());
+            self::assertSame(404, $service->getHttpCode());
+            self::assertSame([], $logger->critical);
+        } finally {
+            Facade::clearResolvedInstances();
+            Facade::setFacadeApplication($previous);
+        }
+    }
+
     private function checkFailure(Response|ConnectException $result, ?int $status): void
     {
         $previous = Facade::getFacadeApplication();

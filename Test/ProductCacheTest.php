@@ -65,6 +65,41 @@ final class ProductCacheTest extends TestCase
         return $http;
     }
 
+    public function test_missing_slug_returns_null_without_caching_the_404(): void
+    {
+        $http = $this->http(null, 2);
+        $http->method('failed')->willReturn(true);
+        $http->method('getHttpCode')->willReturn(404);
+        $service = new Product($http);
+        self::assertNull($service->findProductIdBySlug('missing-product'));
+        self::assertNull($service->findProductIdBySlug('missing-product'));
+    }
+
+    public function test_slug_lookup_does_not_hide_upstream_server_errors(): void
+    {
+        $http = $this->http(null);
+        $http->method('failed')->willReturn(true);
+        $http->method('getHttpCode')->willReturn(500);
+        $this->expectException(\PS\Webservice\Service\PS\PrestashopConnectorException::class);
+        (new Product($http))->findProductIdBySlug('some-product');
+    }
+
+    public function test_invalid_placeholder_slug_returns_404_without_a_catalog_lookup(): void
+    {
+        $products = $this->createMock(Product::class);
+        $products->expects(self::never())->method('getProductDetail');
+        $controller = new \PS\Webservice\Http\Controller\ProductController(
+            $products,
+            $this->createMock(\PS\Webservice\Service\Promotions\PromotionService::class),
+            $this->createMock(\PS\Webservice\Service\ElkService::class),
+            $this->createMock(\PS\Webservice\Service\OpenAIService::class)
+        );
+        $request = (new ServerRequestFactory())->createServerRequest('GET', '/api/product/undefined');
+        foreach (['undefined', 'null'] as $slug) {
+            self::assertSame(404, $controller->productDetail($request, new Response(), ['slug' => $slug])->getStatusCode());
+        }
+    }
+
     public function test_listing_uses_cached_combination_without_more_prestashop_requests(): void
     {
         $data = json_decode(file_get_contents(__DIR__ . '/stubs/product-entity.json'), true);

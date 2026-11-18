@@ -161,6 +161,10 @@ class ProductController extends Controller
             ], 400);
         }
 
+        if (in_array(strtolower($slug), ['undefined', 'null'], true)) {
+            return response(['success' => false, 'message' => 'Product not found'], 404);
+        }
+
         $productDetail = $this->productService->getProductDetail($slug);
         if (!$productDetail) {
             return response([

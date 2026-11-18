@@ -99,16 +99,19 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         }
     }
 
-    private function productApiData(string $url, array $tags = ['product-catalog'], int $ttl = 0): array
+    private function productApiData(string $url, array $tags = ['product-catalog'], int $ttl = 0, bool $allowNotFound = false): array
     {
-        return $this->cachedProductData('api:' . $url, $tags, function () use ($url) {
+        return $this->cachedProductData('api:' . $url, $tags, function () use ($url, $allowNotFound) {
             $this->httpService->setUrl($url);
-            $response = $this->httpService->invoke('GET');
+            $response = $allowNotFound ? $this->httpService->invoke('GET', [], [404]) : $this->httpService->invoke('GET');
             if ($response->failed()) {
+                if ($allowNotFound && $response->getHttpCode() === 404) {
+                    return null;
+                }
                 throw new PrestashopConnectorException($this->httpService);
             }
             return $response->toArray();
-        }, $ttl);
+        }, $ttl) ?? [];
     }
 
     private function snapshotIsCurrent(array $snapshot): bool
@@ -386,7 +389,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
         $productRevision = self::revisionFor(['product:' . $id]);
         $data = $this->cachedProductData('base:' . $id, ['product:' . $id], function () use ($id) {
             $this->httpService->setUrl("/products/{$id}?price[original_price][use_tax]=1&price[original_price][use_reduction]=1&price[regular_price][use_tax]=1&price[regular_price][use_reduction]=0&display=full");
-            $response = $this->httpService->invoke('GET');
+            $response = $this->httpService->invoke('GET', [], [404]);
             if ($response->failed()) {
                 if ($response->getHttpCode() === 404) {
                     return null;
@@ -444,7 +447,7 @@ class Product extends PrestashopService implements PrestashopServiceInterface
             }
         }
         $catalogRevision = self::revisionFor(['product-catalog', 'product-catalog-writes']);
-        $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug), CatalogCacheTags::forCategories(null))['data'] ?? [];
+        $products = $this->productApiData('/catalog?by_slug=' . rawurlencode($slug), CatalogCacheTags::forCategories(null), 0, true)['data'] ?? [];
         if (empty($products)) {
             return null; // No product found with the given slug
         }

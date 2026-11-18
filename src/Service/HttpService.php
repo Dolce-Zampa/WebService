@@ -52,7 +52,7 @@ class HttpService implements HttpServiceInterface
      *
      * @return self
      */
-    public function invoke(string $method, array | PayloadServiceData $data = []): self
+    public function invoke(string $method, array | PayloadServiceData $data = [], array $expectedStatuses = []): self
     {
         if($data instanceof PayloadServiceData) {
             $data = $data->toArray();
@@ -96,7 +96,7 @@ class HttpService implements HttpServiceInterface
             $this->httpCode = $response?->getStatusCode() ?? 500;
             $this->response = $response;
             $this->body = $resp;
-            Log::critical('Outgoing HTTP request failed', [
+            $context = [
                 'method' => $e instanceof RequestException ? $e->getRequest()->getMethod() : $method,
                 'url' => $e instanceof RequestException
                     ? (string) $e->getRequest()->getUri()->withUserInfo('')->withQuery('')->withFragment('')
@@ -109,7 +109,12 @@ class HttpService implements HttpServiceInterface
                 'incoming_path' => isset($_SERVER['REQUEST_URI']) ? parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) : null,
                 'script' => isset($_SERVER['SCRIPT_FILENAME']) ? basename($_SERVER['SCRIPT_FILENAME']) : null,
                 'stack' => $this->callStack(),
-            ]);
+            ];
+            if ($response !== null && in_array($response->getStatusCode(), $expectedStatuses, true)) {
+                Log::debug('Outgoing HTTP request returned an expected status', $context);
+            } else {
+                Log::critical('Outgoing HTTP request failed', $context);
+            }
         }
 
         return $this;
