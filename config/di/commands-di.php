@@ -48,6 +48,13 @@ $container->set(\PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::cla
     );
 });
 
+$container->set(\PS\Webservice\Commands\SendSellerSaleNotificationCommand::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Commands\SendSellerSaleNotificationCommand(
+        $capsule,
+        $c->get(\PS\Webservice\Service\Financial\SellerSaleNotificationService::class)
+    );
+});
+
 $container->set(\PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class, function ($c) {
     return new \PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand(
         $c->get(\PS\Webservice\Service\Payments\StripeConnectService::class)

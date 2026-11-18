@@ -6,6 +6,8 @@ use Illuminate\Database\Capsule\Manager as DB;
 use PS\Webservice\Service\Financial\SellerSaleNotificationService;
 use PS\Webservice\Service\MailerInterface;
 use PHPUnit\Framework\TestCase;
+use PS\Webservice\Commands\SendSellerSaleNotificationCommand;
+use Symfony\Component\Console\Tester\CommandTester;
 
 final class SellerSaleNotificationServiceTest extends TestCase
 {
@@ -20,6 +22,12 @@ final class SellerSaleNotificationServiceTest extends TestCase
         $this->db->setAsGlobal();
         $this->db->bootEloquent();
         $schema = $this->db->schema();
+
+        $schema->create('order_state', function ($table): void {
+            $table->unsignedInteger('id_order_state')->primary();
+            $table->boolean('paid');
+        });
+        DB::table('order_state')->insert([['id_order_state' => 2, 'paid' => 1], ['id_order_state' => 21, 'paid' => 0]]);
 
         $schema->create('orders', function ($table): void {
             $table->unsignedInteger('id_order')->primary();
@@ -209,5 +217,29 @@ final class SellerSaleNotificationServiceTest extends TestCase
         self::assertSame(2, DB::table('seller_sale_notification_logs')->where('status', 'sent')->count());
         self::assertSame(2, DB::table('seller_sale_notification_logs')->where('id_manufacturer', 11)->value('attempts'));
         self::assertNull(DB::table('seller_sale_notification_logs')->where('id_manufacturer', 11)->value('last_error'));
+    }
+
+    public function test_console_sends_missing_notifications_only_once(): void
+    {
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects(self::exactly(2))->method('sendSellerSaleNotification');
+        $command = new CommandTester(new SendSellerSaleNotificationCommand($this->db, new SellerSaleNotificationService($this->db, $mailer)));
+        self::assertSame(0, $command->execute(['cart-id' => '701']));
+        self::assertStringContainsString('inviata', $command->getDisplay());
+        self::assertSame(0, $command->execute(['cart-id' => '701']));
+        self::assertStringContainsString('già inviata', $command->getDisplay());
+    }
+
+    public function test_console_rejects_unpaid_order_and_reports_delivery_failure(): void
+    {
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects(self::exactly(2))->method('sendSellerSaleNotification')->willThrowException(new RuntimeException('mail failure'));
+        $command = new CommandTester(new SendSellerSaleNotificationCommand($this->db, new SellerSaleNotificationService($this->db, $mailer)));
+        DB::table('orders')->where('id_order', 501)->update(['current_state' => 21]);
+        self::assertSame(1, $command->execute(['cart-id' => '701']));
+        self::assertSame(0, DB::table('seller_sale_notification_logs')->count());
+        DB::table('orders')->where('id_order', 501)->update(['current_state' => 2]);
+        self::assertSame(1, $command->execute(['cart-id' => '701']));
+        self::assertStringContainsString('failed', $command->getDisplay());
     }
 }

@@ -17,6 +17,7 @@ return [
     \PS\Webservice\Commands\SendWeeklySellerFinancialSummaryCommand::class,
     \PS\Webservice\Commands\BackfillFinancialOrdersCommand::class,
     \PS\Webservice\Commands\RetrySellerSaleNotificationsCommand::class,
+    \PS\Webservice\Commands\SendSellerSaleNotificationCommand::class,
     \PS\Webservice\Commands\RetryPendingStripeConnectTransfersCommand::class,
     \PS\Webservice\Commands\RetryQueuedStripeConnectTransferAllocationsCommand::class,
     \PS\Webservice\Commands\RecoverStripeConnectTransferAllocationCommand::class,
