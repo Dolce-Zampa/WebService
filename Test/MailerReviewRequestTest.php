@@ -8,22 +8,33 @@ use PHPUnit\Framework\TestCase;
 
 final class MailerReviewRequestTest extends TestCase
 {
-    private ?string $previousReviewUrl;
+    /** @var array{env: string|null, server: string|null} */
+    private array $previousReviewUrl;
 
     protected function setUp(): void
     {
-        $this->previousReviewUrl = $_ENV['TRUSTPILOT_REVIEW_URL'] ?? null;
-        $_ENV['TRUSTPILOT_REVIEW_URL'] = 'https://it.trustpilot.com/review/www.dolcezampa.com';
+        $this->previousReviewUrl = [
+            'env' => $_ENV['TRUSTPILOT_REVIEW_URL'] ?? null,
+            'server' => $_SERVER['TRUSTPILOT_REVIEW_URL'] ?? null,
+        ];
+        $_SERVER['TRUSTPILOT_REVIEW_URL'] = $_ENV['TRUSTPILOT_REVIEW_URL'] = 'https://it.trustpilot.com/review/www.dolcezampa.com';
     }
 
     protected function tearDown(): void
     {
-        if ($this->previousReviewUrl === null) {
-            unset($_ENV['TRUSTPILOT_REVIEW_URL']);
+        $this->restoreEnvironmentValue($_ENV, $this->previousReviewUrl['env']);
+        $this->restoreEnvironmentValue($_SERVER, $this->previousReviewUrl['server']);
+    }
+
+    /** @param array<string, mixed> $environment */
+    private function restoreEnvironmentValue(array &$environment, ?string $value): void
+    {
+        if ($value === null) {
+            unset($environment['TRUSTPILOT_REVIEW_URL']);
             return;
         }
 
-        $_ENV['TRUSTPILOT_REVIEW_URL'] = $this->previousReviewUrl;
+        $environment['TRUSTPILOT_REVIEW_URL'] = $value;
     }
 
     public function test_sends_the_customer_to_the_configured_trustpilot_page(): void
@@ -48,7 +59,7 @@ final class MailerReviewRequestTest extends TestCase
 
     public function test_refuses_to_send_to_a_non_trustpilot_url(): void
     {
-        $_ENV['TRUSTPILOT_REVIEW_URL'] = 'https://nottrustpilot.com/reviews';
+        $_SERVER['TRUSTPILOT_REVIEW_URL'] = $_ENV['TRUSTPILOT_REVIEW_URL'] = 'https://nottrustpilot.com/reviews';
         $http = $this->createMock(HttpServiceInterface::class);
         $http->expects(self::never())->method('invoke');
 
