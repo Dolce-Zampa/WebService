@@ -15,6 +15,7 @@ class Address extends PsTable
     protected $fillable = [
         'id_supplier',
         'id_country',
+        'id_state',
         'address',
         'city',
         'postcode',
