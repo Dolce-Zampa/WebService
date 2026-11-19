@@ -22,7 +22,7 @@ class webserviceapi extends PaymentModule
     {
         $this->name = 'webserviceapi';
         $this->tab = 'administration';
-        $this->version = '1.1.2';
+        $this->version = '1.1.3';
         $this->author = 'MlabFactory - Marco De Felice';
         $this->need_instance = 0;
         $this->bootstrap = true;
@@ -48,7 +48,8 @@ class webserviceapi extends PaymentModule
             && Configuration::updateValue(self::CONFIG_PRODUCT_SAVED_WEBHOOK_ENABLED, 1)
             && Configuration::updateValue(self::CONFIG_CHATGPT_TEXT_PROMPT, '')
             && Configuration::updateValue(self::CONFIG_CHATGPT_IMAGE_PROMPT, '')
-            && $this->registerHook('actionGetExtraMailTemplateVars');
+            && $this->registerHook('actionGetExtraMailTemplateVars')
+            && $this->registerHook('actionEmailSendBefore');
     }
 
     public function installMarketplaceShipping()
@@ -889,6 +890,20 @@ class webserviceapi extends PaymentModule
         }
 
         return (string) $manufacturer->name;
+    }
+
+    public function hookActionEmailSendBefore($params)
+    {
+        if (($params['template'] ?? '') === 'order_conf') {
+            // PrestaShop attaches its shop invoice directly to order confirmations.
+            $params['fileAttachment'] = null;
+        } elseif (!empty($params['templateVars']['{id_order}']) && isset($params['fileAttachment']['invoice'])) {
+            // Status emails can also contain a separate delivery slip.
+            unset($params['fileAttachment']['invoice']);
+            if (!$params['fileAttachment']) {
+                $params['fileAttachment'] = null;
+            }
+        }
     }
 
     public function hookActionGetExtraMailTemplateVars($params)
