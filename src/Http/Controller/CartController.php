@@ -10,6 +10,7 @@ use PS\Webservice\Facades\JsonDataStorage;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PS\Webservice\Service\PS\Cart;
+use PS\Webservice\Service\PS\CartUpdateNotFoundException;
 
 class CartController extends Controller {
     protected Cart $cartService;
@@ -55,17 +56,30 @@ class CartController extends Controller {
     public function updateCart(Request $request, Response $response, array $argv): Response
     {
         $payload = $request->getParsedBody();
-        $cartId = $argv['cartId'];
-        $isGuest = (bool) $payload['isGuest'] ?? false;
-        $customerId = $payload['customerId'];
-        $operation = isset( $payload['op']) ? (string) $payload['op'] : 'up';
-
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
         }
+        $cartId = $argv['cartId'];
+        $isGuest = (bool) ($payload['isGuest'] ?? false);
+        $customerId = $payload['customerId'] ?? null;
+        $operation = isset($payload['op']) ? (string) $payload['op'] : 'up';
 
         //find customerId from cookie session
-        $cart = $this->cartService->updateCart($payload, $cartId, $customerId, $isGuest, $operation);
+        try {
+            $cart = $this->cartService->updateCart($payload, $cartId, $customerId, $isGuest, $operation);
+        } catch (CartUpdateNotFoundException $e) {
+            // A 404 can also refer to a product. Only create a cart if the
+            // owner-scoped lookup confirms the original cart is unavailable.
+            if (($payload['action'] ?? null) !== 'add' || !is_numeric($customerId) || (int) $customerId <= 0) {
+                throw $e;
+            }
+            $existing = $this->cartService->getCartFromId($cartId, $isGuest ? null : $customerId, $isGuest ? $customerId : null);
+            if ($existing !== null) {
+                throw $e;
+            }
+            $payload[$isGuest ? 'id_guest' : 'id_customer'] = $customerId;
+            $cart = $this->cartService->newCart($payload);
+        }
         
         if($cart->failed()) {
             return response([

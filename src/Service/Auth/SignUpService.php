@@ -55,17 +55,20 @@ class SignUpService extends UserService
                 $sub = $cognito['User']['Username'];
                 $isNewUser = true; // FIXME: This should be determined based on the response from Cognito, not just the presence of an auth token.
             } else {
-                // If auth token is provided, we assume the user already exists in Cognito and we skip the creation step.
+                // The controller has verified the identity associated with this token.
                 $decodedToken = AwsCognitoClient::decodeAccessToken((string) $authToken);
-                $sub = $decodedToken['sub'];
+                $sub = $decodedToken['sub'] ?? null;
             }
 
             //create user in DB
-            try {
-                $newCustomer = Repositories::customer()->saveNewCustomer($data);
-            } catch (\Exception $e) {
-                Log::critical("User creation in DB failed: " . $e->getMessage());
-                return false;
+            if ($isNewUser || !$isSellerSignup) {
+                try {
+                    $newCustomer = Repositories::customer()->saveNewCustomer($data);
+                } catch (\Exception $e) {
+                    Log::critical("User creation in DB failed: " . $e->getMessage());
+                    if ($isNewUser) AwsCognitoClient::deleteUserAsAdmin((string) $sub);
+                    return false;
+                }
             }
 
         } catch (UsernameExistsException $e) {
@@ -73,7 +76,10 @@ class SignUpService extends UserService
 
 
             $resolvedAuth = $this->resolveExistingUserAuth($data);
-            $decodedToken = AwsCognitoClient::decodeAccessToken((string) ($resolvedAuth['IdToken'] ?? ''));
+            if (!is_array($resolvedAuth) || empty($resolvedAuth['IdToken']) || !empty($resolvedAuth['challenge-request'])) {
+                return false;
+            }
+            $decodedToken = AwsCognitoClient::decodeAccessToken((string) $resolvedAuth['IdToken']);
             $sub = $decodedToken['sub'] ?? null;
 
             // Existing users can be promoted to seller, but standard customer signup remains strict.
@@ -81,8 +87,19 @@ class SignUpService extends UserService
                 return false;
             }
 
-            if($decodedToken['custom:seller'] == 1 ) {
-                Log::info("User is already a seller in Cognito: " . $e->getMessage());
+            if (($decodedToken['token_use'] ?? null) !== 'id'
+                || (int) ($decodedToken['exp'] ?? 0) <= time()
+                || !in_array($decodedToken['email_verified'] ?? false, [true, 'true', 1, '1'], true)
+                || strcasecmp((string) ($decodedToken['email'] ?? ''), (string) $data->get('email')) !== 0
+                || !is_string($sub) || $sub === '') {
+                return false;
+            }
+            try {
+                if (Repositories::customer()->getCustomerByEmail((string) $data->get('email')) === null) {
+                    $newCustomer = Repositories::customer()->saveNewCustomer($data);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Unable to complete customer profile for seller registration');
                 return false;
             }
 
@@ -94,17 +111,18 @@ class SignUpService extends UserService
             return false;
         }
 
-        AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
-        if (is_string($data->get('password')) && trim((string) $data->get('password')) !== '') {
-            AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
-        }
-
-        $this->updateUserSellerAttributes($data);
-
         if (!is_string($sub) || $sub === '') {
             Log::error('Missing Cognito sub after signup authentication');
             return false;
         }
+
+        if ($isNewUser) {
+            AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
+            if (is_string($data->get('password')) && trim((string) $data->get('password')) !== '') {
+                AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
+            }
+        }
+        $this->updateUserSellerAttributes($data);
 
         return [
             'sub' => $sub,

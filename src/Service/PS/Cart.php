@@ -43,11 +43,17 @@ class Cart extends Carrier implements PrestashopServiceInterface {
 
         try {
             $response = $this->httpService->invoke('GET');
+            if ($response->failed()) {
+                if ($response->getHttpCode() === 404) return null;
+                throw new PrestashopConnectorException($response);
+            }
             $cartresult = $response->toArray();
             if(!isset($cartresult['data']['cart'])) {
                 return null;
             }
 
+        } catch (PrestashopConnectorException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error("Exception occurred while retrieving cart with id {$cartId}" . $e->getMessage());
             throw new PrestashopConnectorException($this->httpService, $e);
@@ -172,6 +178,9 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         if($response->failed()) {
+            if ($response->getHttpCode() === 404) {
+                throw new CartUpdateNotFoundException($response);
+            }
             Log::error('Failed to update cart', ['status' => $response->getHttpCode()]);
             throw new PrestashopConnectorException($response);
         }

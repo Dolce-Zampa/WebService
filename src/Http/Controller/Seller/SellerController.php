@@ -176,7 +176,10 @@ class SellerController
                 $authToken = $this->authService->check($request);
                 $identity = $this->extractAuthenticatedIdentity($authToken);
 
-                $bodyParams['email'] = $bodyParams['email'] ?? ($identity['email'] ?? null);
+                if (empty($identity['email']) || (!empty($bodyParams['email']) && strcasecmp(trim((string) $bodyParams['email']), $identity['email']) !== 0)) {
+                    throw new \RuntimeException('Authenticated email mismatch');
+                }
+                $bodyParams['email'] = $identity['email'];
                 $bodyParams['first_name'] = $bodyParams['first_name'] ?? ($identity['first_name'] ?? null);
                 $bodyParams['last_name'] = $bodyParams['last_name'] ?? ($identity['last_name'] ?? null);
                 $bodyParams['auth_token'] = $authToken;
@@ -356,6 +359,7 @@ class SellerController
 
         return response(
             [
+                'seller' => $manufacturer !== null ? $this->serializeManufacturer($manufacturer->fresh('details')) : null,
             ]
             ,
             201
@@ -935,6 +939,14 @@ class SellerController
         }
 
         $decodedIdToken = AwsCognitoClient::decodeAccessToken($idToken);
+        if (($decodedAccessToken['token_use'] ?? null) !== 'access'
+            || (int) ($decodedAccessToken['exp'] ?? 0) <= time()
+            || ($decodedIdToken['token_use'] ?? null) !== 'id'
+            || ($decodedIdToken['sub'] ?? null) !== $sub
+            || (int) ($decodedIdToken['exp'] ?? 0) <= time()
+            || !in_array($decodedIdToken['email_verified'] ?? false, [true, 'true', 1, '1'], true)) {
+            throw new \RuntimeException('Invalid authenticated identity', 401);
+        }
         $firstName = trim((string) ($decodedIdToken['given_name'] ?? ''));
         $lastName = trim((string) ($decodedIdToken['family_name'] ?? ''));
         $name = trim((string) ($decodedIdToken['name'] ?? ''));
