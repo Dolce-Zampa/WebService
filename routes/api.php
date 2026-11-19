@@ -118,14 +118,14 @@ $app->group('/api/seller', function() use ($app) {
     /** Sellet api */
     $app->post('/api/seller/auth/confirm-token', PS\Webservice\Http\Controller\Seller\SellerController::class . ':confirmToken');
     $app->post('/api/seller/auth/refresh', PS\Webservice\Http\Controller\Seller\SellerController::class . ':refresh');
-    $app->get('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':me')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',10));
+    $app->get('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':me');
     $app->patch('/api/seller/me', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateMe');
     $app->get('/api/seller/orders', PS\Webservice\Http\Controller\Seller\SellerController::class . ':orders');
-    $app->get('/api/seller/dashboard/summary', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardSummary')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
-    $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 10));
+    $app->get('/api/seller/dashboard/summary', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardSummary');
+    $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics');
     $app->post('/api/seller/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':products');
-    $app->get('/api/seller/products/{sellerid}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':sellerProucts')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller', 15));
-    $app->get('/api/seller/product/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':productDetail')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('seller',5));
+    $app->get('/api/seller/products/{sellerid}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':sellerProucts');
+    $app->get('/api/seller/product/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':productDetail');
     $app->patch('/api/seller/products/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProduct');
     $app->delete('/api/seller/products/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':deleteProduct');
     $app->put('/api/seller/products/{id_product}/discount', PS\Webservice\Http\Controller\Seller\SellerController::class . ':updateProductDiscount');
@@ -139,7 +139,8 @@ $app->group('/api/seller', function() use ($app) {
     $app->post('/api/seller/stripe-connect/login-link', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':loginLink');
     $app->get('/api/seller/stripe-connect/status', PS\Webservice\Http\Controller\Seller\StripeConnectController::class . ':status');
 
-})->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+})->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware())
+  ->add(new \PS\Webservice\Http\Middleware\NoStoreMiddleware());
 
 $app->post('/api/clear-cache', PS\Webservice\Http\Controller\ConfigController::class . ':clearCache');
 
