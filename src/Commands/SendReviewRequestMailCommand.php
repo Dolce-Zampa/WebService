@@ -106,17 +106,8 @@ class SendReviewRequestMailCommand extends Command
                 continue;
             }
 
-            // Mappatura dettagli prodotti per la mail
-            $products = [];
-            foreach ($order->details as $detail) {
-                $products[] = [
-                    'id_product' => $detail->product_id,
-                    'quantity' => $detail->product_quantity ?? 1,
-                ];
-            }
-
             if ($dryRun) {
-                $io->info("[DRY-RUN] Ordine #{$order->id_order} per {$email} (Prodotti: " . count($products) . ')');
+                $io->info("[DRY-RUN] Ordine #{$order->id_order} per {$email}");
                 continue;
             }
 
@@ -126,7 +117,6 @@ class SendReviewRequestMailCommand extends Command
                     'email' => $email,
                     'firstname' => $firstname,
                     'id_order' => (int) $order->id_order,
-                    'products' => $products,
                     'id_customer' => $customer->id_customer,
                 ]);
 

@@ -13,8 +13,7 @@ declare(strict_types=1);
  *   "email":       <string>,
  *   "firstname":   <string>,
  *   "id_order":    <int>,
- *   "id_customer": <int|null>,
- *   "products":    <array>
+ *   "id_customer": <int|null>
  * }
  *
  * Usage:
@@ -24,16 +23,13 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../bootstrap/app.php';
 
 use Illuminate\Support\Facades\Log;
-use PS\Webservice\Domain\Entities\ProductEntity;
 use PS\Webservice\Domain\Models\PS\Orders\OrderReviewMailLog;
 use PS\Webservice\Service\MailerInterface;
-use PS\Webservice\Service\PS\Product;
 use PS\Webservice\Service\RedisQueue;
 
 /** @var \DI\Container $container */
 $queue = $container->get(RedisQueue::class);
 $mailer = $container->get(MailerInterface::class);
-$productService = $container->get(Product::class);
 
 const QUEUE_NAME = 'review-request-mail';
 
@@ -55,13 +51,6 @@ while (true) {
         $firstname = (string) ($payload['firstname'] ?? 'Cliente');
         $orderId = (int) ($payload['id_order'] ?? 0);
         $customerId = isset($payload['id_customer']) ? (int) $payload['id_customer'] : null;
-        $products = (array) ($payload['products'] ?? []);
-
-        //build products entity
-        $products = array_map(function ($product) use ($productService) {
-            return ProductEntity::createFromId($product['id_product'], $productService);
-        }, $products);
-
         if ($orderId <= 0 || empty($email)) {
             Log::warning('EmailWorker: skipping invalid review_request job payload', $payload);
             continue;
@@ -75,7 +64,7 @@ while (true) {
 
         Log::info("EmailWorker: sending review request mail for order #{$orderId} to <{$email}>");
 
-        $mailer->sendReviewRequestMail($email, $firstname, $orderId, $products);
+        $mailer->sendReviewRequestMail($email, $firstname, $orderId);
         
         $log = OrderReviewMailLog::where('id_order', $orderId)->where('id_customer', $customerId)->first();
         if ($log) {

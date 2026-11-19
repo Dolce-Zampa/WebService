@@ -189,23 +189,31 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
         }
     }
 
-    public function sendReviewRequestMail(string $email, string $firstname, int $idOrder, array $products, string $reviewUrl = ''): void
+    public function sendReviewRequestMail(string $email, string $firstname, int $idOrder): void
     {
+        $reviewUrl = trim((string) env('TRUSTPILOT_REVIEW_URL', ''));
+        $reviewHost = strtolower((string) parse_url($reviewUrl, PHP_URL_HOST));
+
+        if (
+            filter_var($reviewUrl, FILTER_VALIDATE_URL) === false
+            || ($reviewHost !== 'trustpilot.com' && !str_ends_with($reviewHost, '.trustpilot.com'))
+        ) {
+            throw new \LogicException('TRUSTPILOT_REVIEW_URL must be a valid Trustpilot URL before review emails can be sent.');
+        }
+
         try {
-            $product = $products[0]->toArray();
             $this->httpService->setUrl('/mailer?debug=true');
             $this->httpService->invoke('POST',
                 new PayloadServiceData(
                     [
-                        'subject' => 'Lascia una recensione sui tuoi acquisti!',
+                        'subject' => 'Racconta la tua esperienza con Dolce & Zampa',
                         'to_email' => $email,
                         'to_name' => $firstname,
                         'template' => TemplateMail::REVIEW_REQUEST->value,
                         'template_vars' => [
                             'firstname' => $firstname,
                             'id_order' => $idOrder,
-                            'products' => $product,
-                            'review_url' => env('APP_URL') . $product['url'] . "#v-pills-reviews",
+                            'review_url' => $reviewUrl,
                         ]
                     ]
                 ));
