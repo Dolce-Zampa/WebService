@@ -22,7 +22,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class ResetCustomerPasswordCommand extends Command
 {
-    private const PASSWORD_PATTERN = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
+    private const PASSWORD_PATTERN = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#])[A-Za-z\d@#]{8,}$/';
 
     public function __construct(private readonly MailerInterface $mailer)
     {
@@ -63,7 +63,7 @@ final class ResetCustomerPasswordCommand extends Command
         }
 
         if (!$this->isValidPassword($password)) {
-            $io->error('La password deve contenere 8-64 caratteri, una minuscola, una maiuscola, una cifra e un carattere speciale tra @$!%*?&.');
+            $io->error('La password deve contenere 8-64 caratteri, una minuscola, una maiuscola, una cifra e @ o #; non sono ammessi altri simboli.');
             return Command::INVALID;
         }
 

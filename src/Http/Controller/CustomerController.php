@@ -28,7 +28,7 @@ class CustomerController extends Controller
     private RepositoryInterface $prestashopRepository;
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
     private MailjetService $mailjetService;
-    private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
+    private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#])[A-Za-z\d@#]{8,}$/';
 
     public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer, MailjetService $mailjetService)
     {
