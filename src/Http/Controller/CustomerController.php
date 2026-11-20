@@ -12,6 +12,7 @@ use PS\Webservice\Repositories\CustomerRepository;
 use PS\Webservice\Repositories\RepositoryInterface;
 use PS\Webservice\Service\Auth\AuthService;
 use PS\Webservice\Service\MailjetService;
+use PS\Webservice\Service\NewsletterTrackingConsentService;
 use PS\Webservice\Service\PS\Customer;
 use PS\Webservice\Service\PS\Mailer;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -28,15 +29,17 @@ class CustomerController extends Controller
     private RepositoryInterface $prestashopRepository;
     private const CHALLENGE_REQUEST_NEW_PASSWORD = 'NEW_PASSWORD_REQUIRED';
     private MailjetService $mailjetService;
+    private ?NewsletterTrackingConsentService $newsletterTrackingConsent;
     private const PASSWORD_VALIDATION = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@#])[A-Za-z\d@#]{8,}$/';
 
-    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer, MailjetService $mailjetService)
+    public function __construct(Customer $customerService, AuthService $authService, RepositoryInterface $prestashopRepository, Mailer $mailer, MailjetService $mailjetService, ?NewsletterTrackingConsentService $newsletterTrackingConsent = null)
     {
         $this->customerService = $customerService;
         $this->authService = $authService;
         $this->prestashopRepository = $prestashopRepository;
         $this->mailer = $mailer;
         $this->mailjetService = $mailjetService;
+        $this->newsletterTrackingConsent = $newsletterTrackingConsent;
     }
 
     public function register(Request $request, Response $response, array $argv): Response
@@ -287,7 +290,7 @@ class CustomerController extends Controller
             return response(['message' => 'Unable to retrieve customer account'], 401);
         }
 
-        return $this->buildServiceResponse($serviceResponse);
+        return $this->buildCustomerAccountResponse($serviceResponse, $customerId);
     }
 
     public function updateAccount(Request $request, Response $response, array $argv): Response
@@ -302,8 +305,54 @@ class CustomerController extends Controller
         }
 
         $payload = $this->requireArrayPayload($request->getParsedBody());
+        $trackingAllowed = $this->extractNewsletterTrackingChoice($payload);
+        unset($payload['newsletter_tracking']);
+
         $serviceResponse = $this->customerService->updateAccount($customerId, $payload);
-        return $this->buildServiceResponse($serviceResponse);
+        if ($serviceResponse->failed()) {
+            return $this->buildServiceResponse($serviceResponse);
+        }
+
+        $data = $serviceResponse->toArray()['data'] ?? [];
+        if (!is_array($data)) {
+            return $this->buildServiceResponse($serviceResponse);
+        }
+
+        $existingTrackingPreference = $trackingAllowed === null
+            ? $this->newsletterTrackingConsent?->preferenceForCustomer($customerId)
+            : null;
+        $effectiveTrackingPreference = $trackingAllowed ?? $existingTrackingPreference;
+
+        if ($effectiveTrackingPreference !== null) {
+            if ($this->newsletterTrackingConsent === null) {
+                Log::error('Newsletter tracking consent service is unavailable', ['customer_id' => $customerId]);
+                return response(['message' => 'Unable to update newsletter tracking preference'], 503);
+            }
+
+            $email = $data['customer']['email'] ?? null;
+            if (!is_string($email) || $email === '') {
+                Log::error('Customer account update did not return an email for newsletter tracking consent', [
+                    'customer_id' => $customerId,
+                ]);
+                return response(['message' => 'Unable to update newsletter tracking preference'], 502);
+            }
+
+            try {
+                if ($trackingAllowed === null) {
+                    $this->newsletterTrackingConsent->synchronizePreference($email, $effectiveTrackingPreference);
+                } else {
+                    $this->newsletterTrackingConsent->recordChoice($customerId, $email, $effectiveTrackingPreference);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Unable to update newsletter tracking preference', [
+                    'customer_id' => $customerId,
+                    'exception' => $e::class,
+                ]);
+                return response(['message' => 'Unable to update newsletter tracking preference'], 503);
+            }
+        }
+
+        return $this->buildCustomerAccountResponse($serviceResponse, $customerId);
     }
 
     public function getAddresses(Request $request, Response $response, array $argv): Response
@@ -617,6 +666,36 @@ class CustomerController extends Controller
         $statusCode = $serviceResponse->failed() ? $serviceResponse->getHttpCode() : $successCode;
 
         return response($serviceResponse->toArray()['data'], $statusCode);
+    }
+
+    private function buildCustomerAccountResponse(\PS\Webservice\Service\HttpServiceInterface $serviceResponse, int $customerId): Response
+    {
+        if ($serviceResponse->failed()) {
+            return $this->buildServiceResponse($serviceResponse);
+        }
+
+        $data = $serviceResponse->toArray()['data'] ?? null;
+        if (!is_array($data) || !isset($data['customer']) || !is_array($data['customer'])) {
+            return $this->buildServiceResponse($serviceResponse);
+        }
+
+        $data['customer']['newsletter_tracking'] = $this->newsletterTrackingConsent?->preferenceForCustomer($customerId);
+
+        return response($data);
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function extractNewsletterTrackingChoice(array $payload): ?bool
+    {
+        if (!array_key_exists('newsletter_tracking', $payload)) {
+            return null;
+        }
+
+        if (!is_bool($payload['newsletter_tracking'])) {
+            throw new \InvalidArgumentException('Field newsletter_tracking must be a boolean', 400);
+        }
+
+        return $payload['newsletter_tracking'];
     }
 
     private function extractCognitoAttribute(string $accessToken, string $attributeName): ?string

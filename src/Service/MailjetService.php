@@ -87,6 +87,30 @@ class MailjetService
         }
 
     }
+
+    /**
+     * Sets Mailjet's built-in, per-contact consent for the open-tracking
+     * pixel. The contact identifier endpoint also accepts a URL-encoded email
+     * address, which avoids creating a second contact just to update consent.
+     */
+    public function setOpenTrackingConsent(string $email, bool $allowed): void
+    {
+        $this->httpService->setUrl('/v3/REST/contactdata/' . rawurlencode($email));
+
+        $response = $this->httpService->invoke('PUT', [
+            'Data' => [[
+                'Name' => 'mjoptinopen',
+                'Value' => $allowed ? '1' : '0',
+            ]],
+        ]);
+
+        if ($response->failed()) {
+            Log::error('Failed to update Mailjet open tracking consent', [
+                'status' => $response->getHttpCode(),
+            ]);
+            throw new MailjetServiceException('Failed to update Mailjet open tracking consent');
+        }
+    }
     
 
 }
