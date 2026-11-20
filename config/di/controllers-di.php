@@ -1,5 +1,9 @@
 <?php
 
+$container->set(\PS\Webservice\Http\Controller\WishlistController::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Http\Controller\WishlistController($capsule->getConnection());
+});
+
 $container->set(\PS\Webservice\Http\Controller\InpostPointsController::class, function ($c) use ($capsule) {
     return new \PS\Webservice\Http\Controller\InpostPointsController($capsule->getConnection(), (int) env('INPOST_CATALOG_MAX_AGE_HOURS', 72), $c->get(\PS\Webservice\Service\PickupPoints\InpostCheckout::class)->carrierIds());
 });
