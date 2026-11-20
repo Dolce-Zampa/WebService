@@ -63,11 +63,15 @@ class CustomerController extends Controller
         $this->mailer->sendSignUpMail($customer->email, "$customer->firstname $customer->lastname");
 
         try {
-            $contactId = $this->mailjetService->createNewContact($customer->email, $customer->first_name ?? '', $customer->last_name ?? '');
-            $this->mailjetService->setContactListSubscription($contactId, env('MAILJET_CLIENTI_LIST_ID', 10663907));
-            $this->mailjetService->setContactListSubscription($contactId);
+            $this->mailjetService->subscribeToCustomerNewsletter(
+                $customer->email,
+                $customer->firstname ?? '',
+                $customer->lastname ?? '',
+                (bool) $customer->newsletter,
+                env('MAILJET_CLIENTI_LIST_ID', 10663907),
+            );
         } catch (\Exception $e) {
-            Log::critical('Stripe CustomerController: failed to create new contact in Mailjet for email ' . $customer->email . ': ' . $e->getMessage());
+            Log::critical('Customer registration: failed to subscribe contact to Mailjet for email ' . $customer->email . ': ' . $e->getMessage());
         }
 
         return response([

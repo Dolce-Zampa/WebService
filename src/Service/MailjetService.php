@@ -89,6 +89,27 @@ class MailjetService
     }
 
     /**
+     * Adds a contact to the newsletter lists only after an explicit
+     * subscription choice. A declined or omitted choice leaves any existing
+     * Mailjet subscription untouched.
+     */
+    public function subscribeToCustomerNewsletter(
+        string $email,
+        string $firstName,
+        string $lastName,
+        bool $hasNewsletterConsent,
+        int|string $customerListId,
+    ): void {
+        if (!$hasNewsletterConsent) {
+            return;
+        }
+
+        $contactId = $this->createNewContact($email, $firstName, $lastName);
+        $this->setContactListSubscription($contactId, $customerListId);
+        $this->setContactListSubscription($contactId);
+    }
+
+    /**
      * Sets Mailjet's built-in, per-contact consent for the open-tracking
      * pixel. The contact identifier endpoint also accepts a URL-encoded email
      * address, which avoids creating a second contact just to update consent.
