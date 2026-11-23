@@ -19,10 +19,13 @@ use Slim\Psr7\Response;
 final class GuestAccountRegistrationTest extends TestCase
 {
     private mixed $previousFacade;
+    private mixed $previousDatabaseManager;
 
     protected function setUp(): void
     {
+        parent::setUp();
         $this->previousFacade = Facade::getFacadeApplication();
+        $this->previousDatabaseManager = (new ReflectionProperty(Manager::class, 'instance'))->getValue();
         Facade::clearResolvedInstances();
     }
 
@@ -30,6 +33,8 @@ final class GuestAccountRegistrationTest extends TestCase
     {
         Facade::clearResolvedInstances();
         Facade::setFacadeApplication($this->previousFacade);
+        (new ReflectionProperty(Manager::class, 'instance'))->setValue(null, $this->previousDatabaseManager);
+        parent::tearDown();
     }
 
     public function testGuestIsPromotedInPlaceWithCognitoIdentityAndOrderReference(): void
