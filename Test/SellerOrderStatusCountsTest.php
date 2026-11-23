@@ -9,6 +9,30 @@ use PS\Webservice\Http\Controller\Seller\SellerController;
 
 final class SellerOrderStatusCountsTest extends TestCase
 {
+    public function testTrackingIsRequestedOnlyForOrdersWhollyBelongingToTheSeller(): void
+    {
+        $db = new Manager();
+        $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => 'ps_']);
+        $connection = $db->getConnection();
+        $schema = $connection->getSchemaBuilder();
+        $schema->create('order_detail', function ($table): void { $table->integer('id_order'); $table->integer('product_id'); });
+        $schema->create('product', function ($table): void { $table->integer('id_product'); $table->integer('id_manufacturer'); });
+        $connection->table('product')->insert([
+            ['id_product' => 11, 'id_manufacturer' => 7],
+            ['id_product' => 12, 'id_manufacturer' => 8],
+        ]);
+        $connection->table('order_detail')->insert([
+            ['id_order' => 1, 'product_id' => 11], ['id_order' => 1, 'product_id' => 11],
+            ['id_order' => 2, 'product_id' => 11], ['id_order' => 2, 'product_id' => 12],
+            ['id_order' => 3, 'product_id' => 12],
+            ['id_order' => 4, 'product_id' => 11], ['id_order' => 4, 'product_id' => 999],
+        ]);
+        $controller = (new ReflectionClass(SellerController::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(SellerController::class, 'singleSellerOrderIds');
+        self::assertSame([1], $method->invoke($controller, $connection, [1, 2, 3, 4], 7));
+        self::assertSame([], $method->invoke($controller, $connection, [], 7));
+    }
+
     public function testCountsDistinctSellerOrdersWithPrestashopPrefix(): void
     {
         $db = new Manager();
