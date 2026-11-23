@@ -10,18 +10,18 @@ final class CreatePersonalWishlists extends AbstractMigration
     {
         $prefix = (string) env('PS_TABLE_PREFIX', '');
         $this->table($prefix . 'dz_wishlist', ['id' => false, 'primary_key' => ['customer_id']])
-            ->addColumn('customer_id', 'integer', ['signed' => false])
-            ->addColumn('name', 'string', ['limit' => 128])
-            ->addColumn('share_token', 'char', ['limit' => 64])
-            ->addColumn('created_at', 'datetime')
-            ->addColumn('updated_at', 'datetime')
+            ->addColumn('customer_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('name', 'string', ['limit' => 128, 'null' => false])
+            ->addColumn('share_token', 'char', ['limit' => 64, 'null' => false])
+            ->addColumn('created_at', 'datetime', ['null' => false])
+            ->addColumn('updated_at', 'datetime', ['null' => false])
             ->addIndex(['share_token'], ['unique' => true, 'name' => 'uniq_dz_wishlist_token'])
             ->create();
         $this->table($prefix . 'dz_wishlist_item', ['id' => false, 'primary_key' => ['customer_id', 'product_id', 'product_attribute_id']])
-            ->addColumn('customer_id', 'integer', ['signed' => false])
-            ->addColumn('product_id', 'integer', ['signed' => false])
-            ->addColumn('product_attribute_id', 'integer', ['signed' => false, 'default' => 0])
-            ->addColumn('created_at', 'datetime')
+            ->addColumn('customer_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('product_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('product_attribute_id', 'integer', ['signed' => false, 'null' => false, 'default' => 0])
+            ->addColumn('created_at', 'datetime', ['null' => false])
             ->create();
     }
 
