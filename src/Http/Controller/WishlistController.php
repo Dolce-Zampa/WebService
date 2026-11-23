@@ -82,11 +82,21 @@ final class WishlistController
     public function shared(ServerRequestInterface $request, ResponseInterface $response, array $args): ResponseInterface
     {
         $token = $args['token'] ?? '';
-        if (!is_string($token) || !preg_match('/\A[a-f0-9]{64}\z/', $token)) {
+        if (!is_string($token)) {
             return $this->respond(['message' => 'Wishlist not found.'], 404);
         }
-        $list = $this->db->table('dz_wishlist')->where('share_token', $token)->first();
-        if (!$list || !hash_equals($list->share_token, $token)) {
+        if (preg_match('/\A[a-f0-9]{64}\z/', $token)) {
+            $list = $this->db->table('dz_wishlist')->where('share_token', $token)->first();
+            if (!$list || !hash_equals($list->share_token, $token)) $list = null;
+        } else {
+            $bytes = preg_match('/\A[A-Za-z0-9_-]{22}\z/', $token)
+                ? base64_decode(strtr($token, '-_', '+/') . '==', true) : false;
+            $canonical = $bytes === false ? '' : rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+            $prefix = $bytes !== false && strlen($bytes) === 16 && hash_equals($canonical, $token) ? bin2hex($bytes) : null;
+            $matches = $prefix === null ? [] : $this->db->table('dz_wishlist')->where('share_token', 'like', $prefix . '%')->limit(2)->get()->all();
+            $list = count($matches) === 1 && hash_equals(substr($matches[0]->share_token, 0, 32), $prefix) ? $matches[0] : null;
+        }
+        if (!$list) {
             return $this->respond(['message' => 'Wishlist not found.'], 404);
         }
         return $this->respond(['wishlist' => $this->serialize($list, false)]);
@@ -162,7 +172,15 @@ final class WishlistController
             ->orderBy('wi.created_at')->orderBy('wi.product_id')->orderBy('wi.product_attribute_id')
             ->get(['wi.product_id', 'wi.product_attribute_id', 'wi.created_at', 'p.id_product as exists_id', 'ps.active', 'ps.available_for_order']);
         $result = ['name' => $list->name, 'products' => []];
-        if ($owner) $result['share_token'] = $list->share_token;
+        if ($owner) {
+            $result['share_token'] = $list->share_token;
+            $prefix = substr($list->share_token, 0, 32);
+            // Existing 256-bit links stay valid; a unique 128-bit prefix provides a shorter alias.
+            if (preg_match('/\A[a-f0-9]{32}\z/', $prefix)
+                && $this->db->table('dz_wishlist')->where('share_token', 'like', $prefix . '%')->limit(2)->count() === 1) {
+                $result['short_token'] = rtrim(strtr(base64_encode(hex2bin($prefix)), '+/', '-_'), '=');
+            }
+        }
         foreach ($items as $item) {
             $exists = $item->exists_id !== null;
             $combinationExists = !$item->product_attribute_id || $this->db->table('product_attribute')

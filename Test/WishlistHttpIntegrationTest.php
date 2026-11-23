@@ -127,6 +127,7 @@ final class WishlistHttpIntegrationTest extends TestCase
         self::assertSame([], $list['products']);
         $token = $list['share_token'];
         $sharedUrl = '/api/wishlists/shared/' . $token;
+        $shortUrl = '/api/wishlists/shared/' . $list['short_token'];
 
         $this->request('PUT', '/api/wishlists', 'alice-token', ['name' => 'Compleanno']);
         $added = $this->request('POST', '/api/wishlists', 'alice-token', ['id_customer' => 2, 'id_product' => 5, 'id_product_attribute' => 12]);
@@ -140,6 +141,7 @@ final class WishlistHttpIntegrationTest extends TestCase
         self::assertCount(1, $sharedList['products']);
         self::assertTrue($sharedList['products'][0]['available']);
         self::assertArrayNotHasKey('share_token', $sharedList);
+        self::assertSame($sharedList, $this->data($this->request('GET', $shortUrl))['wishlist']);
         self::assertArrayNotHasKey('customer_id', $sharedList);
         self::assertSame([], $this->data($this->request('GET', '/api/wishlists', 'bob-token'))['wishlist']['products']);
 

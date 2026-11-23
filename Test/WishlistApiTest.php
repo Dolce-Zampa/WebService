@@ -131,7 +131,9 @@ final class WishlistApiTest extends TestCase
     {
         $renamed = $this->controller->rename($this->request('PUT', 'alice', ['name' => ' Compleanno ']), new Response());
         $token = $this->data($renamed)['wishlist']['share_token'];
+        $shortToken = $this->data($renamed)['wishlist']['short_token'];
         self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $token);
+        self::assertMatchesRegularExpression('/^[A-Za-z0-9_-]{22}$/', $shortToken);
         self::assertSame(422, $this->controller->rename($this->request('PUT', 'alice', ['name' => ' ']), new Response())->getStatusCode());
         $this->controller->add($this->request('POST', 'alice', ['id_product' => 5]), new Response());
         $shared = $this->controller->shared($this->request('GET', null), new Response(), ['token' => $token]);
@@ -141,7 +143,23 @@ final class WishlistApiTest extends TestCase
         self::assertArrayNotHasKey('share_token', $list);
         self::assertArrayNotHasKey('customer_id', $list);
         self::assertCount(1, $list['products']);
+        $shortList = $this->data($this->controller->shared($this->request('GET', null), new Response(), ['token' => $shortToken]))['wishlist'];
+        self::assertSame($list, $shortList);
+        self::assertArrayNotHasKey('short_token', $shortList);
         self::assertSame(404, $this->controller->shared($this->request('GET', null), new Response(), ['token' => str_repeat('0', 64)])->getStatusCode());
         self::assertSame(404, $this->controller->shared($this->request('GET', null), new Response(), ['token' => 'invalid'])->getStatusCode());
+    }
+
+    public function test_ambiguous_short_token_never_exposes_a_different_list(): void
+    {
+        $alice = $this->data($this->controller->show($this->request('GET'), new Response()))['wishlist'];
+        $this->controller->show($this->request('GET', 'bob'), new Response());
+        $this->db->getConnection()->table('dz_wishlist')->where('customer_id', 2)->update([
+            'share_token' => substr($alice['share_token'], 0, 32) . str_repeat('f', 32),
+        ]);
+        $after = $this->data($this->controller->show($this->request('GET'), new Response()))['wishlist'];
+        self::assertArrayNotHasKey('short_token', $after);
+        self::assertSame(404, $this->controller->shared($this->request('GET', null), new Response(), ['token' => $alice['short_token']])->getStatusCode());
+        self::assertSame(200, $this->controller->shared($this->request('GET', null), new Response(), ['token' => $alice['share_token']])->getStatusCode());
     }
 }
