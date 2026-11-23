@@ -442,9 +442,9 @@ final class StripeConnectService
             || (int) ($intent->amount_received ?? 0) !== $paymentCents || !$charge instanceof \Stripe\Charge
             || ($charge->status ?? null) !== 'succeeded' || (int) ($charge->amount_refunded ?? 0) !== 0
             || (int) ($charge->amount_captured ?? 0) !== $paymentCents
-            || ($charge->payment_method_details->type ?? null) !== 'card'
+            || !in_array($charge->payment_method_details->type ?? null, ['card', 'paypal'], true)
             || ($charge->transfer_data ?? null) !== null) {
-            throw new \RuntimeException('Il pagamento deve essere un incasso carta EUR riuscito, non rimborsato e senza trasferimento automatico.');
+            throw new \RuntimeException('Il pagamento deve essere un incasso carta o PayPal EUR riuscito, non rimborsato e senza trasferimento automatico.');
         }
         $chargeId = $this->stripeId($charge->id ?? null, 'charge');
         $group = (string) $original->transfer_group;
