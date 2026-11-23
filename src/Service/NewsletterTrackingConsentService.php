@@ -25,9 +25,8 @@ final class NewsletterTrackingConsentService
         ?string $preferencesTable = null,
         ?string $eventsTable = null,
     ) {
-        $prefix = (string) env('PS_TABLE_PREFIX', '');
-        $this->preferencesTable = $preferencesTable ?? $prefix . 'newsletter_tracking_consents';
-        $this->eventsTable = $eventsTable ?? $prefix . 'newsletter_tracking_consent_events';
+        $this->preferencesTable = $preferencesTable ?? 'newsletter_tracking_consents';
+        $this->eventsTable = $eventsTable ?? 'newsletter_tracking_consent_events';
     }
 
     /**
