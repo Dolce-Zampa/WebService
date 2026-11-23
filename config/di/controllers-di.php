@@ -28,7 +28,14 @@ $container->set(\PS\Webservice\Http\Controller\CustomerController::class, functi
     $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
     $mailer =   $c->get(\PS\Webservice\Service\PS\Mailer::class);
     $mailjet = $c->get(\PS\Webservice\Service\MailjetService::class);
-    return new \PS\Webservice\Http\Controller\CustomerController($customerService, $authService, $repository, $mailer, $mailjet);
+    return new \PS\Webservice\Http\Controller\CustomerController(
+        $customerService,
+        $authService,
+        $repository,
+        $mailer,
+        $mailjet,
+        $c->get(\PS\Webservice\Service\NewsletterTrackingConsentService::class),
+    );
 });
 
 $container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {

@@ -270,6 +270,13 @@ $container->set(\PS\Webservice\Service\MailjetService::class, function ($c) {
 	return new \PS\Webservice\Service\MailjetService($httpService);
 });
 
+$container->set(\PS\Webservice\Service\NewsletterTrackingConsentService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\NewsletterTrackingConsentService(
+        $capsule->getConnection(),
+        $c->get(\PS\Webservice\Service\MailjetService::class),
+    );
+});
+
 $container->set(\PS\Webservice\Service\ElkService::class, function($c) {
     return new \PS\Webservice\Service\ElkService(
         $c->get(\Elastic\Elasticsearch\ClientBuilder::class),
