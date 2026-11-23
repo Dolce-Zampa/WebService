@@ -177,7 +177,7 @@ class webserviceapimailerModuleFrontController extends MlabFactoryApiBaseModuleF
 
     private function templateBasePath($template)
     {
-        return $template === 'stripe_bank_transfer' ? dirname(__FILE__) . '/../../mails/' : $this->getTemplatePath('');
+        return in_array($template, array('stripe_bank_transfer', 'registration_verification'), true) ? dirname(__FILE__) . '/../../mails/' : $this->getTemplatePath('');
     }
 
     /**

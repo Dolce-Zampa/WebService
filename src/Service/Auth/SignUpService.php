@@ -53,7 +53,11 @@ class SignUpService extends UserService
                     return false;
                 }
                 $sub = $cognito['User']['Username'];
-                $isNewUser = true; // FIXME: This should be determined based on the response from Cognito, not just the presence of an auth token.
+                $isNewUser = true;
+                AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
+                if (is_string($data->get('password')) && trim((string) $data->get('password')) !== '') {
+                    AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
+                }
             } else {
                 // The controller has verified the identity associated with this token.
                 $decodedToken = AwsCognitoClient::decodeAccessToken((string) $authToken);
@@ -63,7 +67,7 @@ class SignUpService extends UserService
             //create user in DB
             if ($isNewUser || !$isSellerSignup) {
                 try {
-                    $newCustomer = Repositories::customer()->saveNewCustomer($data);
+                    $newCustomer = Repositories::customer()->saveNewCustomer($data, $sub, !$isSellerSignup);
                 } catch (\Exception $e) {
                     Log::critical("User creation in DB failed: " . $e->getMessage());
                     if ($isNewUser) AwsCognitoClient::deleteUserAsAdmin((string) $sub);
@@ -96,7 +100,7 @@ class SignUpService extends UserService
             }
             try {
                 if (Repositories::customer()->getCustomerByEmail((string) $data->get('email')) === null) {
-                    $newCustomer = Repositories::customer()->saveNewCustomer($data);
+                    $newCustomer = Repositories::customer()->saveNewCustomer($data, $sub, !$isSellerSignup);
                 }
             } catch (\Throwable $e) {
                 Log::error('Unable to complete customer profile for seller registration');
@@ -116,12 +120,6 @@ class SignUpService extends UserService
             return false;
         }
 
-        if ($isNewUser) {
-            AwsCognitoClient::setUserEmailVerified($data->get('email'), true);
-            if (is_string($data->get('password')) && trim((string) $data->get('password')) !== '') {
-                AwsCognitoClient::setUserPassword($data->get('email'), $data->get('password'), true);
-            }
-        }
         $this->updateUserSellerAttributes($data);
 
         return [
