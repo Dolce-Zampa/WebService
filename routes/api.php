@@ -66,10 +66,10 @@ $app->group('/api', function () use ($app) {
     $app->put('/api/customers/{customerId}/addresses', PS\Webservice\Http\Controller\CustomerController::class . ':updateAddresses')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
 
     /** Personal wishlist; the shared reference only permits reading. */
-    $app->get('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':show')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->post('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':add')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->put('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':rename')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
-    $app->delete('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':remove')->add(new \PS\Webservice\Http\Middleware\AuthenticationMiddleware());
+    $app->get('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':show')->add(new \PS\Webservice\Http\Middleware\WishlistAuthenticationMiddleware());
+    $app->post('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':add')->add(new \PS\Webservice\Http\Middleware\WishlistAuthenticationMiddleware());
+    $app->put('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':rename')->add(new \PS\Webservice\Http\Middleware\WishlistAuthenticationMiddleware());
+    $app->delete('/api/wishlists', PS\Webservice\Http\Controller\WishlistController::class . ':remove')->add(new \PS\Webservice\Http\Middleware\WishlistAuthenticationMiddleware());
     $app->get('/api/wishlists/shared/{token}', PS\Webservice\Http\Controller\WishlistController::class . ':shared');
 
     /** Order api */
