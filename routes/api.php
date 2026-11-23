@@ -49,6 +49,7 @@ $app->group('/api', function () use ($app) {
     $app->get('/api/manufacturer/{id_manufacturer}/reviews', PS\Webservice\Http\Controller\BrandController::class . ':getManufacturerReviews')->addMiddleware(new \PS\Webservice\Http\Middleware\CachingMiddleware('manufacturers', 10));
 
     /** Customer api */
+    $app->post('/api/register/request', PS\Webservice\Http\Controller\CustomerController::class . ':requestRegistration');
     $app->post('/api/register', PS\Webservice\Http\Controller\CustomerController::class . ':register');
     $app->post('/api/login', PS\Webservice\Http\Controller\CustomerController::class . ':login');
     $app->get('/api/auth/facebook', PS\Webservice\Http\Controller\CustomerController::class . ':facebookAuthorizationUrl');
