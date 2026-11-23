@@ -599,6 +599,115 @@ final class StripeConnectServiceTest extends TestCase
         }
     }
 
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function test_manual_supplement_is_previewed_then_transferred_once_and_rejects_refunds(): void
+    {
+        $_ENV['STRIPE_PAYMENT_FLOW'] = 'connect';
+        $_ENV['STRIPE_CONNECT_ENABLED'] = 'true';
+        $db = new Manager(new \Illuminate\Container\Container());
+        $db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
+        $db->setAsGlobal();
+        $db->bootEloquent();
+        $this->createTransferTables($db);
+        $this->paidTransfer($db, 42, 7, 4400, 'tr_original');
+        $db->table('stripe_connect_accounts')->insert([
+            'manufacturer_id' => 7, 'stripe_account_id' => 'acct_seller_7', 'account_type' => 'express',
+            'country' => 'IT', 'details_submitted' => true, 'charges_enabled' => true, 'payouts_enabled' => true,
+            'transfers_enabled' => true, 'created_at' => '2026-10-22 09:00:00', 'updated_at' => '2026-10-22 09:00:00',
+        ]);
+        $intents = new class {
+            public function retrieve(string $id, array $params): \Stripe\PaymentIntent
+            {
+                $paypal = $id === 'pi_paypal';
+                return \Stripe\PaymentIntent::constructFrom(['id' => $id, 'status' => 'succeeded', 'currency' => 'eur',
+                    'amount_received' => $paypal ? 500 : 1000, 'latest_charge' => ['id' => $paypal ? 'py_paypal' : 'ch_supplement', 'object' => 'charge',
+                        'status' => 'succeeded', 'amount_captured' => $paypal ? 500 : 1000, 'amount_refunded' => $id === 'pi_refunded' ? 100 : 0,
+                        'payment_method_details' => ['type' => $paypal ? 'paypal' : ($id === 'pi_unsupported' ? 'klarna' : 'card')], 'transfer_data' => null]]);
+            }
+        };
+        $accounts = new class {
+            public function retrieve(string $id, array $params): \Stripe\Account
+            {
+                return \Stripe\Account::constructFrom(['id' => $id, 'type' => 'express', 'country' => 'IT',
+                    'details_submitted' => true, 'charges_enabled' => true, 'payouts_enabled' => true,
+                    'capabilities' => ['transfers' => 'active'], 'requirements' => ['currently_due' => []]]);
+            }
+        };
+        $transfers = new class {
+            public array $calls = [];
+            public bool $fail = false;
+            public function create(array $params, array $options): \Stripe\Transfer
+            {
+                $this->calls[] = [$params, $options];
+                if ($this->fail) throw new \RuntimeException('Timeout contacting Stripe');
+                return \Stripe\Transfer::constructFrom(['id' => count($this->calls) === 1 ? 'tr_supplement' : 'tr_paypal']);
+            }
+            public function retrieve(string $id, array $params): \Stripe\Transfer
+            {
+                return \Stripe\Transfer::constructFrom(['id' => $id]);
+            }
+        };
+        $stripe = new class($intents, $transfers, $accounts) extends \Stripe\StripeClient {
+            public function __construct(private object $intents, private object $transfers, private object $accounts) { parent::__construct('sk_test_123'); }
+            public function getService($name) {
+                return match ($name) { 'paymentIntents' => $this->intents, 'transfers' => $this->transfers, 'accounts' => $this->accounts, default => parent::getService($name) };
+            }
+        };
+        $service = new StripeConnectService($db, null, $stripe);
+        self::assertSame('preview', $service->manualSupplementTransfer(42, 7, 'pi_extra', 1000, 800, false)['status']);
+        self::assertCount(0, $transfers->calls);
+        self::assertSame('tr_supplement', $service->manualSupplementTransfer(42, 7, 'pi_extra', 1000, 800, true)['transfer_id']);
+        self::assertSame('paid', $service->manualSupplementTransfer(42, 7, 'pi_extra', 1000, 800, true)['status']);
+        self::assertCount(1, $transfers->calls);
+        self::assertSame('ch_supplement', $transfers->calls[0][0]['source_transaction']);
+        self::assertSame('acct_seller_7', $transfers->calls[0][0]['destination']);
+        self::assertSame(800, $transfers->calls[0][0]['amount']);
+        self::assertSame('paid', $db->table('stripe_connect_transfers')->where('stripe_payment_intent_id', 'pi_extra')->value('status'));
+        try {
+            $service->manualSupplementTransfer(42, 7, 'pi_extra', 1000, 900, true);
+            self::fail('A completed supplement cannot be changed.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('dati diversi', $exception->getMessage());
+        }
+        try {
+            $service->manualSupplementTransfer(42, 7, 'pi_refunded', 1000, 800, true);
+            self::fail('Refunded payment must be rejected.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('non rimborsato', $exception->getMessage());
+        }
+        self::assertCount(1, $transfers->calls);
+        self::assertSame('preview', $service->manualSupplementTransfer(42, 7, 'pi_paypal', 500, 400, false)['status']);
+        self::assertSame('tr_paypal', $service->manualSupplementTransfer(42, 7, 'pi_paypal', 500, 400, true)['transfer_id']);
+        self::assertSame('py_paypal', $transfers->calls[1][0]['source_transaction']);
+        self::assertSame(400, $transfers->calls[1][0]['amount']);
+        self::assertSame('paid', $service->manualSupplementTransfer(42, 7, 'pi_paypal', 500, 400, true)['status']);
+        try {
+            $service->manualSupplementTransfer(42, 7, 'pi_unsupported', 1000, 800, true);
+            self::fail('An unsupported payment method must be rejected.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('pagamento', $exception->getMessage());
+        }
+        self::assertCount(2, $transfers->calls);
+        $transfers->fail = true;
+        try {
+            $service->manualSupplementTransfer(42, 7, 'pi_timeout', 1000, 800, true);
+            self::fail('A Stripe timeout must be surfaced.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('Timeout contacting Stripe', $exception->getMessage());
+        }
+        self::assertSame('manual_review', $db->table('stripe_connect_transfers')->where('stripe_payment_intent_id', 'pi_timeout')->value('status'));
+        try {
+            $service->manualSupplementTransfer(42, 7, 'pi_timeout', 1000, 800, true);
+            self::fail('An ambiguous transfer must not be sent again.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('manual_review', $exception->getMessage());
+        }
+        self::assertCount(3, $transfers->calls);
+    }
+
     private function createTransferTables(Manager $db): void
     {
         foreach (['orders', 'order_detail', 'product', 'manufacturer_details', 'stripe_connect_transfer_jobs', 'stripe_connect_transfer_reversals', 'stripe_connect_transfers', 'stripe_connect_accounts'] as $table) {

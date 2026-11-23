@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace PS\Webservice\Http\Controller;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use PS\Webservice\Domain\Entities\CustomerEntity;
 use PS\Webservice\Facades\AwsCognitoClient;
@@ -42,15 +43,63 @@ class CustomerController extends Controller
         $this->newsletterTrackingConsent = $newsletterTrackingConsent;
     }
 
+    public function requestRegistration(Request $request, Response $response, array $argv): Response
+    {
+        $payload = $this->requireArrayPayload($request->getParsedBody());
+        $email = trim((string) ($payload['email'] ?? ''));
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return response(['message' => 'Indirizzo email non valido.'], 400);
+        }
+        try {
+            if (filter_var(env('APP_DISABLE_CACHE', false), FILTER_VALIDATE_BOOLEAN)) {
+                throw new \RuntimeException('Registration verification requires cache');
+            }
+            $cache = Cache::tags(['registration-verification']);
+            $throttle = 'request:' . hash('sha256', strtolower($email));
+            if ($cache->add($throttle, true, 60)) {
+                $token = bin2hex(random_bytes(32));
+                $cache->put('token:' . hash('sha256', $token), $email, 3600);
+                $this->mailer->sendRegistrationVerificationMail($email, $token);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Registration verification could not be sent: ' . $e->getMessage());
+            return response(['message' => 'Non è stato possibile inviare il link. Riprova più tardi.'], 503);
+        }
+        return response(['message' => 'Se l’indirizzo è valido, riceverai un link per continuare.'], 200);
+    }
+
     public function register(Request $request, Response $response, array $argv): Response
     {
         $payload = $this->requireArrayPayload($request->getParsedBody());
         $this->validateCustomerRegistrationPayload($payload);
+        $token = $payload['verification_token'] ?? '';
+        if (!is_string($token) || !preg_match('/^[a-f0-9]{64}$/', $token)) {
+            return response(['message' => 'Link di verifica non valido o scaduto.'], 400);
+        }
+        try {
+            $cache = Cache::tags(['registration-verification']);
+            $tokenKey = hash('sha256', $token);
+            $verifiedEmail = $cache->get('token:' . $tokenKey);
+        } catch (\Throwable $e) {
+            return response(['message' => 'Verifica temporaneamente non disponibile.'], 503);
+        }
+        if (!is_string($verifiedEmail) || strcasecmp(trim($payload['email']), $verifiedEmail) !== 0) {
+            return response(['message' => 'Link non valido o email diversa da quella verificata. Richiedi un nuovo link.'], 400);
+        }
+        try {
+            if (!$cache->add('used:' . $tokenKey, true, 3600)) {
+                return response(['message' => 'Link di verifica già utilizzato. Richiedi un nuovo link.'], 400);
+            }
+            $cache->forget('token:' . $tokenKey);
+        } catch (\Throwable $e) {
+            return response(['message' => 'Verifica temporaneamente non disponibile.'], 503);
+        }
+        $payload['email'] = $verifiedEmail;
 
         try {
             $cognito = $this->authService->signUp(CustomerEntity::create($payload, $this->customerService));
             if ($cognito === false) {
-                return response(['message' => 'Utente già resistrato, prova con il recupera password'], 400);
+                return response(['message' => 'Non è stato possibile completare la registrazione. Se hai già un account, accedi o recupera la password.'], 400);
             }
 
         } catch (\Throwable $e) {
@@ -60,7 +109,11 @@ class CustomerController extends Controller
 
         // send mail to user for confirmation
         $customer = $cognito['customer'];
-        $this->mailer->sendSignUpMail($customer->email, "$customer->firstname $customer->lastname");
+        try {
+            $this->mailer->sendSignUpMail($customer->email, "$customer->firstname $customer->lastname");
+        } catch (\Throwable $e) {
+            Log::error('Unable to send registration welcome email');
+        }
 
         try {
             $this->mailjetService->subscribeToCustomerNewsletter(
@@ -74,10 +127,9 @@ class CustomerController extends Controller
             Log::critical('Customer registration: failed to subscribe contact to Mailjet for email ' . $customer->email . ': ' . $e->getMessage());
         }
 
-        return response([
-            'customer' => $cognito['customer'],
-            'cognito_sub' => $cognito['sub'],
-        ], 201);
+        $customerData = (array) $cognito['customer'];
+        unset($customerData['passwd'], $customerData['secure_key'], $customerData['sub']);
+        return response(['customer' => $customerData], 201);
     }
 
     public function createCustomer(Request $request, Response $response, array $argv): Response
@@ -236,7 +288,8 @@ class CustomerController extends Controller
             'is_seller' => false,
         ], $this->customerService);
 
-        $savedCustomer = Repositories::customer()->saveNewCustomer($customer);
+        $emailVerified = in_array($identity['email_verified'] ?? false, [true, 'true', 1, '1'], true);
+        $savedCustomer = Repositories::customer()->saveNewCustomer($customer, $sub, $emailVerified);
         $customerId = (int) ($savedCustomer->id_customer ?? 0);
         if ($customerId <= 0) {
             throw new \RuntimeException('Unable to provision Facebook customer');
@@ -569,6 +622,10 @@ class CustomerController extends Controller
 
         if (!is_string($payload['password']) || trim($payload['password']) === '') {
             throw new \InvalidArgumentException('Field password must be a non-empty string', 400);
+        }
+
+        if (strlen($payload['password']) > 64 || !preg_match(self::PASSWORD_VALIDATION, $payload['password'])) {
+            throw new \InvalidArgumentException('Password does not meet the security requirements', 400);
         }
 
         if (!is_string($payload['firstname']) || trim($payload['firstname']) === '') {

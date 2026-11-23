@@ -184,7 +184,10 @@ class ManufacturerRepository extends PrestashopRepository implements RepositoryI
         if ($idState > 0) {
             $stateQuery->where('id_state', $idState);
         } elseif ($stateName !== '') {
-            $stateQuery->where('name', $stateName);
+            $stateQuery->where(function ($query) use ($stateName) {
+                $query->where('iso_code', strtoupper($stateName))
+                    ->orWhere('name', $stateName);
+            });
         }
         if ($idCountry > 0) {
             $stateQuery->where('id_country', $idCountry);

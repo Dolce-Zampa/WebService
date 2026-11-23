@@ -1,0 +1,5 @@
+Conferma il tuo indirizzo email
+
+Per continuare la registrazione su Dolce & Zampa visita: {url}
+
+Il link scade dopo un’ora e può essere usato una sola volta. Se non hai richiesto la registrazione, ignora questa email.

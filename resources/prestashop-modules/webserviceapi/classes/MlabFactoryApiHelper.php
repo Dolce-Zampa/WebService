@@ -359,6 +359,8 @@ class MlabFactoryApiHelper
             'id' => (int) $order->id,
             'reference' => (string) $order->reference,
             'id_cart' => (int) $order->id_cart,
+            'id_carrier' => (int) $order->id_carrier,
+            'id_lang' => (int) $order->id_lang,
             'id_customer' => (int) $order->id_customer,
             'id_currency' => (int) $order->id_currency,
             'current_state' => (int) $order->current_state,

@@ -16,6 +16,21 @@ use PS\Webservice\Traits\UseCache;
 class Mailer extends PrestashopService implements PrestashopServiceInterface, MailerInterface {
     use UseCache;
 
+    public function sendRegistrationVerificationMail(string $email, string $token): void
+    {
+        $url = rtrim((string) env('APP_URL'), '/') . '/register#token=' . rawurlencode($token);
+        $this->httpService->setUrl('/mailer?debug=true');
+        $result = $this->httpService->invoke('POST', new PayloadServiceData([
+            'subject' => 'Conferma la tua email per registrarti',
+            'to_email' => $email,
+            'template' => 'registration_verification',
+            'template_vars' => ['url' => $url],
+        ]));
+        if ($result->failed() || ($result->toArray()['success'] ?? false) !== true) {
+            throw new \RuntimeException('Unable to send registration verification email');
+        }
+    }
+
     public function sendSignUpMail($email, $username):void 
     {
         //generate a token for the user and save into a cache
