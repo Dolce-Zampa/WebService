@@ -404,6 +404,90 @@ final class StripeConnectService
     }
 
     /**
+     * Allocate one separately paid order supplement to an existing seller.
+     * The operator supplies the net seller amount after calculating commission.
+     *
+     * @return array<string, int|string>
+     */
+    public function manualSupplementTransfer(int $orderId, int $sellerId, string $paymentIntentId, int $paymentCents, int $sellerCents, bool $execute): array
+    {
+        if (!$this->enabled()) {
+            throw new \RuntimeException('Stripe Connect non è abilitato.');
+        }
+        if ($orderId < 1 || $sellerId < 1 || !preg_match('/^pi_[A-Za-z0-9]+$/D', $paymentIntentId)
+            || $paymentCents < 1 || $sellerCents < 1 || $sellerCents > $paymentCents) {
+            throw new \InvalidArgumentException('Dati del trasferimento non validi.');
+        }
+        $key = 'connect:manual-supplement:' . hash('sha256', $paymentIntentId);
+        $existing = $this->db->table(self::TRANSFERS)->where('idempotency_key', $key)->first();
+        if ($existing !== null && ((int) $existing->order_id !== $orderId
+            || (int) $existing->manufacturer_id !== $sellerId || (int) $existing->original_amount !== $sellerCents)) {
+            throw new \RuntimeException('Il pagamento è già associato a un supplemento con dati diversi.');
+        }
+        if ($existing === null && ($this->db->table(self::TRANSFERS)->where('stripe_payment_intent_id', $paymentIntentId)->exists()
+            || $this->db->table(self::ALLOCATION_JOBS)->where('stripe_payment_intent_id', $paymentIntentId)->exists())) {
+            throw new \RuntimeException('Il pagamento è già presente in un altro flusso Connect.');
+        }
+        $original = $this->db->table(self::TRANSFERS)->where('order_id', $orderId)
+            ->where('manufacturer_id', $sellerId)->where('status', 'paid')
+            ->where('stripe_payment_intent_id', '!=', $paymentIntentId)->orderBy('id')->first();
+        $account = $this->readyAccount($sellerId);
+        if ($original === null || $account === null || (string) $original->stripe_account_id !== (string) $account->stripe_account_id
+            || strtoupper((string) $original->currency) !== 'EUR') {
+            throw new \RuntimeException('Ordine, trasferimento originale o account venditore pronto non trovati.');
+        }
+        $intent = $this->stripe->paymentIntents->retrieve($paymentIntentId, ['expand' => ['latest_charge']]);
+        $charge = $intent->latest_charge ?? null;
+        if (($intent->status ?? null) !== 'succeeded' || strtolower((string) ($intent->currency ?? '')) !== 'eur'
+            || (int) ($intent->amount_received ?? 0) !== $paymentCents || !$charge instanceof \Stripe\Charge
+            || ($charge->status ?? null) !== 'succeeded' || (int) ($charge->amount_refunded ?? 0) !== 0
+            || (int) ($charge->amount_captured ?? 0) !== $paymentCents
+            || ($charge->payment_method_details->type ?? null) !== 'card'
+            || ($charge->transfer_data ?? null) !== null) {
+            throw new \RuntimeException('Il pagamento deve essere un incasso carta EUR riuscito, non rimborsato e senza trasferimento automatico.');
+        }
+        $chargeId = $this->stripeId($charge->id ?? null, 'charge');
+        $group = (string) $original->transfer_group;
+        $result = ['order_id' => $orderId, 'seller_id' => $sellerId, 'payment_intent' => $paymentIntentId,
+            'charge' => $chargeId, 'account' => (string) $account->stripe_account_id,
+            'payment_cents' => $paymentCents, 'seller_cents' => $sellerCents, 'transfer_group' => $group,
+            'status' => $existing === null ? 'preview' : (string) $existing->status];
+        if (!$execute) {
+            return $result;
+        }
+        if ($existing !== null) {
+            if ((string) $existing->status !== 'paid' || (string) $existing->stripe_charge_id !== $chargeId) {
+                throw new \RuntimeException('Supplemento già registrato in manual_review: riconciliare in Stripe prima di intervenire.');
+            }
+            $transferId = $this->stripeId($existing->stripe_transfer_id ?? null, 'transfer');
+            $transfer = $this->stripe->transfers->retrieve($transferId, []);
+            $this->recordPayout($orderId, ['manufacturer_id' => $sellerId, 'amount' => $sellerCents], $account, $transfer, $paymentIntentId, $this->now(), 'EUR');
+            $result['transfer_id'] = $transferId;
+            return $result;
+        }
+
+        // A durable manual-review claim blocks both parallel attempts and the
+        // automatic retry worker when Stripe's response is ambiguous.
+        $now = gmdate('Y-m-d H:i:s');
+        try {
+            $this->db->table(self::TRANSFERS)->insert([
+                'order_id' => $orderId, 'manufacturer_id' => $sellerId, 'stripe_account_id' => (string) $account->stripe_account_id,
+                'stripe_payment_intent_id' => $paymentIntentId, 'stripe_charge_id' => $chargeId, 'stripe_transfer_id' => null,
+                'transfer_group' => $group, 'idempotency_key' => $key, 'amount' => $sellerCents, 'original_amount' => $sellerCents,
+                'currency' => 'EUR', 'status' => 'manual_review', 'failure_code' => 'manual_transfer_in_progress',
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+        } catch (QueryException $exception) {
+            throw new \RuntimeException('Supplemento già registrato o impossibile da registrare; verificare prima di riprovare.', 0, $exception);
+        }
+        $pending = $this->db->table(self::TRANSFERS)->where('idempotency_key', $key)->first();
+        $this->transferPending($pending, $account, $this->now());
+        $result['status'] = 'paid';
+        $result['transfer_id'] = (string) $this->db->table(self::TRANSFERS)->where('idempotency_key', $key)->value('stripe_transfer_id');
+        return $result;
+    }
+
+    /**
      * Creates one idempotent transfer per seller after an already-confirmed
      * platform Checkout payment. Returns quietly when Connect rollout is off.
      */
