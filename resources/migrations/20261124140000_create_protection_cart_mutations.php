@@ -10,7 +10,7 @@ final class CreateProtectionCartMutations extends AbstractMigration
     {
         $name = (string) env('PS_TABLE_PREFIX', '') . 'protection_cart_mutations';
         $this->table($name, ['id' => false, 'primary_key' => ['cart_id']])
-            ->addColumn('cart_id', 'integer', ['signed' => false])
+            ->addColumn('cart_id', 'integer', ['signed' => false, 'null' => false])
             ->addColumn('operation_id', 'char', ['limit' => 32])
             ->addColumn('operation', 'string', ['limit' => 32])
             ->addColumn('created_at', 'datetime')

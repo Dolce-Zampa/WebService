@@ -500,6 +500,11 @@ class OrderController extends CartController
             } catch (CheckoutPaymentAlreadyCompletedException $error) {
                 return response(['error' => 'A checkout for this cart has already been paid.'], 409);
             } catch (\Throwable $error) {
+                Log::warning('Unable to reconcile previous checkout.', [
+                    'cart_id' => (int) $payload['id_cart'],
+                    'exception_type' => get_class($error),
+                    'exception_message' => $error->getMessage(),
+                ]);
                 return response(['error' => 'Unable to reconcile the previous checkout.'], 409);
             }
         }
