@@ -38,6 +38,7 @@ L'elenco seguente descrive **gli endpoint del modulo PrestaShop** (non le route 
 - `GET /api/cart_rules`
 - `GET /api/cart_rules?code=ESTATE2026&id_cart=55&id_customer=12`
 - `POST /api/cart_rules`
+- `POST /api/purchase_protection` (interno, disabilitato; integrazione checkout in corso)
 - `GET /api/wishlists?id_customer=12`
 - `POST /api/wishlists`
 - `PUT /api/wishlists`
@@ -48,6 +49,22 @@ L'elenco seguente descrive **gli endpoint del modulo PrestaShop** (non le route 
 - `GET /api/orders?id_guest=34`
 - `POST /api/orders`
 - `GET /api/promotions`
+
+### Protezione della spedizione
+
+L'endpoint è in sviluppo e deve rimanere disabilitato. È riservato al webservice
+autenticato e usa un prodotto virtuale dedicato, attivo, nascosto dal catalogo e
+senza combinazioni. Il suo ID deve corrispondere a `PURCHASE_PROTECTION_PRODUCT_ID`
+negli ambienti PHP dell'API e di PrestaShop. La variabile
+`PURCHASE_PROTECTION_MODULE_ENABLED` appartiene all'ambiente PrestaShop ed è
+disabilitata per impostazione predefinita.
+
+Prima dell'attivazione occorre serializzare le modifiche al carrello, gestire
+le sessioni di pagamento precedenti e integrare l'endpoint con lo snapshot del
+checkout. Le regole fiscali del prodotto e l'esclusione dagli sconti sul carrello
+devono essere verificate in staging. Il servizio richiesto segnala all'operatore
+di acquistare Packlink Extra per ogni spedizione: l'aggiunta del prodotto non
+acquista né conferma la copertura.
 
 ### Prodotti in promozione
 

@@ -274,6 +274,24 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return CartEntity::create($data['data']['cart'], $this);
     }
 
+    /** Update only the configured protection service through the authenticated module. */
+    public function setPurchaseProtection(int $cartId, mixed $customerId, mixed $guestId, int $productId, ?int $priceCents): CartEntity
+    {
+        if ($cartId < 1 || $productId < 1 || ($priceCents !== null && $priceCents < 1)) {
+            throw new \InvalidArgumentException('Invalid purchase protection request.');
+        }
+        $this->httpService->setUrl('/purchase_protection');
+        $response = $this->httpService->invoke('POST', [
+            'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId,
+            'id_product' => $productId, 'price_cents' => $priceCents,
+        ]);
+        $data = $response->toArray();
+        if ($response->failed() || empty($data['data']['cart'])) {
+            throw new \RuntimeException('Unable to update purchase protection.');
+        }
+        return CartEntity::create($data['data']['cart'], $this);
+    }
+
     public function validateCoupon(string $code, string $cartId, ?string $customerId = null, ?string $guestId = null): array|false
     {
         $query = [

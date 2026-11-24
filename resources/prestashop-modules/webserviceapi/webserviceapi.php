@@ -645,6 +645,12 @@ class webserviceapi extends PaymentModule
                 'controller' => 'coupon',
                 'params' => $params,
             ),
+            'module-webserviceapi-purchaseprotection' => array(
+                'rule' => 'api/purchase_protection',
+                'keywords' => array(),
+                'controller' => 'purchaseprotection',
+                'params' => $params,
+            ),
             'module-webserviceapi-shippingpolicy' => array(
                 'rule' => 'api/shipping_policy',
                 'keywords' => array(),
