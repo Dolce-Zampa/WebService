@@ -26,6 +26,10 @@ class webserviceapiloginModuleFrontController extends MlabFactoryApiBaseModuleFr
             throw new MlabFactoryApiException('Customer account is disabled.', 403);
         }
 
+        if (!Db::getInstance()->update('customer', array('last_login' => date('Y-m-d H:i:s')), 'id_customer = ' . (int) $customer->id)) {
+            throw new MlabFactoryApiException('Unable to record customer login.', 500);
+        }
+
         $this->getCustomerContext($customer);
 
         $addresses = array();
