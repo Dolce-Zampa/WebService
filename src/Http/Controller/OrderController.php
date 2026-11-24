@@ -213,6 +213,9 @@ class OrderController extends CartController
                 'base_cents' => $quote->baseCents, 'price_cents' => $quote->priceCents,
                 'rate_basis_points' => $quote->rateBasisPoints, 'currency' => 'EUR',
                 'is_estimate' => true,
+                // Never advertise an actionable checkout until cart mutation and
+                // payment-session reconciliation are integrated end to end.
+                'checkout_available' => false,
             ])->withHeader('Cache-Control', 'no-store');
         } catch (\Throwable $error) {
             return response(['error' => 'Purchase protection quote unavailable.'], 503);
