@@ -22,9 +22,16 @@ final class WishlistHttpIntegrationTest extends TestCase
     private App $app;
     private Manager $database;
     private mixed $previousFacadeApplication;
+    private array $previousAuthEnvironment = [];
 
     protected function setUp(): void
     {
+        // Authentication uses strict Cognito claim validation. Supply an isolated
+        // test configuration instead of depending on the developer's .env file.
+        foreach (['AWS_DEFAULT_REGION' => 'eu-west-1', 'AWS_COGNITO_USER_POOL_ID' => 'fixture-pool', 'AWS_COGNITO_CLIENT_ID' => 'fixture-client'] as $key => $value) {
+            $this->previousAuthEnvironment[$key] = [$_ENV[$key] ?? null, $_SERVER[$key] ?? null];
+            $_ENV[$key] = $_SERVER[$key] = $value;
+        }
         $this->previousFacadeApplication = Facade::getFacadeApplication();
         Facade::clearResolvedInstances();
         Facade::setFacadeApplication([
@@ -103,6 +110,10 @@ final class WishlistHttpIntegrationTest extends TestCase
     {
         Facade::clearResolvedInstances();
         Facade::setFacadeApplication($this->previousFacadeApplication);
+        foreach ($this->previousAuthEnvironment as $key => [$env, $server]) {
+            if ($env === null) unset($_ENV[$key]); else $_ENV[$key] = $env;
+            if ($server === null) unset($_SERVER[$key]); else $_SERVER[$key] = $server;
+        }
     }
 
     private function request(string $method, string $path, ?string $token = null, ?array $body = null): ResponseInterface
