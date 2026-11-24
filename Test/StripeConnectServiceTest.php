@@ -10,6 +10,18 @@ use Psr\Log\NullLogger;
 
 final class StripeConnectServiceTest extends TestCase
 {
+    public function test_protection_fee_is_not_allocated_to_artisans(): void
+    {
+        $service = new StripeConnectService(new Manager(), null, new \Stripe\StripeClient('sk_test_example'));
+        $method = new ReflectionMethod(StripeConnectService::class, 'sellerAllocationsFromCheckoutSnapshot');
+        $snapshot = [
+            'currency' => 'EUR',
+            'totals' => ['grand_total_cents' => 9090, 'shipping_cents' => 690, 'protection_cents' => 400],
+            'sellers' => [['manufacturer_id' => 7, 'gross_cents' => 8000, 'commission_basis_points' => 2000]],
+        ];
+        self::assertSame([['manufacturer_id' => 7, 'amount' => 6400]], $method->invoke($service, $snapshot, 9090, 'EUR'));
+    }
+
     private mixed $previousFacadeApplication;
 
     protected function setUp(): void

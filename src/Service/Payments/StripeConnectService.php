@@ -950,7 +950,11 @@ final class StripeConnectService
         if (!is_int($shippingCents) || $shippingCents < 0 || !is_int($grandTotalCents) || $grandTotalCents !== $paidCents) {
             throw new \RuntimeException('Checkout snapshot totals do not match the Stripe payment.');
         }
-        $productCents = $paidCents - $shippingCents;
+        $protectionCents = $totals['protection_cents'] ?? 0;
+        if (!is_int($protectionCents) || $protectionCents < 0) {
+            throw new \RuntimeException('Checkout snapshot protection amount is invalid.');
+        }
+        $productCents = $paidCents - $shippingCents - $protectionCents;
         if ($productCents < 0) {
             throw new \RuntimeException('Stripe payment total is less than checkout snapshot shipping.');
         }

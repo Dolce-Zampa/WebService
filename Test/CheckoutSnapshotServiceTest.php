@@ -9,9 +9,49 @@ use PS\Webservice\Domain\Object\OrderSession;
 use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\GiftCard\GiftCardTender;
 use PS\Webservice\Service\PS\Order;
+use PS\Webservice\Service\PurchaseProtection\ProtectionQuote;
 
 final class CheckoutSnapshotServiceTest extends TestCase
 {
+    public function test_protection_is_saved_for_manual_purchase_and_excluded_from_seller_totals(): void
+    {
+        $db = $this->database();
+        $db->table('manufacturer_details')->insert(['id_manufacturer' => 7, 'commission' => '20.00']);
+        $order = $this->createMock(Order::class);
+        $session = OrderSession::create([
+            'cart_id' => 42, 'id_customer' => 9, 'id_carrier' => 3,
+            'customer' => CustomerEntity::create(['email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Test'], $order),
+        ], $order);
+        $item = ['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '80.00', 'quantity' => 1];
+        $service = ['id_product' => 999, 'id_manufacturer' => 0, 'name' => 'Protezione spedizione', 'price_wt' => '4.00', 'quantity' => 1, 'is_virtual' => true];
+        $session->addCartLineItem($item);
+        $session->addCartLineItem($service);
+        $session->addCartShipping(['totals' => ['shipping_tax_incl' => '6.90']]);
+        $session->setPurchaseProtection(ProtectionQuote::calculate(8000, 500), 999);
+        $snapshot = (new CheckoutSnapshotService($db))->create($session, [
+            'currency_iso' => 'EUR', 'products' => [$item, $service], 'totals' => ['shipping_tax_incl' => '6.90'],
+        ]);
+        self::assertSame(400, $snapshot['payload']['totals']['protection_cents']);
+        self::assertSame('pending_purchase', $snapshot['payload']['purchase_protection']['status']);
+        self::assertSame(8000, $snapshot['payload']['sellers'][0]['gross_cents']);
+        self::assertNull($snapshot['payload']['lines'][1]['seller_id']);
+    }
+
+    public function test_protection_quote_cannot_disagree_with_the_cart_total(): void
+    {
+        $db = $this->database();
+        $order = $this->createMock(Order::class);
+        $session = OrderSession::create(['cart_id' => 42, 'id_customer' => 9, 'id_carrier' => 3,
+            'customer' => CustomerEntity::create(['email' => 'buyer@example.test', 'firstname' => 'Buyer', 'lastname' => 'Test'], $order)], $order);
+        $item = ['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => '80.00', 'quantity' => 1];
+        $service = ['id_product' => 999, 'id_manufacturer' => 0, 'name' => 'Protezione spedizione', 'price_wt' => '4.00', 'quantity' => 1, 'is_virtual' => true];
+        $session->addCartLineItem($item);
+        $session->addCartLineItem($service);
+        $session->setPurchaseProtection(ProtectionQuote::calculate(7000, 500), 999);
+        $this->expectException(InvalidArgumentException::class);
+        (new CheckoutSnapshotService($db))->create($session, ['currency_iso' => 'EUR', 'products' => [$item, $service],
+            'totals' => ['shipping_tax_incl' => 0]]);
+    }
     public function test_coupon_on_gift_card_checkout_does_not_create_a_stripe_coupon(): void
     {
         $order = $this->createMock(Order::class);

@@ -10,6 +10,7 @@ use PS\Webservice\Domain\Object\Discount;
 use PS\Webservice\Domain\ObjectInterface;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Service\GiftCard\GiftCardTender;
+use PS\Webservice\Service\PurchaseProtection\ProtectionQuote;
 use PS\Webservice\Service\PS\PrestashopServiceInterface;
 use PS\Webservice\Traits\UuidGenerator;
 
@@ -377,6 +378,18 @@ class OrderSession implements ObjectInterface
     {
         if ($pointId === '' || strlen($pointId) > 100) throw new \InvalidArgumentException('Invalid InPost point ID.');
         $this->data['metadata']['inpost_point_id'] = $pointId;
+    }
+
+    /** Attach only a server-calculated quote and the configured service product. */
+    public function setPurchaseProtection(ProtectionQuote $quote, int $productId): void
+    {
+        if ($productId < 1 || $quote->priceCents < 1 || isset($this->data['metadata']['protection_product_id'])) {
+            throw new \InvalidArgumentException('Invalid purchase protection selection.');
+        }
+        $this->data['metadata']['protection_product_id'] = (string) $productId;
+        $this->data['metadata']['protection_base_cents'] = (string) $quote->baseCents;
+        $this->data['metadata']['protection_rate_basis_points'] = (string) $quote->rateBasisPoints;
+        $this->data['metadata']['protection_price_cents'] = (string) $quote->priceCents;
     }
 
     /** The ID links Stripe to the encrypted, server-generated checkout snapshot. */

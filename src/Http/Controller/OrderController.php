@@ -15,6 +15,7 @@ use PS\Webservice\Service\Payments\CheckoutPaymentAlreadyCompletedException;
 use PS\Webservice\Service\GiftCard\GiftCardApiException;
 use PS\Webservice\Service\GiftCard\GiftCardCheckoutRateLimiter;
 use PS\Webservice\Service\GiftCard\GiftCardTender;
+use PS\Webservice\Service\PurchaseProtection\ProtectionQuote;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Traits\Order as OrderHelper;
@@ -187,6 +188,37 @@ class OrderController extends CartController
         }
     }
 
+    /** Preview the price from the currently persisted cart; checkout must revalidate it. */
+    public function previewPurchaseProtection(Request $request, Response $response, array $argv): Response
+    {
+        $payload = $request->getParsedBody();
+        if (!is_array($payload)) return response(['error' => 'Invalid cart.'], 422);
+        $cartId = filter_var($payload['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $customerId = $payload['id_customer'] ?? null;
+        $guestId = $payload['id_guest'] ?? null;
+        if ($cartId === false || ($customerId === null) === ($guestId === null)) {
+            return response(['error' => 'Invalid cart owner.'], 422);
+        }
+        if (($customerId !== null && (filter_var($customerId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false
+                || $this->authenticatedCustomerId($request) !== (int) $customerId))
+            || ($guestId !== null && filter_var($guestId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
+            return response(['error' => 'Cart not found.'], 404);
+        }
+        try {
+            $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
+            if ($cart === null) return response(['error' => 'Cart not found.'], 404);
+            $data = $cart->toArray();
+            $quote = ProtectionQuote::fromCart($data);
+            return response([
+                'base_cents' => $quote->baseCents, 'price_cents' => $quote->priceCents,
+                'rate_basis_points' => $quote->rateBasisPoints, 'currency' => 'EUR',
+                'is_estimate' => true,
+            ])->withHeader('Cache-Control', 'no-store');
+        } catch (\Throwable $error) {
+            return response(['error' => 'Purchase protection quote unavailable.'], 503);
+        }
+    }
+
     /** Verify available credit without reserving it or creating an order. */
     public function previewGiftCard(Request $request, Response $response, array $argv): Response
     {
@@ -303,6 +335,17 @@ class OrderController extends CartController
         $payload = $request->getParsedBody();
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
+        }
+
+        // A preview is not a purchase. Until the service product is committed
+        // to the PrestaShop cart, never accept a request claiming protection.
+        if (array_key_exists('purchase_protection', $payload)) {
+            if (!is_bool($payload['purchase_protection'])) {
+                return response(['error' => 'Invalid purchase protection selection.'], 422);
+            }
+            if ($payload['purchase_protection']) {
+                return response(['error' => 'Purchase protection is not yet available.'], 503);
+            }
         }
 
         $giftCode = $payload['gift_card'] ?? null;
