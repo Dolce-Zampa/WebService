@@ -85,8 +85,12 @@ class CartController extends Controller {
 
         //find customerId from cookie session
         try {
-            $cart = $this->cartService->updateCart($payload, $cartId, $customerId, $isGuest, $operation);
+            $update = fn () => $this->cartService->updateCart($payload, $cartId, $customerId, $isGuest, $operation);
+            $cart = CheckoutCartLock::enabled()
+                ? $this->cartPaymentGuard->mutate((int) $cartId, 'update_cart', $update)
+                : $update();
         } catch (CartUpdateNotFoundException $e) {
+            if (CheckoutCartLock::enabled()) throw $e;
             // A 404 can also refer to a product. Only create a cart if the
             // owner-scoped lookup confirms the original cart is unavailable.
             if (($payload['action'] ?? null) !== 'add' || !is_numeric($customerId) || (int) $customerId <= 0) {
@@ -163,7 +167,14 @@ class CartController extends Controller {
             $this->retireAndRemoveProtection((int) $cartId, $customerId, $guestId, $existing);
         }
 
-        $result = $this->cartService->deleteCart($cartId, $customerId, $guestId);
+        $delete = function () use ($cartId, $customerId, $guestId) {
+            $result = $this->cartService->deleteCart($cartId, $customerId, $guestId);
+            if (CheckoutCartLock::enabled() && $result->failed()) throw new \RuntimeException('Cart deletion is uncertain.');
+            return $result;
+        };
+        $result = CheckoutCartLock::enabled()
+            ? $this->cartPaymentGuard->mutate((int) $cartId, 'delete_cart', $delete)
+            : $delete();
         
         if($result->failed()) {
             return response([
@@ -178,10 +189,12 @@ class CartController extends Controller {
     {
         $productId = filter_var(env('PURCHASE_PROTECTION_PRODUCT_ID'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if ($productId === false || $this->cartPaymentGuard === null) throw new \RuntimeException('Protection is not configured.');
+        $this->cartPaymentGuard->assertNoPendingMutation($cartId);
         $this->cartPaymentGuard->retireUnpaidSessions($cartId);
         foreach ($cart->toArray()['products'] ?? [] as $product) {
             if ((int) ($product['id_product'] ?? 0) === $productId) {
-                $this->cartService->setPurchaseProtection($cartId, $customerId, $guestId, $productId, null);
+                $this->cartPaymentGuard->mutate($cartId, 'remove_protection',
+                    fn () => $this->cartService->setPurchaseProtection($cartId, $customerId, $guestId, $productId, null));
                 return;
             }
         }

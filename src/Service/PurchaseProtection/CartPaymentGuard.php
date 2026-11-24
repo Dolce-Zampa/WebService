@@ -11,6 +11,35 @@ final class CartPaymentGuard
 {
     public function __construct(private readonly Manager $db, private readonly PaymentGatewayInterface $payments) {}
 
+    public function assertNoPendingMutation(int $cartId): void
+    {
+        if ($cartId < 1 || $this->db->table('protection_cart_mutations')->where('cart_id', $cartId)->exists()) {
+            throw new \RuntimeException('The cart requires manual reconciliation.');
+        }
+    }
+
+    /**
+     * The caller holds the cart lock. If the remote response is lost, retain
+     * the intent: another worker must not assume the cart is safe to mutate.
+     * @template T @param callable():T $callback @return T
+     */
+    public function mutate(int $cartId, string $operation, callable $callback): mixed
+    {
+        if ($cartId < 1 || !preg_match('/^[a-z_]{1,32}$/D', $operation)) {
+            throw new \InvalidArgumentException('Invalid cart mutation.');
+        }
+        $operationId = bin2hex(random_bytes(16));
+        $this->db->table('protection_cart_mutations')->insert([
+            'cart_id' => $cartId, 'operation_id' => $operationId, 'operation' => $operation,
+            'created_at' => gmdate('Y-m-d H:i:s'),
+        ]);
+        $result = $callback();
+        $deleted = $this->db->table('protection_cart_mutations')->where('cart_id', $cartId)
+            ->where('operation_id', $operationId)->delete();
+        if ($deleted !== 1) throw new \RuntimeException('Cart mutation could not be reconciled.');
+        return $result;
+    }
+
     /** The caller must hold a distributed cart lock until the replacement checkout exists. */
     public function retireUnpaidSessions(int $cartId): void
     {

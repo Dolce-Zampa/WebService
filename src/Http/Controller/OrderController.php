@@ -484,10 +484,12 @@ class OrderController extends CartController
                 return response(['error' => 'Cart not found.'], 404);
             }
             try {
+                $this->cartPaymentGuard->assertNoPendingMutation((int) $payload['id_cart']);
                 $this->cartPaymentGuard->retireUnpaidSessions((int) $payload['id_cart']);
                 foreach ($cart->toArray()['products'] ?? [] as $product) {
                     if ((int) ($product['id_product'] ?? 0) === $protectionProductId) {
-                        $cart = $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, null);
+                        $cart = $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'remove_protection',
+                            fn () => $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, null));
                         break;
                     }
                 }
@@ -553,14 +555,12 @@ class OrderController extends CartController
             // Quote the selected carrier with the checkout address before Stripe is
             // created. `cart_rules` accepts an empty code for this purpose; a code,
             // when present, is applied only after the cart has been quoted.
-            $cart = $this->orderService->prepareCouponCart(
-                $payload['id_cart'],
-                $customerId,
-                $guestId,
-                $carrierId,
-                $codes,
-                $checkout
+            $prepareCart = fn () => $this->orderService->prepareCouponCart(
+                $payload['id_cart'], $customerId, $guestId, $carrierId, $codes, $checkout
             );
+            $cart = $protectionMode
+                ? $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'prepare_checkout', $prepareCart)
+                : $prepareCart();
             if (array_key_exists('shipping_expected_cents', $payload)) {
                 $expectedShipping = $payload['shipping_expected_cents'];
                 $actualShipping = $cart->toArray()['totals']['shipping_tax_incl'] ?? null;
@@ -581,7 +581,8 @@ class OrderController extends CartController
                         'actual_price_cents' => $protectionQuote->priceCents], 409);
                 }
                 try {
-                    $cart = $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, $protectionQuote->priceCents);
+                    $cart = $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'add_protection',
+                        fn () => $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, $protectionQuote->priceCents));
                 } catch (\Throwable $error) {
                     // A timeout does not prove the remote mutation failed. Do not
                     // issue a concurrent compensating request on an uncertain cart.
@@ -591,7 +592,8 @@ class OrderController extends CartController
                     ProtectedCartVerifier::verify($beforeProtection, $cart->toArray(), $protectionQuote, $protectionProductId);
                 } catch (\Throwable $error) {
                     try {
-                        $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, null);
+                        $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'remove_protection',
+                            fn () => $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, null));
                     } catch (\Throwable $cleanupError) {
                         Log::error('Unable to remove failed protection line.', ['cart_id' => (int) $payload['id_cart']]);
                     }

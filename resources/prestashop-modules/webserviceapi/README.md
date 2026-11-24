@@ -59,9 +59,14 @@ nell'ambiente PHP dell'API e nell'ambiente PHP o nella configurazione di PrestaS
 `PURCHASE_PROTECTION_MODULE_ENABLED` appartiene all'ambiente PrestaShop ed è
 disabilitata per impostazione predefinita.
 
-È stato preparato un collegamento al checkout con blocco Redis e riconciliazione
-delle sessioni precedenti; l'attivazione richiede ancora la gestione affidabile
-dei timeout, la verifica di tutti i flussi di carrello e il collaudo integrato.
+È stato preparato un collegamento al checkout con blocco Redis, registro persistente
+delle modifiche e riconciliazione delle sessioni precedenti. Un'operazione che non
+restituisce una risposta lascia il carrello bloccato per la riconciliazione manuale;
+occorre verificare che il processo sia terminato, controllare il carrello e le
+sessioni Stripe e solo dopo rimuovere il blocco e il relativo record. Non sbloccare
+automaticamente un'operazione dall'esito incerto. La migrazione
+`20261124140000_create_protection_cart_mutations` è necessaria prima dell'attivazione.
+L'attivazione richiede ancora il collaudo dei timeout e di tutti i flussi di carrello.
 `PURCHASE_PROTECTION_CHECKOUT_ENABLED` deve rimanere disabilitato. Le regole fiscali
 del prodotto e l'esclusione dagli sconti sul carrello devono essere verificate in
 staging. Il servizio richiesto segnala all'operatore

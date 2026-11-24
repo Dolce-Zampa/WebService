@@ -25,9 +25,9 @@ final class CheckoutCartLock
         if (!$store instanceof RedisStore) {
             throw new \RuntimeException('Purchase protection requires Redis.');
         }
-        // The lock covers PrestaShop mutation, snapshot creation and Stripe's
-        // response. The configured request timeout must be shorter than its TTL.
-        $lock = $store->lock('purchase-protection-cart:' . $cartId, 900);
+        // The lock cannot expire while a remote request is still in flight.
+        // A worker crash requires explicit cart reconciliation before release.
+        $lock = $store->lock('purchase-protection-cart:' . $cartId, 0);
         if (!$lock->get()) {
             throw new \RuntimeException('The cart is already being updated.');
         }
