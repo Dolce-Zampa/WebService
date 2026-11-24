@@ -245,6 +245,11 @@ class MlabFactoryApiHelper
     public static function serializeCart(Cart $cart)
     {
         $cartProducts = $cart->getProducts();
+        $protectionId = getenv('PURCHASE_PROTECTION_PRODUCT_ID');
+        if ($protectionId === false || $protectionId === '') {
+            $protectionId = Configuration::get('PURCHASE_PROTECTION_PRODUCT_ID');
+        }
+        $protectionId = (int) $protectionId;
         $metadataByProductId = array();
         $productIds = array_unique(array_map(function ($product) {
             return (int) $product['id_product'];
@@ -284,6 +289,7 @@ class MlabFactoryApiHelper
                 'notes' => MlabFactoryCartNotes::get($cart, (int) $product['id_product'], (int) $product['id_customization']),
                 'name' => (string) $product['name'],
                 'is_virtual' => (bool) ($metadata['is_virtual'] ?? $product['is_virtual'] ?? false),
+                'is_purchase_protection' => $protectionId > 0 && (int) $product['id_product'] === $protectionId,
                 'id_manufacturer' => (int) ($metadata['id_manufacturer'] ?? $product['id_manufacturer'] ?? 0),
                 'manufacturer_name' => (string) ($metadata['manufacturer_name'] ?? ''),
                 'id_supplier' => (int) ($metadata['id_supplier'] ?? $product['id_supplier'] ?? 0),

@@ -42,7 +42,16 @@ $container->set(\PS\Webservice\Http\Controller\CustomerController::class, functi
     );
 });
 
-$container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) {
+$container->set(\PS\Webservice\Http\Controller\CartController::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Http\Controller\CartController(
+        $c->get(\PS\Webservice\Service\PS\Cart::class),
+        \PS\Webservice\Service\PurchaseProtection\CheckoutCartLock::enabled() ? new \PS\Webservice\Service\PurchaseProtection\CartPaymentGuard(
+            $capsule, $c->get(\PS\Webservice\Service\Payments\PaymentService::class)
+        ) : null,
+    );
+});
+
+$container->set(\PS\Webservice\Http\Controller\OrderController::class, function ($c) use ($capsule) {
     $orderService = $c->get(\PS\Webservice\Service\PS\Order::class);
     $payment = $c->get(\PS\Webservice\Service\Payments\PaymentService::class);
     $repository = $c->get(\PS\Webservice\Repositories\PrestashopRepository::class);
@@ -55,6 +64,7 @@ $container->set(\PS\Webservice\Http\Controller\OrderController::class, function 
         fn () => $c->get(\PS\Webservice\Service\GiftCard\GiftCardSettlementService::class),
         new \PS\Webservice\Service\GiftCard\GiftCardCheckoutRateLimiter(),
         $c->get(\PS\Webservice\Service\PickupPoints\InpostCheckout::class),
+        new \PS\Webservice\Service\PurchaseProtection\CartPaymentGuard($capsule, $payment),
     );
 });
 

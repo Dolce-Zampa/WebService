@@ -14,7 +14,11 @@ class webserviceapipurchaseprotectionModuleFrontController extends MlabFactoryAp
         $data = $this->getJsonPayload();
         $cartId = filter_var($data['id_cart'] ?? null, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
         $productId = filter_var($data['id_product'] ?? null, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
-        $configuredId = filter_var(getenv('PURCHASE_PROTECTION_PRODUCT_ID'), FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        $configuredProduct = getenv('PURCHASE_PROTECTION_PRODUCT_ID');
+        if ($configuredProduct === false || $configuredProduct === '') {
+            $configuredProduct = Configuration::get('PURCHASE_PROTECTION_PRODUCT_ID');
+        }
+        $configuredId = filter_var($configuredProduct, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
         $customerId = (int) ($data['id_customer'] ?? 0);
         $guestId = (int) ($data['id_guest'] ?? 0);
         if ($cartId === false || $productId === false || $configuredId === false || $productId !== $configuredId

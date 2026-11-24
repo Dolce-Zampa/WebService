@@ -55,14 +55,16 @@ L'elenco seguente descrive **gli endpoint del modulo PrestaShop** (non le route 
 L'endpoint è in sviluppo e deve rimanere disabilitato. È riservato al webservice
 autenticato e usa un prodotto virtuale dedicato, attivo, nascosto dal catalogo e
 senza combinazioni. Il suo ID deve corrispondere a `PURCHASE_PROTECTION_PRODUCT_ID`
-negli ambienti PHP dell'API e di PrestaShop. La variabile
+nell'ambiente PHP dell'API e nell'ambiente PHP o nella configurazione di PrestaShop. La variabile
 `PURCHASE_PROTECTION_MODULE_ENABLED` appartiene all'ambiente PrestaShop ed è
 disabilitata per impostazione predefinita.
 
-Prima dell'attivazione occorre serializzare le modifiche al carrello, gestire
-le sessioni di pagamento precedenti e integrare l'endpoint con lo snapshot del
-checkout. Le regole fiscali del prodotto e l'esclusione dagli sconti sul carrello
-devono essere verificate in staging. Il servizio richiesto segnala all'operatore
+È stato preparato un collegamento al checkout con blocco Redis e riconciliazione
+delle sessioni precedenti; l'attivazione richiede ancora la gestione affidabile
+dei timeout, la verifica di tutti i flussi di carrello e il collaudo integrato.
+`PURCHASE_PROTECTION_CHECKOUT_ENABLED` deve rimanere disabilitato. Le regole fiscali
+del prodotto e l'esclusione dagli sconti sul carrello devono essere verificate in
+staging. Il servizio richiesto segnala all'operatore
 di acquistare Packlink Extra per ogni spedizione: l'aggiunta del prodotto non
 acquista né conferma la copertura.
 

@@ -11,11 +11,13 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PS\Webservice\Service\PS\Cart;
 use PS\Webservice\Service\PS\CartUpdateNotFoundException;
+use PS\Webservice\Service\PurchaseProtection\CartPaymentGuard;
+use PS\Webservice\Service\PurchaseProtection\CheckoutCartLock;
 
 class CartController extends Controller {
     protected Cart $cartService;
 
-    public function __construct(Cart $cartService)
+    public function __construct(Cart $cartService, private readonly ?CartPaymentGuard $cartPaymentGuard = null)
     {
         $this->cartService = $cartService;
     }
@@ -55,6 +57,18 @@ class CartController extends Controller {
 
     public function updateCart(Request $request, Response $response, array $argv): Response
     {
+        if (!CheckoutCartLock::enabled()) return $this->updateCartLocked($request, $response, $argv);
+        $cartId = filter_var($argv['cartId'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($cartId === false || $this->cartPaymentGuard === null) return response(['error' => 'Cart unavailable.'], 503);
+        try {
+            return (new CheckoutCartLock())->run($cartId, fn () => $this->updateCartLocked($request, $response, $argv));
+        } catch (\Throwable $error) {
+            return response(['error' => 'Unable to update the cart while checkout is in progress.'], 409);
+        }
+    }
+
+    private function updateCartLocked(Request $request, Response $response, array $argv): Response
+    {
         $payload = $request->getParsedBody();
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
@@ -63,6 +77,11 @@ class CartController extends Controller {
         $isGuest = (bool) ($payload['isGuest'] ?? false);
         $customerId = $payload['customerId'] ?? null;
         $operation = isset($payload['op']) ? (string) $payload['op'] : 'up';
+
+        if (CheckoutCartLock::enabled()) {
+            $existing = $this->cartService->getCartFromId($cartId, $isGuest ? null : $customerId, $isGuest ? $customerId : null);
+            if ($existing !== null) $this->retireAndRemoveProtection((int) $cartId, $isGuest ? null : $customerId, $isGuest ? $customerId : null, $existing);
+        }
 
         //find customerId from cookie session
         try {
@@ -114,6 +133,18 @@ class CartController extends Controller {
 
     public function deleteCart(Request $request, Response $response, array $argv): Response
     {
+        if (!CheckoutCartLock::enabled()) return $this->deleteCartLocked($request, $response, $argv);
+        $cartId = filter_var($argv['cartId'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($cartId === false || $this->cartPaymentGuard === null) return response(['error' => 'Cart unavailable.'], 503);
+        try {
+            return (new CheckoutCartLock())->run($cartId, fn () => $this->deleteCartLocked($request, $response, $argv));
+        } catch (\Throwable $error) {
+            return response(['error' => 'Unable to delete the cart while checkout is in progress.'], 409);
+        }
+    }
+
+    private function deleteCartLocked(Request $request, Response $response, array $argv): Response
+    {
         $cartId = $argv['cartId'];
         $cartId = $argv['cartId'];
         $params = $request->getParsedBody();
@@ -126,6 +157,12 @@ class CartController extends Controller {
             return response(['error' => 'Customer ID or guest ID is required to delete cart'], 403);
         }
 
+        if (CheckoutCartLock::enabled()) {
+            $existing = $this->cartService->getCartFromId($cartId, $customerId, $guestId);
+            if ($existing === null) return response(['error' => 'Cart not found.'], 404);
+            $this->retireAndRemoveProtection((int) $cartId, $customerId, $guestId, $existing);
+        }
+
         $result = $this->cartService->deleteCart($cartId, $customerId, $guestId);
         
         if($result->failed()) {
@@ -135,6 +172,19 @@ class CartController extends Controller {
         }
 
         return response(['message' => 'Cart deleted successfully']);
+    }
+
+    private function retireAndRemoveProtection(int $cartId, mixed $customerId, mixed $guestId, CartEntity $cart): void
+    {
+        $productId = filter_var(env('PURCHASE_PROTECTION_PRODUCT_ID'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($productId === false || $this->cartPaymentGuard === null) throw new \RuntimeException('Protection is not configured.');
+        $this->cartPaymentGuard->retireUnpaidSessions($cartId);
+        foreach ($cart->toArray()['products'] ?? [] as $product) {
+            if ((int) ($product['id_product'] ?? 0) === $productId) {
+                $this->cartService->setPurchaseProtection($cartId, $customerId, $guestId, $productId, null);
+                return;
+            }
+        }
     }
 
     public function getFeaturedCoupons(Request $request, Response $response, array $argv): Response
