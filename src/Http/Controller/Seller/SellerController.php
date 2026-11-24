@@ -573,6 +573,20 @@ class SellerController
         }
     }
 
+    public function dashboardWishlist(Request $request): ResponseInterface
+    {
+        try {
+            $manufacturer = $this->resolveAuthenticatedManufacturer($request);
+            $page = max(1, (int) ($request->getQueryParams()['page'] ?? 1));
+            $statistics = new \PS\Webservice\Service\Seller\WishlistStatistics($manufacturer->getConnection());
+            return response($statistics->forSeller((int) $manufacturer->id_manufacturer, $page));
+        } catch (\Throwable $e) {
+            Log::error('Unable to load seller wishlist statistics', ['exception' => $e::class]);
+            $status = in_array($e->getCode(), [401, 404], true) ? $e->getCode() : 500;
+            return response(['message' => 'Unable to load wishlist statistics'], $status);
+        }
+    }
+
     public function dashboardProductsMetrics(Request $request): ResponseInterface
     {
         try {

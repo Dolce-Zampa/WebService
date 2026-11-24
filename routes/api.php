@@ -131,6 +131,7 @@ $app->group('/api/seller', function() use ($app) {
     $app->get('/api/seller/orders', PS\Webservice\Http\Controller\Seller\SellerController::class . ':orders');
     $app->get('/api/seller/dashboard/summary', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardSummary');
     $app->get('/api/seller/dashboard/products-metrics', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardProductsMetrics');
+    $app->get('/api/seller/dashboard/wishlist', PS\Webservice\Http\Controller\Seller\SellerController::class . ':dashboardWishlist');
     $app->post('/api/seller/products', PS\Webservice\Http\Controller\Seller\SellerController::class . ':products');
     $app->get('/api/seller/products/{sellerid}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':sellerProucts');
     $app->get('/api/seller/product/{id_product}', PS\Webservice\Http\Controller\Seller\SellerController::class . ':productDetail');
