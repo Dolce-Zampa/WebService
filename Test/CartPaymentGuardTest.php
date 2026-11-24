@@ -22,6 +22,12 @@ final class CartPaymentGuardTest extends TestCase
             $table->dateTime('gift_card_payment_verified_at')->nullable();
             $table->dateTime('gift_card_released_at')->nullable();
         });
+        $db->schema()->create('protection_cart_mutations', function ($table): void {
+            $table->integer('cart_id')->primary();
+            $table->string('operation_id');
+            $table->string('operation');
+            $table->dateTime('created_at');
+        });
         return $db;
     }
 
@@ -57,5 +63,33 @@ final class CartPaymentGuardTest extends TestCase
             'active gift card' => [['checkout_session_id' => 'cs_gift', 'gift_card_reservation_id' => 'hold']],
             'verified gift card' => [['checkout_session_id' => 'cs_gift', 'gift_card_payment_verified_at' => '2026-01-01 00:00:00']],
         ];
+    }
+
+    public function testConfirmedCartMutationClearsItsJournal(): void
+    {
+        $db = $this->database();
+        $guard = new CartPaymentGuard($db, $this->createMock(PaymentGatewayInterface::class));
+        $result = $guard->mutate(42, 'add_protection', static function () use ($db): string {
+            self::assertSame('add_protection', $db->table('protection_cart_mutations')->where('cart_id', 42)->value('operation'));
+            return 'done';
+        });
+        self::assertSame('done', $result);
+        $guard->assertNoPendingMutation(42);
+        self::assertSame(0, $db->table('protection_cart_mutations')->count());
+    }
+
+    public function testUncertainCartMutationRemainsBlocked(): void
+    {
+        $db = $this->database();
+        $guard = new CartPaymentGuard($db, $this->createMock(PaymentGatewayInterface::class));
+        try {
+            $guard->mutate(42, 'add_protection', static function (): void { throw new RuntimeException('timeout'); });
+            self::fail('Expected the timeout.');
+        } catch (RuntimeException $error) {
+            self::assertSame('timeout', $error->getMessage());
+        }
+        self::assertSame(1, $db->table('protection_cart_mutations')->where('cart_id', 42)->count());
+        $this->expectException(RuntimeException::class);
+        $guard->assertNoPendingMutation(42);
     }
 }

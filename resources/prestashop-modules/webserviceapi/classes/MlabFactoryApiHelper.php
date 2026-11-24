@@ -246,7 +246,7 @@ class MlabFactoryApiHelper
     {
         $cartProducts = $cart->getProducts();
         $protectionId = getenv('PURCHASE_PROTECTION_PRODUCT_ID');
-        if ($protectionId === false || $protectionId === '') {
+        if (($protectionId === false || $protectionId === '') && class_exists('Configuration')) {
             $protectionId = Configuration::get('PURCHASE_PROTECTION_PRODUCT_ID');
         }
         $protectionId = (int) $protectionId;

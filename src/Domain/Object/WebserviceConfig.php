@@ -35,7 +35,7 @@ final class WebserviceConfig {
         return $this->api . $api;
     }
 
-    public function moduleController(string $controller): string
+    public function moduleController(string $controller, array $query = []): string
     {
         $base = rtrim($this->base_uri, '/');
         if (!str_ends_with($base, '/api')) {
@@ -46,7 +46,7 @@ final class WebserviceConfig {
             'fc' => 'module',
             'module' => 'webserviceapi',
             'controller' => $controller,
-        ], '', '&', PHP_QUERY_RFC3986);
+        ] + $query, '', '&', PHP_QUERY_RFC3986);
     }
 
     public function toArray(): array

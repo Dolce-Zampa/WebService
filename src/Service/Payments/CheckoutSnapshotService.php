@@ -257,6 +257,30 @@ final class CheckoutSnapshotService
             'verified' => !empty($record->gift_card_payment_verified_at)];
     }
 
+    /** Recover the agreed fee when a cart still contains its previously quoted service line. */
+    public function protectionFeeForCart(int $cartId, int $productId, int $unitCents, int $grandCents): ?int
+    {
+        if ($cartId < 1 || $productId < 1 || $unitCents < 1 || $grandCents < 1) {
+            throw new \InvalidArgumentException('Invalid protection cart.');
+        }
+        $records = $this->db->table(self::TABLE)->where('cart_id', $cartId)
+            ->orderByDesc('created_at')->limit(25)->get();
+        foreach ($records as $record) {
+            $snapshot = $this->payload($record);
+            $protection = $snapshot['purchase_protection'] ?? null;
+            if (!is_array($protection) || ($protection['product_id'] ?? null) !== $productId
+                || !is_int($protection['price_cents'] ?? null) || $protection['price_cents'] < 1
+                || ($snapshot['totals']['grand_total_cents'] ?? null) !== $grandCents) continue;
+            foreach ($snapshot['lines'] ?? [] as $line) {
+                if (($line['product_id'] ?? null) === $productId && ($line['quantity'] ?? null) === 1
+                    && ($line['unit_amount_tax_incl_cents'] ?? null) === $unitCents) {
+                    return $protection['price_cents'];
+                }
+            }
+        }
+        return null;
+    }
+
     /** Resolve the exact attempt, including a released attempt for safe cancellation retries. */
     public function giftCardSnapshotById(string $snapshotId): ?array
     {

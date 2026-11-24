@@ -80,7 +80,10 @@ class webserviceapipurchaseprotectionModuleFrontController extends MlabFactoryAp
             throw new MlabFactoryApiException('A checkout address is required.', 422);
         }
         $taxGroup = Product::getIdTaxRulesGroupByIdProduct($productId, $this->context);
-        $net = TaxManagerFactory::getManager($address, $taxGroup)->getTaxCalculator()->removeTaxes($price / 100);
+        // specific_price.price is DECIMAL(20,6); PrestaShop rejects an
+        // unrounded tax-exclusive float with more than nine decimal digits.
+        $calculator = TaxManagerFactory::getManager($address, $taxGroup)->getTaxCalculator();
+        $net = round($calculator->removeTaxes($price / 100), 6);
         $specific = new SpecificPrice();
         $specific->id_shop_group = 0;
         $specific->id_shop = (int) $cart->id_shop;
@@ -107,8 +110,30 @@ class webserviceapipurchaseprotectionModuleFrontController extends MlabFactoryAp
             $cart->getProducts(true);
             $after = MlabFactoryApiHelper::serializeCart($cart);
             $oldTotal = (int) round($before['totals']['grand_total_tax_incl'] * 100);
-            $newTotal = (int) round($after['totals']['grand_total_tax_incl'] * 100);
             $oldShipping = (int) round($before['totals']['shipping_tax_incl'] * 100);
+            $newTotal = (int) round($after['totals']['grand_total_tax_incl'] * 100);
+
+            // A cart-wide coupon can discount the service as well. Find a
+            // cart-specific list price whose final contribution is exactly the
+            // agreed fee; never change the coupon or the goods to compensate.
+            if ($newTotal !== $oldTotal + $price) {
+                $low = 1;
+                $high = $price;
+                $maxPrice = $price <= intdiv(PHP_INT_MAX, 1000) ? min(999999999999, $price * 1000) : 999999999999;
+                while ($newTotal < $oldTotal + $price && $high < $maxPrice) {
+                    $low = $high + 1;
+                    $high = min($maxPrice, $high * 2);
+                    $after = $this->priceService($cart, $specific, $calculator, $high);
+                    $newTotal = (int) round($after['totals']['grand_total_tax_incl'] * 100);
+                }
+                while ($newTotal !== $oldTotal + $price && $low <= $high) {
+                    $candidate = $low + intdiv($high - $low, 2);
+                    $after = $this->priceService($cart, $specific, $calculator, $candidate);
+                    $newTotal = (int) round($after['totals']['grand_total_tax_incl'] * 100);
+                    if ($newTotal < $oldTotal + $price) $low = $candidate + 1;
+                    elseif ($newTotal > $oldTotal + $price) $high = $candidate - 1;
+                }
+            }
             $newShipping = (int) round($after['totals']['shipping_tax_incl'] * 100);
             if ($newTotal !== $oldTotal + $price || $newShipping !== $oldShipping) {
                 throw new MlabFactoryApiException('Protection price is incompatible with the cart.', 409);
@@ -121,5 +146,14 @@ class webserviceapipurchaseprotectionModuleFrontController extends MlabFactoryAp
             $specific->delete();
             throw $error;
         }
+    }
+
+    private function priceService(Cart $cart, SpecificPrice $specific, $calculator, $grossCents)
+    {
+        $specific->price = round($calculator->removeTaxes($grossCents / 100), 6);
+        if (!$specific->update()) throw new MlabFactoryApiException('Unable to reprice protection.', 500);
+        if (method_exists($cart, 'resetProductRelatedStaticCache')) $cart->resetProductRelatedStaticCache();
+        $cart->getProducts(true);
+        return MlabFactoryApiHelper::serializeCart($cart);
     }
 }

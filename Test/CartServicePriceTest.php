@@ -7,6 +7,19 @@ use PHPUnit\Framework\TestCase;
 
 final class CartServicePriceTest extends TestCase
 {
+    public function test_purchase_protection_uses_the_native_module_endpoint(): void
+    {
+        $http = $this->createMock(HttpServiceInterface::class);
+        $http->expects(self::once())->method('setModuleController')->with('purchaseprotection');
+        $http->expects(self::never())->method('setUrl');
+        $http->expects(self::once())->method('invoke')->with('POST', [
+            'id_cart' => 42, 'id_customer' => null, 'id_guest' => 8, 'id_product' => 277, 'price_cents' => 400,
+        ])->willReturnSelf();
+        $http->method('failed')->willReturn(false);
+        $http->method('toArray')->willReturn(['data' => ['cart' => ['id' => 42, 'products' => []]]]);
+        self::assertSame(42, (new Cart($http))->setPurchaseProtection(42, null, 8, 277, 400)->getId());
+    }
+
     public function test_get_product_price_by_id_uses_the_tax_inclusive_prestashop_price(): void
     {
         $httpService = $this->createMock(HttpServiceInterface::class);

@@ -14,6 +14,14 @@ final class CheckoutCartLock
         return filter_var(env('PURCHASE_PROTECTION_CHECKOUT_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
     }
 
+    public static function available(): bool
+    {
+        if (!self::enabled() || filter_var(env('APP_DISABLE_CACHE', false), FILTER_VALIDATE_BOOLEAN)) return false;
+        $cache = Cache::getFacadeRoot();
+        $store = is_object($cache) && method_exists($cache, 'getStore') ? $cache->getStore() : null;
+        return $store instanceof RedisStore;
+    }
+
     /** @template T @param callable():T $callback @return T */
     public function run(int $cartId, callable $callback): mixed
     {

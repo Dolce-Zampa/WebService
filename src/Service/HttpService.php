@@ -34,9 +34,9 @@ class HttpService implements HttpServiceInterface
         $this->api = $this->config->api($url);
     }
 
-    public function setModuleController(string $controller): void
+    public function setModuleController(string $controller, array $query = []): void
     {
-        $this->api = $this->config->moduleController($controller);
+        $this->api = $this->config->moduleController($controller, $query);
     }
 
     public function setQueryParams(array $params): void

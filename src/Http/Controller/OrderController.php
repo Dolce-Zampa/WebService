@@ -231,9 +231,14 @@ class OrderController extends CartController
                 }
                 if ($serviceCents > 0) {
                     $grand = $data['totals']['grand_total_tax_incl'] ?? null;
-                    if (!is_numeric($grand) || (int) round((float) $grand * 100) < $serviceCents) throw new \RuntimeException('Invalid cart total.');
+                    if (!is_numeric($grand) || $this->checkoutSnapshots === null) throw new \RuntimeException('Invalid cart total.');
+                    $grandCents = (int) round((float) $grand * 100);
+                    // A coupon can discount the service line. The stored agreed
+                    // contribution, not its nominal price, is the amount to remove.
+                    $fee = $this->checkoutSnapshots->protectionFeeForCart($cartId, $serviceId, $serviceCents, $grandCents);
+                    if ($fee === null || $grandCents < $fee) throw new \RuntimeException('Unreconciled protection line.');
                     $data['products'] = $goods;
-                    $data['totals']['grand_total_tax_incl'] = ((int) round((float) $grand * 100) - $serviceCents) / 100;
+                    $data['totals']['grand_total_tax_incl'] = ($grandCents - $fee) / 100;
                 }
             }
             $quote = ProtectionQuote::fromCart($data);
@@ -241,9 +246,8 @@ class OrderController extends CartController
                 'base_cents' => $quote->baseCents, 'price_cents' => $quote->priceCents,
                 'rate_basis_points' => $quote->rateBasisPoints, 'currency' => 'EUR',
                 'is_estimate' => true,
-                // Never advertise an actionable checkout until cart mutation and
-                // payment-session reconciliation are integrated end to end.
-                'checkout_available' => false,
+                'checkout_available' => $serviceId !== false && $this->checkoutSnapshots !== null
+                    && $this->cartPaymentGuard !== null && CheckoutCartLock::available(),
             ])->withHeader('Cache-Control', 'no-store');
         } catch (\Throwable $error) {
             return response(['error' => 'Purchase protection quote unavailable.'], 503);
