@@ -13,7 +13,7 @@ interface HttpServiceInterface {
 
     public function setUrl(string $url): void;
 
-    public function setModuleController(string $controller): void;
+    public function setModuleController(string $controller, array $query = []): void;
 
     public function getUrl(): string;
 

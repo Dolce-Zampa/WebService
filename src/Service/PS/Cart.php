@@ -9,10 +9,18 @@ use PS\Webservice\Service\HttpServiceInterface;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Collection;
 use PS\Webservice\Traits\UuidGenerator;
+use PS\Webservice\Service\PurchaseProtection\CheckoutCartLock;
 
 class Cart extends Carrier implements PrestashopServiceInterface {
 
     use UuidGenerator;
+
+    /** Use the native module route when protected checkout is enabled. */
+    protected function setCheckoutModuleRoute(string $controller, string $legacyPath, array $query = []): void
+    {
+        if (CheckoutCartLock::enabled()) $this->httpService->setModuleController($controller, $query);
+        else $this->httpService->setUrl($legacyPath);
+    }
 
     public function getCartListFromUserId(?string $customerId = null, ?string $guestId = null): ?CartEntity
     {
@@ -20,7 +28,9 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             !is_null($customerId) ? 'id_customer' : 'id_guest' => !is_null($customerId) ? $customerId : $guestId
         ]);
 
-        $this->httpService->setUrl("/carts?{$queryString}");
+        $this->setCheckoutModuleRoute('cart', "/carts?{$queryString}", [
+            !is_null($customerId) ? 'id_customer' : 'id_guest' => !is_null($customerId) ? $customerId : $guestId,
+        ]);
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -39,7 +49,9 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             'id_customer' => $customerId,
             'id_guest' => $guestId,
         ]);
-        $this->httpService->setUrl("/carts?{$queryString}");
+        $this->setCheckoutModuleRoute('cart', "/carts?{$queryString}", [
+            'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId,
+        ]);
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -64,7 +76,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
 
     public function newCart(array $cartOptions): HttpServiceInterface
     {
-        $this->httpService->setUrl("/carts?ok=1");
+        $this->setCheckoutModuleRoute('cart', '/carts?ok=1');
 
         //create a payload
         $products = [
@@ -140,7 +152,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     public function updateCart(array $product, $cartId, $customerId, bool $isGuest = false, ?string $op = 'up'): HttpServiceInterface
     {
         $type = $isGuest ? 'guest' : 'customer';
-        $this->httpService->setUrl('/carts');
+        $this->setCheckoutModuleRoute('cart', '/carts');
 
         //create a payload
         $products = [
@@ -256,7 +268,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             $codes = [''];
         }
         foreach ($codes as $code) {
-            $this->httpService->setUrl('/cart_rules');
+            $this->setCheckoutModuleRoute('coupon', '/cart_rules');
             $response = $this->httpService->invoke('POST', [
                 'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId,
                 'id_carrier' => $carrierId, 'checkout' => true, 'code' => $code,
@@ -270,6 +282,58 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             if ($response->failed() || empty($data['data']['cart'])) {
                 throw new \InvalidArgumentException('Unable to validate coupon cart.');
             }
+        }
+        return CartEntity::create($data['data']['cart'], $this);
+    }
+
+    /** Check that PrestaShop can accept the configured service before offering it. */
+    public function purchaseProtectionAvailable(int $productId): bool
+    {
+        if ($productId < 1) return false;
+        try {
+            $this->httpService->setModuleController('purchaseprotection', ['id_product' => $productId]);
+            $response = $this->httpService->invoke('GET');
+            $data = $response->toArray();
+            if ($response->failed()) {
+                Log::warning('Purchase protection readiness endpoint returned an error.', [
+                    'product_id' => $productId,
+                    'http_status' => $response->getHttpCode(),
+                ]);
+                return false;
+            }
+            $available = ($data['success'] ?? false) === true
+                && ($data['data']['available'] ?? false) === true
+                && (int) ($data['data']['product_id'] ?? 0) === $productId;
+            if (!$available) {
+                Log::warning('Purchase protection readiness endpoint returned an invalid availability response.', [
+                    'product_id' => $productId,
+                    'success' => ($data['success'] ?? false) === true,
+                    'available' => ($data['data']['available'] ?? false) === true,
+                    'returned_product_matches' => (int) ($data['data']['product_id'] ?? 0) === $productId,
+                ]);
+            }
+            return $available;
+        } catch (\Throwable $error) {
+            Log::warning('Purchase protection module is unavailable.', ['exception_type' => get_class($error)]);
+            return false;
+        }
+    }
+
+    /** Update only the configured protection service through the authenticated module. */
+    public function setPurchaseProtection(int $cartId, mixed $customerId, mixed $guestId, int $productId, ?int $priceCents): CartEntity
+    {
+        if ($cartId < 1 || $productId < 1 || ($priceCents !== null && $priceCents < 1)) {
+            throw new \InvalidArgumentException('Invalid purchase protection request.');
+        }
+        // /api/* may be intercepted by PrestaShop's native webservice.
+        $this->httpService->setModuleController('purchaseprotection');
+        $response = $this->httpService->invoke('POST', [
+            'id_cart' => $cartId, 'id_customer' => $customerId, 'id_guest' => $guestId,
+            'id_product' => $productId, 'price_cents' => $priceCents,
+        ]);
+        $data = $response->toArray();
+        if ($response->failed() || empty($data['data']['cart'])) {
+            throw new \RuntimeException('Unable to update purchase protection.');
         }
         return CartEntity::create($data['data']['cart'], $this);
     }
@@ -342,7 +406,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
     private function invokeCartRules(array $queryParams): ?array
     {
         $queryString = http_build_query($queryParams);
-        $this->httpService->setUrl("/cart_rules?{$queryString}");
+        $this->setCheckoutModuleRoute('coupon', "/cart_rules?{$queryString}", $queryParams);
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -379,7 +443,7 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         }
 
         $queryString = http_build_query($queryParams);
-        $this->httpService->setUrl("/carts?{$queryString}");
+        $this->setCheckoutModuleRoute('cart', "/carts?{$queryString}", $queryParams);
 
         try {
             return $this->httpService->invoke('DELETE', $payload);

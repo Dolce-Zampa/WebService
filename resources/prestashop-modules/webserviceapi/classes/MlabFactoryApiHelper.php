@@ -60,6 +60,34 @@ class MlabFactoryApiHelper
         return in_array(strtolower((string) $value), array('1', 'true', 'yes', 'y', 'on'), true);
     }
 
+    /**
+     * Read module settings from PrestaShop's parameters.php, with the standard
+     * PrestaShop Configuration store as a fallback for existing installations.
+     */
+    public static function getPurchaseProtectionConfig($parameter, $configurationKey)
+    {
+        if (defined('_PS_ROOT_DIR_')) {
+            $parametersFile = _PS_ROOT_DIR_ . '/app/config/parameters.php';
+            if (is_file($parametersFile) && is_readable($parametersFile)) {
+                $settings = require $parametersFile;
+                if (is_array($settings) && isset($settings['parameters']) && is_array($settings['parameters'])
+                    && array_key_exists($parameter, $settings['parameters'])
+                    && $settings['parameters'][$parameter] !== null && $settings['parameters'][$parameter] !== '') {
+                    return $settings['parameters'][$parameter];
+                }
+            }
+        }
+
+        if (class_exists('Configuration')) {
+            $value = Configuration::get($configurationKey);
+            if ($value !== false && $value !== null && $value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
     public static function getCustomerPayload(array $payload)
     {
         $customer = self::getArrayValue($payload, 'customer');
@@ -245,6 +273,8 @@ class MlabFactoryApiHelper
     public static function serializeCart(Cart $cart)
     {
         $cartProducts = $cart->getProducts();
+        $protectionId = self::getPurchaseProtectionConfig('purchase_protection_product_id', 'PURCHASE_PROTECTION_PRODUCT_ID');
+        $protectionId = (int) $protectionId;
         $metadataByProductId = array();
         $productIds = array_unique(array_map(function ($product) {
             return (int) $product['id_product'];
@@ -284,6 +314,7 @@ class MlabFactoryApiHelper
                 'notes' => MlabFactoryCartNotes::get($cart, (int) $product['id_product'], (int) $product['id_customization']),
                 'name' => (string) $product['name'],
                 'is_virtual' => (bool) ($metadata['is_virtual'] ?? $product['is_virtual'] ?? false),
+                'is_purchase_protection' => $protectionId > 0 && (int) $product['id_product'] === $protectionId,
                 'id_manufacturer' => (int) ($metadata['id_manufacturer'] ?? $product['id_manufacturer'] ?? 0),
                 'manufacturer_name' => (string) ($metadata['manufacturer_name'] ?? ''),
                 'id_supplier' => (int) ($metadata['id_supplier'] ?? $product['id_supplier'] ?? 0),

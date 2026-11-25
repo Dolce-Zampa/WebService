@@ -6,6 +6,7 @@ namespace PS\Webservice\Service\Payments;
 
 use Illuminate\Database\Capsule\Manager;
 use PS\Webservice\Domain\Object\OrderSession;
+use PS\Webservice\Service\PurchaseProtection\ProtectionQuote;
 
 /**
  * Stores the checkout facts that are approved before a buyer is redirected to
@@ -256,6 +257,30 @@ final class CheckoutSnapshotService
             'verified' => !empty($record->gift_card_payment_verified_at)];
     }
 
+    /** Recover the agreed fee when a cart still contains its previously quoted service line. */
+    public function protectionFeeForCart(int $cartId, int $productId, int $unitCents, int $grandCents): ?int
+    {
+        if ($cartId < 1 || $productId < 1 || $unitCents < 1 || $grandCents < 1) {
+            throw new \InvalidArgumentException('Invalid protection cart.');
+        }
+        $records = $this->db->table(self::TABLE)->where('cart_id', $cartId)
+            ->orderByDesc('created_at')->limit(25)->get();
+        foreach ($records as $record) {
+            $snapshot = $this->payload($record);
+            $protection = $snapshot['purchase_protection'] ?? null;
+            if (!is_array($protection) || ($protection['product_id'] ?? null) !== $productId
+                || !is_int($protection['price_cents'] ?? null) || $protection['price_cents'] < 1
+                || ($snapshot['totals']['grand_total_cents'] ?? null) !== $grandCents) continue;
+            foreach ($snapshot['lines'] ?? [] as $line) {
+                if (($line['product_id'] ?? null) === $productId && ($line['quantity'] ?? null) === 1
+                    && ($line['unit_amount_tax_incl_cents'] ?? null) === $unitCents) {
+                    return $protection['price_cents'];
+                }
+            }
+        }
+        return null;
+    }
+
     /** Resolve the exact attempt, including a released attempt for safe cancellation retries. */
     public function giftCardSnapshotById(string $snapshotId): ?array
     {
@@ -297,10 +322,28 @@ final class CheckoutSnapshotService
             throw new \InvalidArgumentException('Checkout snapshot requires at least one product line.');
         }
 
+        $protection = null;
+        $protectionKeys = ['protection_product_id', 'protection_base_cents', 'protection_rate_basis_points', 'protection_price_cents'];
+        if (array_intersect($protectionKeys, array_keys($metadata)) !== []) {
+            foreach ($protectionKeys as $key) {
+                if (!isset($metadata[$key])) throw new \InvalidArgumentException('Incomplete purchase protection.');
+            }
+            $productId = $this->positiveInteger($metadata['protection_product_id'], 'protection product ID');
+            $base = $this->positiveInteger($metadata['protection_base_cents'], 'protection base');
+            $rate = $this->positiveInteger($metadata['protection_rate_basis_points'], 'protection rate');
+            $price = $this->positiveInteger($metadata['protection_price_cents'], 'protection price');
+            if (ProtectionQuote::calculate($base, $rate)->priceCents !== $price) {
+                throw new \InvalidArgumentException('Purchase protection quote is inconsistent.');
+            }
+            $protection = ['product_id' => $productId, 'base_cents' => $base,
+                'rate_basis_points' => $rate, 'price_cents' => $price, 'status' => 'pending_purchase'];
+        }
+
         $commissionRates = $this->commissionRates($products);
         $lines = [];
         $sellerTotals = [];
         $productsCents = 0;
+        $protectionLines = 0;
         foreach ($products as $product) {
             if (!is_array($product)) {
                 throw new \InvalidArgumentException('Checkout snapshot has an invalid cart product.');
@@ -310,8 +353,15 @@ final class CheckoutSnapshotService
             $unitAmount = $this->minorAmount($product['price_wt'] ?? null, 'product price');
             $totalAmount = $unitAmount * $quantity;
             $sellerId = $this->optionalPositiveInteger($product['id_manufacturer'] ?? null);
+            if ($protection !== null && $productId === $protection['product_id']) {
+                if (++$protectionLines !== 1 || $quantity !== 1 || $unitAmount < $protection['price_cents']
+                    || empty($product['is_virtual']) || !empty($product['id_product_attribute']) || !empty($product['id_customization'])) {
+                    throw new \InvalidArgumentException('Invalid purchase protection service line.');
+                }
+                $sellerId = null;
+            }
             $commission = $sellerId === null ? null : ($commissionRates[$sellerId] ?? $this->defaultCommissionBasisPoints());
-            if (StripeConnectModule::enabled() && $sellerId === null) {
+            if (StripeConnectModule::enabled() && $sellerId === null && ($protection === null || $productId !== $protection['product_id'])) {
                 throw new \InvalidArgumentException('Every Connect checkout product must have a seller.');
             }
 
@@ -345,6 +395,10 @@ final class CheckoutSnapshotService
 
         $shippingCents = $this->minorAmount($cart['totals']['shipping_tax_incl'] ?? 0, 'shipping total');
         $grandTotalCents = $this->minorAmount($session->payableTotal(), 'checkout total');
+        if ($protection !== null && ($protectionLines !== 1
+            || $grandTotalCents !== $protection['base_cents'] + $shippingCents + $protection['price_cents'])) {
+            throw new \InvalidArgumentException('Purchase protection does not match the checkout total.');
+        }
         $discountCents = $productsCents + $shippingCents - $grandTotalCents;
         if ($discountCents < 0) {
             throw new \RuntimeException('Checkout snapshot total is greater than its product and shipping totals.');
@@ -376,6 +430,10 @@ final class CheckoutSnapshotService
         ];
         if (isset($metadata['inpost_point_id'])) {
             $payload['inpost_point_id'] = (string) $metadata['inpost_point_id'];
+        }
+        if ($protection !== null) {
+            $payload['purchase_protection'] = $protection;
+            $payload['totals']['protection_cents'] = $protection['price_cents'];
         }
         $tender = $session->giftCardTender();
         if ($tender !== null) {

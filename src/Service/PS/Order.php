@@ -42,7 +42,7 @@ class Order extends Cart implements PrestashopServiceInterface
             'reference' => $cachedOrder[0]['reference'],
         ]);
 
-        $this->httpService->setUrl("/orders?{$queryString}");
+        $this->setCheckoutModuleRoute('order', "/orders?{$queryString}", ['reference' => $cachedOrder[0]['reference']]);
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -63,7 +63,7 @@ class Order extends Cart implements PrestashopServiceInterface
             'id_customer' => $customerId,
         ]);
 
-        $this->httpService->setUrl("/orders?{$queryString}");
+        $this->setCheckoutModuleRoute('order', "/orders?{$queryString}", ['id_customer' => $customerId]);
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -92,7 +92,7 @@ class Order extends Cart implements PrestashopServiceInterface
         $queryString = http_build_query([
             'id_order' => $orderId,
         ]);
-        $this->httpService->setUrl("/orders?{$queryString}");
+        $this->setCheckoutModuleRoute('order', "/orders?{$queryString}", ['id_order' => $orderId]);
 
         try {
             $response = $this->httpService->invoke('GET');
@@ -109,7 +109,7 @@ class Order extends Cart implements PrestashopServiceInterface
 
     public function newOrder(CartEntity $cart): CartEntity
     {
-        $this->httpService->setUrl("/orders");
+        $this->setCheckoutModuleRoute('order', '/orders');
 
         try {
             $response = $this->httpService->invoke('POST', $cart->generatePayload());
@@ -128,7 +128,7 @@ class Order extends Cart implements PrestashopServiceInterface
             throw new \InvalidArgumentException('Validation failed: ' . implode(', ', $errors));
         }
 
-        $this->httpService->setUrl('/orders');
+        $this->setCheckoutModuleRoute('order', '/orders');
 
         $orderData = [
             'id_cart' => $confirmSession->id_cart,
@@ -307,7 +307,7 @@ class Order extends Cart implements PrestashopServiceInterface
         if ($cartId < 1 || !preg_match('/^[a-f0-9]{32}$/D', $snapshotId)) {
             throw new \InvalidArgumentException('Invalid gift card settlement.');
         }
-        $this->httpService->setUrl('/orders');
+        $this->setCheckoutModuleRoute('order', '/orders');
         $response = $this->httpService->invoke('POST', [
             'action' => 'settle_gift_card',
             'id_cart' => $cartId,
@@ -334,7 +334,7 @@ class Order extends Cart implements PrestashopServiceInterface
 
     public function settleStripeBankTransfer(int $cartId, string $paymentIntentId): void
     {
-        $this->httpService->setUrl('/orders');
+        $this->setCheckoutModuleRoute('order', '/orders');
         $response = $this->httpService->invoke('POST', [
             'action' => 'settle_stripe_bank_transfer',
             'id_cart' => $cartId,

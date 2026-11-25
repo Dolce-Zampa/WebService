@@ -15,6 +15,10 @@ use PS\Webservice\Service\Payments\CheckoutPaymentAlreadyCompletedException;
 use PS\Webservice\Service\GiftCard\GiftCardApiException;
 use PS\Webservice\Service\GiftCard\GiftCardCheckoutRateLimiter;
 use PS\Webservice\Service\GiftCard\GiftCardTender;
+use PS\Webservice\Service\PurchaseProtection\ProtectionQuote;
+use PS\Webservice\Service\PurchaseProtection\ProtectedCartVerifier;
+use PS\Webservice\Service\PurchaseProtection\CartPaymentGuard;
+use PS\Webservice\Service\PurchaseProtection\CheckoutCartLock;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Repositories\PrestashopRepository;
 use PS\Webservice\Traits\Order as OrderHelper;
@@ -45,6 +49,7 @@ class OrderController extends CartController
         private readonly ?\Closure $giftCardSettlementFactory = null,
         private readonly ?GiftCardCheckoutRateLimiter $giftCardRateLimiter = null,
         private readonly ?\PS\Webservice\Service\PickupPoints\InpostCheckout $inpostCheckout = null,
+        private readonly ?CartPaymentGuard $cartPaymentGuard = null,
     )
     {
         $this->stripeService = $stripeService;
@@ -187,6 +192,94 @@ class OrderController extends CartController
         }
     }
 
+    /** Preview the price from the currently persisted cart; checkout must revalidate it. */
+    public function previewPurchaseProtection(Request $request, Response $response, array $argv): Response
+    {
+        $payload = $request->getParsedBody();
+        if (!is_array($payload)) return response(['error' => 'Invalid cart.'], 422);
+        $cartId = filter_var($payload['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $customerId = $payload['id_customer'] ?? null;
+        $guestId = $payload['id_guest'] ?? null;
+        if ($cartId === false || ($customerId === null) === ($guestId === null)) {
+            return response(['error' => 'Invalid cart owner.'], 422);
+        }
+        if (($customerId !== null && (filter_var($customerId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false
+                || $this->authenticatedCustomerId($request) !== (int) $customerId))
+            || ($guestId !== null && filter_var($guestId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
+            return response(['error' => 'Cart not found.'], 404);
+        }
+        try {
+            $cart = $this->orderService->getCartFromId($cartId, $customerId, $guestId);
+            if ($cart === null) return response(['error' => 'Cart not found.'], 404);
+            $data = $cart->toArray();
+            // A customer returning from an unpaid checkout can still have the
+            // service line in PrestaShop. Exclude it from the non-binding quote;
+            // the locked order flow recalculates the price after removing it.
+            $serviceId = filter_var(env('PURCHASE_PROTECTION_PRODUCT_ID'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if ($serviceId !== false) {
+                $goods = [];
+                $serviceCents = 0;
+                foreach ($data['products'] ?? [] as $line) {
+                    if (is_array($line) && (int) ($line['id_product'] ?? 0) === $serviceId) {
+                        if ($serviceCents !== 0 || (int) ($line['quantity'] ?? 0) !== 1
+                            || empty($line['is_virtual']) || !is_numeric($line['price_wt'] ?? null)
+                            || (float) $line['price_wt'] <= 0) throw new \RuntimeException('Invalid protection line.');
+                        $serviceCents = (int) round((float) $line['price_wt'] * 100);
+                    } else {
+                        $goods[] = $line;
+                    }
+                }
+                if ($serviceCents > 0) {
+                    $grand = $data['totals']['grand_total_tax_incl'] ?? null;
+                    if (!is_numeric($grand) || $this->checkoutSnapshots === null) throw new \RuntimeException('Invalid cart total.');
+                    $grandCents = (int) round((float) $grand * 100);
+                    // A coupon can discount the service line. The stored agreed
+                    // contribution, not its nominal price, is the amount to remove.
+                    $fee = $this->checkoutSnapshots->protectionFeeForCart($cartId, $serviceId, $serviceCents, $grandCents);
+                    if ($fee === null || $grandCents < $fee) throw new \RuntimeException('Unreconciled protection line.');
+                    $data['products'] = $goods;
+                    $data['totals']['grand_total_tax_incl'] = ($grandCents - $fee) / 100;
+                }
+            }
+            $quote = ProtectionQuote::fromCart($data);
+            $checkoutUnavailableReason = $serviceId === false ? 'product_id_not_configured'
+                : ($this->checkoutSnapshots === null ? 'checkout_snapshot_service_unavailable'
+                    : ($this->cartPaymentGuard === null ? 'cart_payment_guard_unavailable'
+                        : (!CheckoutCartLock::available() ? 'shared_cart_lock_unavailable' : null)));
+            $checkoutAvailable = $checkoutUnavailableReason === null;
+            if ($checkoutAvailable && $this->cartPaymentGuard !== null && $serviceId !== false) {
+                try {
+                    $this->cartPaymentGuard->assertNoPendingMutation($cartId);
+                    $checkoutAvailable = $this->orderService->purchaseProtectionAvailable($serviceId);
+                    if (!$checkoutAvailable) {
+                        $checkoutUnavailableReason = 'prestashop_product_unavailable';
+                    }
+                } catch (\Throwable $error) {
+                    $checkoutAvailable = false;
+                    $checkoutUnavailableReason = 'cart_mutation_reconciliation_required';
+                    Log::warning('Purchase protection checkout readiness check failed.', [
+                        'reason' => $checkoutUnavailableReason,
+                        'exception_type' => get_class($error),
+                    ]);
+                }
+            }
+            if (!$checkoutAvailable && $checkoutUnavailableReason !== 'cart_mutation_reconciliation_required') {
+                Log::warning('Purchase protection is hidden because checkout readiness failed.', [
+                    'reason' => $checkoutUnavailableReason,
+                    'product_id' => $serviceId === false ? null : $serviceId,
+                ]);
+            }
+            return response([
+                'base_cents' => $quote->baseCents, 'price_cents' => $quote->priceCents,
+                'rate_basis_points' => $quote->rateBasisPoints, 'currency' => 'EUR',
+                'is_estimate' => true,
+                'checkout_available' => $checkoutAvailable,
+            ])->withHeader('Cache-Control', 'no-store');
+        } catch (\Throwable $error) {
+            return response(['error' => 'Purchase protection quote unavailable.'], 503);
+        }
+    }
+
     /** Verify available credit without reserving it or creating an order. */
     public function previewGiftCard(Request $request, Response $response, array $argv): Response
     {
@@ -250,6 +343,19 @@ class OrderController extends CartController
     /** Expire the exact unpaid Stripe session before returning its reserved credit. */
     public function cancelGiftCardCheckout(Request $request, Response $response, array $argv): Response
     {
+        if (!CheckoutCartLock::enabled()) return $this->cancelGiftCardCheckoutLocked($request, $response, $argv);
+        $body = $request->getParsedBody();
+        $cartId = is_array($body) ? filter_var($body['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : false;
+        if ($cartId === false) return response(['error' => ['code' => 'invalid_input']], 422);
+        try {
+            return (new CheckoutCartLock())->run($cartId, fn () => $this->cancelGiftCardCheckoutLocked($request, $response, $argv));
+        } catch (\Throwable $error) {
+            return response(['error' => ['code' => 'temporarily_unavailable']], 503);
+        }
+    }
+
+    private function cancelGiftCardCheckoutLocked(Request $request, Response $response, array $argv): Response
+    {
         $payload = $request->getParsedBody();
         if (!is_array($payload) || !is_string($payload['checkout_snapshot_id'] ?? null)
             || !preg_match('/^[a-f0-9]{32}$/D', $payload['checkout_snapshot_id'])) {
@@ -300,9 +406,49 @@ class OrderController extends CartController
 
     public function createOrder(Request $request, Response $response, array $argv): Response
     {
+        if (!CheckoutCartLock::enabled()) {
+            return $this->createOrderLocked($request, $response, $argv, false);
+        }
+        $body = $request->getParsedBody();
+        $cartId = is_array($body) ? filter_var($body['id_cart'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : false;
+        if ($cartId === false) return response(['error' => 'Invalid cart.'], 422);
+        if ($this->cartPaymentGuard === null || $this->checkoutSnapshots === null) {
+            return response(['error' => 'Checkout is temporarily unavailable.'], 503);
+        }
+        try {
+            return (new CheckoutCartLock())->run($cartId, fn () => $this->createOrderLocked($request, $response, $argv, true));
+        } catch (\Throwable $error) {
+            Log::error('Unable to lock checkout cart.', ['exception_type' => get_class($error)]);
+            return response(['error' => 'Checkout is temporarily unavailable.'], 503);
+        }
+    }
+
+    private function createOrderLocked(Request $request, Response $response, array $argv, bool $protectionMode): Response
+    {
         $payload = $request->getParsedBody();
         if (!is_array($payload)) {
             throw new \InvalidArgumentException('Invalid payload format', 400);
+        }
+
+        $protectionSelected = $payload['purchase_protection'] ?? false;
+        if (array_key_exists('purchase_protection', $payload)) {
+            if (!is_bool($protectionSelected)) {
+                return response(['error' => 'Invalid purchase protection selection.'], 422);
+            }
+            if ($protectionSelected && !$protectionMode) {
+                return response(['error' => 'Purchase protection is not yet available.'], 503);
+            }
+        }
+        $protectionProductId = filter_var(env('PURCHASE_PROTECTION_PRODUCT_ID'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($protectionMode && $protectionProductId === false) {
+            return response(['error' => 'Checkout is temporarily unavailable.'], 503);
+        }
+        if ($protectionSelected && (!is_int($payload['purchase_protection_expected_cents'] ?? null)
+            || $payload['purchase_protection_expected_cents'] < 1)) {
+            return response(['error' => 'Invalid purchase protection quote.'], 422);
+        }
+        if ($protectionSelected && !$this->orderService->purchaseProtectionAvailable($protectionProductId)) {
+            return response(['error' => 'Purchase protection is temporarily unavailable.'], 503);
         }
 
         $giftCode = $payload['gift_card'] ?? null;
@@ -365,6 +511,32 @@ class OrderController extends CartController
         if (is_null($cart)) {
             return response([], 404);
         }
+        if ($protectionMode) {
+            if (($customerId !== null && ($guestId !== null || $this->authenticatedCustomerId($request) !== (int) $customerId))
+                || ($customerId === null && filter_var($guestId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false)) {
+                return response(['error' => 'Cart not found.'], 404);
+            }
+            try {
+                $this->cartPaymentGuard->assertNoPendingMutation((int) $payload['id_cart']);
+                $this->cartPaymentGuard->retireUnpaidSessions((int) $payload['id_cart']);
+                foreach ($cart->toArray()['products'] ?? [] as $product) {
+                    if ((int) ($product['id_product'] ?? 0) === $protectionProductId) {
+                        $cart = $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'remove_protection',
+                            fn () => $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, null));
+                        break;
+                    }
+                }
+            } catch (CheckoutPaymentAlreadyCompletedException $error) {
+                return response(['error' => 'A checkout for this cart has already been paid.'], 409);
+            } catch (\Throwable $error) {
+                Log::warning('Unable to reconcile previous checkout.', [
+                    'cart_id' => (int) $payload['id_cart'],
+                    'exception_type' => get_class($error),
+                    'exception_message' => $error->getMessage(),
+                ]);
+                return response(['error' => 'Unable to reconcile the previous checkout.'], 409);
+            }
+        }
         if ($giftCode === null && filter_var(env('GIFT_CARD_CHECKOUT_ENABLED', false), FILTER_VALIDATE_BOOLEAN)
             && $this->checkoutSnapshots !== null) {
             try {
@@ -421,14 +593,12 @@ class OrderController extends CartController
             // Quote the selected carrier with the checkout address before Stripe is
             // created. `cart_rules` accepts an empty code for this purpose; a code,
             // when present, is applied only after the cart has been quoted.
-            $cart = $this->orderService->prepareCouponCart(
-                $payload['id_cart'],
-                $customerId,
-                $guestId,
-                $carrierId,
-                $codes,
-                $checkout
+            $prepareCart = fn () => $this->orderService->prepareCouponCart(
+                $payload['id_cart'], $customerId, $guestId, $carrierId, $codes, $checkout
             );
+            $cart = $protectionMode
+                ? $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'prepare_checkout', $prepareCart)
+                : $prepareCart();
             if (array_key_exists('shipping_expected_cents', $payload)) {
                 $expectedShipping = $payload['shipping_expected_cents'];
                 $actualShipping = $cart->toArray()['totals']['shipping_tax_incl'] ?? null;
@@ -437,7 +607,39 @@ class OrderController extends CartController
                     return response(['error' => 'Shipping price changed'], 409);
                 }
             }
+            $protectionQuote = null;
+            if ($protectionSelected) {
+                $beforeProtection = $cart->toArray();
+                $protectionQuote = ProtectionQuote::fromCart($beforeProtection);
+                if ($protectionQuote->priceCents < 1) {
+                    return response(['error' => 'Purchase protection is unavailable for this cart.'], 422);
+                }
+                if ($payload['purchase_protection_expected_cents'] !== $protectionQuote->priceCents) {
+                    return response(['error' => ['code' => 'purchase_protection_changed'],
+                        'actual_price_cents' => $protectionQuote->priceCents], 409);
+                }
+                try {
+                    $cart = $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'add_protection',
+                        fn () => $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, $protectionQuote->priceCents));
+                } catch (\Throwable $error) {
+                    // A timeout does not prove the remote mutation failed. Do not
+                    // issue a concurrent compensating request on an uncertain cart.
+                    return response(['error' => 'Purchase protection requires cart reconciliation.'], 503);
+                }
+                try {
+                    ProtectedCartVerifier::verify($beforeProtection, $cart->toArray(), $protectionQuote, $protectionProductId);
+                } catch (\Throwable $error) {
+                    try {
+                        $this->cartPaymentGuard->mutate((int) $payload['id_cart'], 'remove_protection',
+                            fn () => $this->orderService->setPurchaseProtection((int) $payload['id_cart'], $customerId, $guestId, $protectionProductId, null));
+                    } catch (\Throwable $cleanupError) {
+                        Log::error('Unable to remove failed protection line.', ['cart_id' => (int) $payload['id_cart']]);
+                    }
+                    return response(['error' => 'Purchase protection could not be added to the cart.'], 409);
+                }
+            }
             $orderSession = $this->makeOrder($newOrder, $this->orderService, $cart->toArray()['products'] ?? [], $cart->toArray(), $giftCode !== null);
+            if ($protectionQuote !== null) $orderSession->setPurchaseProtection($protectionQuote, $protectionProductId);
             if (is_string($inpostPointId) && $inpostPointId !== '') {
                 $orderSession->setInpostPointId($inpostPointId);
             }
@@ -495,7 +697,7 @@ class OrderController extends CartController
                     return response(['checkout_status' => 'confirmed', 'gift_card' => $giftSummary,
                         'order' => $this->orderService->giftCardOrderSummary($orderId, (int) $payload['id_cart'])], 201);
                 }
-                $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray());
+                $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray(), $protectionMode);
                 $stripeExpires = (int) $orderSession->get('expires_at');
                 if ($stripeExpires > time()) {
                     $giftSummary['expires_at'] = gmdate('Y-m-d\TH:i:s\Z', min($stripeExpires, strtotime($tender->expiresAt)));
@@ -508,7 +710,7 @@ class OrderController extends CartController
                     'checkout_snapshot_id' => $created['id'], 'payment_url' => $checkoutUrl], 201);
             }
 
-            $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray());
+            $checkoutUrl = $this->createOrReuseCheckout($orderSession, $paymentService, $cart->toArray(), $protectionMode);
 
             return response([
                 'order' => $cart->toArray(),
@@ -559,11 +761,11 @@ class OrderController extends CartController
      *
      * @param array<string, mixed> $cart
      */
-    private function createOrReuseCheckout(OrderSession $orderSession, PaymentGatewayInterface $paymentService, array $cart): string
+    private function createOrReuseCheckout(OrderSession $orderSession, PaymentGatewayInterface $paymentService, array $cart, bool $forceNew = false): string
     {
         $fingerprint = $orderSession->checkoutAttemptFingerprint();
-        $callback = function () use ($orderSession, $paymentService, $cart): string {
-            $existingCheckoutUrl = $this->existingCheckoutUrl($orderSession);
+        $callback = function () use ($orderSession, $paymentService, $cart, $forceNew): string {
+            $existingCheckoutUrl = $forceNew ? null : $this->existingCheckoutUrl($orderSession);
             if ($existingCheckoutUrl !== null) {
                 return $existingCheckoutUrl;
             }

@@ -38,6 +38,7 @@ L'elenco seguente descrive **gli endpoint del modulo PrestaShop** (non le route 
 - `GET /api/cart_rules`
 - `GET /api/cart_rules?code=ESTATE2026&id_cart=55&id_customer=12`
 - `POST /api/cart_rules`
+- `POST /api/purchase_protection` (interno, disabilitato; integrazione checkout in corso)
 - `GET /api/wishlists?id_customer=12`
 - `POST /api/wishlists`
 - `PUT /api/wishlists`
@@ -48,6 +49,36 @@ L'elenco seguente descrive **gli endpoint del modulo PrestaShop** (non le route 
 - `GET /api/orders?id_guest=34`
 - `POST /api/orders`
 - `GET /api/promotions`
+
+### Protezione della spedizione
+
+L'endpoint è in sviluppo e deve rimanere disabilitato. È riservato al webservice
+autenticato e usa un prodotto virtuale dedicato, attivo, nascosto dal catalogo e
+senza combinazioni. Il suo ID deve corrispondere a `PURCHASE_PROTECTION_PRODUCT_ID`
+nell'ambiente PHP dell'API. Nel progetto PrestaShop il controller legge
+`purchase_protection_module_enabled` e `purchase_protection_product_id` da
+`app/config/parameters.php` (sezione `parameters`); in alternativa sono supportate
+le chiavi PrestaShop `PURCHASE_PROTECTION_MODULE_ENABLED` e
+`PURCHASE_PROTECTION_PRODUCT_ID` della tabella di configurazione. L'attivazione è
+disabilitata se non è configurata.
+
+È stato preparato un collegamento al checkout con blocco Redis, registro persistente
+delle modifiche e riconciliazione delle sessioni precedenti. Un'operazione che non
+restituisce una risposta lascia il carrello bloccato per la riconciliazione manuale;
+occorre verificare che il processo sia terminato, controllare il carrello e le
+sessioni Stripe e solo dopo rimuovere il blocco e il relativo record. Non sbloccare
+automaticamente un'operazione dall'esito incerto. La migrazione
+`20261124140000_create_protection_cart_mutations` è necessaria prima dell'attivazione.
+L'attivazione richiede ancora il collaudo dei timeout e di tutti i flussi di carrello.
+`PURCHASE_PROTECTION_CHECKOUT_ENABLED` deve rimanere disabilitato. L'API verifica
+la disponibilità del modulo con una richiesta GET autenticata al controller
+`purchaseprotection`, confrontando l'ID del prodotto e verificandone le proprietà;
+se il modulo non è installato o configurato, l'opzione non viene proposta e
+un checkout che la richiede viene fermato prima di modificare il carrello. Le regole fiscali
+del prodotto e l'esclusione dagli sconti sul carrello devono essere verificate in
+staging. Il servizio richiesto segnala all'operatore
+di acquistare Packlink Extra per ogni spedizione: l'aggiunta del prodotto non
+acquista né conferma la copertura.
 
 ### Prodotti in promozione
 

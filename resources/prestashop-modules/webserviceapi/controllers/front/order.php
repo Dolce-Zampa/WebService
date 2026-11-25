@@ -134,17 +134,17 @@ class webserviceapiorderModuleFrontController extends MlabFactoryApiBaseModuleFr
         if (!array_key_exists('amount_paid', $payload)) {
             $amountPaid = (float) $cart->getOrderTotal(true, Cart::BOTH);
         }
-        if (count($cart->getCartRules(CartRule::FILTER_ACTION_ALL, false))) {
+        $checkoutSnapshotId = (string) MlabFactoryApiHelper::getValue($payload, 'checkout_snapshot_id', '');
+        if ($checkoutSnapshotId !== '') {
+            // A paid snapshot is immutable. In particular, the legacy generic
+            // fee product must never be used to reconcile a protected cart.
+            $this->assertCheckoutSnapshotMatchesCart($cart, $checkoutSnapshotId, $carrierId, $amountPaid);
+        } elseif (count($cart->getCartRules(CartRule::FILTER_ACTION_ALL, false))) {
             if (!is_finite($amountPaid) || $amountPaid < 0 || abs($amountPaid - (float) $cart->getOrderTotal(true, Cart::BOTH)) > 0.01) {
                 throw new MlabFactoryApiException('Paid amount does not match the discounted cart total.', 422);
             }
         } else {
             $this->addCustomCartRule($cart, $amountPaid);
-        }
-
-        $checkoutSnapshotId = (string) MlabFactoryApiHelper::getValue($payload, 'checkout_snapshot_id', '');
-        if ($checkoutSnapshotId !== '') {
-            $this->assertCheckoutSnapshotMatchesCart($cart, $checkoutSnapshotId, $carrierId, $amountPaid);
         }
 
 
