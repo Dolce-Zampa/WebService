@@ -21,7 +21,9 @@ final class CartPaymentGuard
     /**
      * The caller holds the cart lock. If the remote response is lost, retain
      * the intent: another worker must not assume the cart is safe to mutate.
-     * @template T @param callable():T $callback @return T
+     * @template T
+     * @param callable(): T $callback
+     * @return T
      */
     public function mutate(int $cartId, string $operation, callable $callback): mixed
     {

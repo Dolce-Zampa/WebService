@@ -22,7 +22,11 @@ final class CheckoutCartLock
         return $store instanceof RedisStore;
     }
 
-    /** @template T @param callable():T $callback @return T */
+    /**
+     * @template T
+     * @param callable(): T $callback
+     * @return T
+     */
     public function run(int $cartId, callable $callback): mixed
     {
         if ($cartId < 1 || filter_var(env('APP_DISABLE_CACHE', false), FILTER_VALIDATE_BOOLEAN)) {
