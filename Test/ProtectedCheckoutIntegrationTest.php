@@ -31,7 +31,7 @@ final class ProtectedCheckoutIntegrationTest extends TestCase
      * @preserveGlobalState disabled
      * @dataProvider quoteCases
      */
-    public function test_service_line_and_confirmed_price_reach_the_payment_snapshot(int $expectedPrice, int $expectedStatus, int $giftCents): void
+    public function test_service_line_and_confirmed_price_reach_the_payment_snapshot(int $expectedPrice, int $expectedStatus, int $giftCents, bool $moduleAvailable = true, bool $pendingMutation = false): void
     {
         foreach (['APP_KEY' => 'testing', 'PAYMENT_MODULE' => 'webserviceapi', 'APP_DISABLE_CACHE' => 'false',
             'PURCHASE_PROTECTION_CHECKOUT_ENABLED' => 'true', 'PURCHASE_PROTECTION_PRODUCT_ID' => '277',
@@ -74,7 +74,12 @@ final class ProtectedCheckoutIntegrationTest extends TestCase
             $table->dateTime('gift_card_payment_verified_at')->nullable(); $table->dateTime('gift_card_released_at')->nullable();
             $table->dateTime('gift_card_settled_at')->nullable();
         });
+        if ($pendingMutation) {
+            $db->table('protection_cart_mutations')->insert(['cart_id' => 42, 'operation_id' => str_repeat('a', 32),
+                'operation' => 'add_protection', 'created_at' => gmdate('Y-m-d H:i:s')]);
+        }
         $order = $this->createMock(Order::class);
+        $order->method('purchaseProtectionAvailable')->with(277)->willReturn($moduleAvailable);
         $goods = ['id_product' => 10, 'id_manufacturer' => 7, 'name' => 'Collare', 'price_wt' => 80,
             'quantity' => 1, 'is_virtual' => false];
         $before = ['id' => 42, 'id_carrier' => 3, 'currency_iso' => 'EUR', 'products' => [$goods],
@@ -121,10 +126,14 @@ final class ProtectedCheckoutIntegrationTest extends TestCase
             new CartPaymentGuard($db, $payments));
         $preview = $controller->previewPurchaseProtection($request, $this->createMock(ResponseInterface::class), []);
         self::assertSame(200, $preview->getStatusCode());
-        self::assertTrue(json_decode((string) $preview->getBody(), true)['data']['checkout_available']);
+        self::assertSame($moduleAvailable && !$pendingMutation, json_decode((string) $preview->getBody(), true)['data']['checkout_available']);
         $response = $controller->createOrder($request, $this->createMock(ResponseInterface::class), []);
         self::assertSame($expectedStatus, $response->getStatusCode(), (string) $response->getBody());
-        self::assertSame(0, $db->table('protection_cart_mutations')->count());
+        self::assertSame($pendingMutation ? 1 : 0, $db->table('protection_cart_mutations')->count());
+        if (!$moduleAvailable || $pendingMutation) {
+            self::assertSame(0, $db->table('stripe_checkout_snapshots')->count());
+            return;
+        }
         if ($expectedStatus === 409) {
             $data = json_decode((string) $response->getBody(), true)['data'];
             self::assertSame('purchase_protection_changed', $data['error']['code']);
@@ -141,6 +150,8 @@ final class ProtectedCheckoutIntegrationTest extends TestCase
     public static function quoteCases(): array
     {
         return ['accepted quote' => [400, 201, 0], 'changed quote requires consent' => [399, 409, 0],
-            'partial gift card includes protection' => [400, 201, 3000]];
+            'partial gift card includes protection' => [400, 201, 3000],
+            'unavailable PrestaShop module stops before mutation' => [400, 503, 0, false],
+            'pending cart mutation prevents checkout' => [400, 409, 0, true, true]];
     }
 }

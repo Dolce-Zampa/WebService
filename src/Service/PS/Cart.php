@@ -286,6 +286,23 @@ class Cart extends Carrier implements PrestashopServiceInterface {
         return CartEntity::create($data['data']['cart'], $this);
     }
 
+    /** Check that PrestaShop can accept the configured service before offering it. */
+    public function purchaseProtectionAvailable(int $productId): bool
+    {
+        if ($productId < 1) return false;
+        try {
+            $this->httpService->setModuleController('purchaseprotection', ['id_product' => $productId]);
+            $response = $this->httpService->invoke('GET');
+            $data = $response->toArray();
+            return !$response->failed() && ($data['success'] ?? false) === true
+                && ($data['data']['available'] ?? false) === true
+                && (int) ($data['data']['product_id'] ?? 0) === $productId;
+        } catch (\Throwable $error) {
+            Log::warning('Purchase protection module is unavailable.', ['exception_type' => get_class($error)]);
+            return false;
+        }
+    }
+
     /** Update only the configured protection service through the authenticated module. */
     public function setPurchaseProtection(int $cartId, mixed $customerId, mixed $guestId, int $productId, ?int $priceCents): CartEntity
     {

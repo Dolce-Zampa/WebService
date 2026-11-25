@@ -67,7 +67,11 @@ sessioni Stripe e solo dopo rimuovere il blocco e il relativo record. Non sblocc
 automaticamente un'operazione dall'esito incerto. La migrazione
 `20261124140000_create_protection_cart_mutations` è necessaria prima dell'attivazione.
 L'attivazione richiede ancora il collaudo dei timeout e di tutti i flussi di carrello.
-`PURCHASE_PROTECTION_CHECKOUT_ENABLED` deve rimanere disabilitato. Le regole fiscali
+`PURCHASE_PROTECTION_CHECKOUT_ENABLED` deve rimanere disabilitato. L'API verifica
+la disponibilità del modulo con una richiesta GET autenticata al controller
+`purchaseprotection`, confrontando l'ID del prodotto e verificandone le proprietà;
+se il modulo non è installato o configurato, l'opzione non viene proposta e
+un checkout che la richiede viene fermato prima di modificare il carrello. Le regole fiscali
 del prodotto e l'esclusione dagli sconti sul carrello devono essere verificate in
 staging. Il servizio richiesto segnala all'operatore
 di acquistare Packlink Extra per ogni spedizione: l'aggiunta del prodotto non

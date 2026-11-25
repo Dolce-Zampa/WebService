@@ -242,12 +242,21 @@ class OrderController extends CartController
                 }
             }
             $quote = ProtectionQuote::fromCart($data);
+            $checkoutAvailable = $serviceId !== false && $this->checkoutSnapshots !== null
+                && $this->cartPaymentGuard !== null && CheckoutCartLock::available();
+            if ($checkoutAvailable) {
+                try {
+                    $this->cartPaymentGuard->assertNoPendingMutation($cartId);
+                    $checkoutAvailable = $this->orderService->purchaseProtectionAvailable($serviceId);
+                } catch (\Throwable $error) {
+                    $checkoutAvailable = false;
+                }
+            }
             return response([
                 'base_cents' => $quote->baseCents, 'price_cents' => $quote->priceCents,
                 'rate_basis_points' => $quote->rateBasisPoints, 'currency' => 'EUR',
                 'is_estimate' => true,
-                'checkout_available' => $serviceId !== false && $this->checkoutSnapshots !== null
-                    && $this->cartPaymentGuard !== null && CheckoutCartLock::available(),
+                'checkout_available' => $checkoutAvailable,
             ])->withHeader('Cache-Control', 'no-store');
         } catch (\Throwable $error) {
             return response(['error' => 'Purchase protection quote unavailable.'], 503);
@@ -420,6 +429,9 @@ class OrderController extends CartController
         if ($protectionSelected && (!is_int($payload['purchase_protection_expected_cents'] ?? null)
             || $payload['purchase_protection_expected_cents'] < 1)) {
             return response(['error' => 'Invalid purchase protection quote.'], 422);
+        }
+        if ($protectionSelected && !$this->orderService->purchaseProtectionAvailable($protectionProductId)) {
+            return response(['error' => 'Purchase protection is temporarily unavailable.'], 503);
         }
 
         $giftCode = $payload['gift_card'] ?? null;

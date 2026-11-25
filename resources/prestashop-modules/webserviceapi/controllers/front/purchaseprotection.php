@@ -6,7 +6,7 @@ class webserviceapipurchaseprotectionModuleFrontController extends MlabFactoryAp
 {
     protected function handleRequest()
     {
-        $this->assertRequestMethod(array('POST'));
+        $this->assertRequestMethod(array('GET', 'POST'));
         if (!filter_var(getenv('PURCHASE_PROTECTION_MODULE_ENABLED'), FILTER_VALIDATE_BOOLEAN)) {
             throw new MlabFactoryApiException('Purchase protection is unavailable.', 503);
         }
@@ -19,6 +19,18 @@ class webserviceapipurchaseprotectionModuleFrontController extends MlabFactoryAp
             $configuredProduct = Configuration::get('PURCHASE_PROTECTION_PRODUCT_ID');
         }
         $configuredId = filter_var($configuredProduct, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+        if (strtoupper((string) $_SERVER['REQUEST_METHOD']) === 'GET') {
+            $requestedId = filter_var(Tools::getValue('id_product'), FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
+            if ($configuredId === false || $requestedId === false || $requestedId !== $configuredId) {
+                throw new MlabFactoryApiException('Protection product is not configured.', 503);
+            }
+            $configured = new Product($configuredId, false, (int) $this->context->language->id, (int) $this->context->shop->id);
+            if (!Validate::isLoadedObject($configured) || !$configured->is_virtual || !$configured->active
+                || !$configured->available_for_order || $configured->visibility !== 'none' || $configured->hasCombinations()) {
+                throw new MlabFactoryApiException('Protection product is not configured.', 503);
+            }
+            return array('available' => true, 'product_id' => $configuredId);
+        }
         $customerId = (int) ($data['id_customer'] ?? 0);
         $guestId = (int) ($data['id_guest'] ?? 0);
         if ($cartId === false || $productId === false || $configuredId === false || $productId !== $configuredId
