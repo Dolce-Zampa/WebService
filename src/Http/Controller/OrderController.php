@@ -242,15 +242,32 @@ class OrderController extends CartController
                 }
             }
             $quote = ProtectionQuote::fromCart($data);
-            $checkoutAvailable = $serviceId !== false && $this->checkoutSnapshots !== null
-                && $this->cartPaymentGuard !== null && CheckoutCartLock::available();
-            if ($checkoutAvailable) {
+            $checkoutUnavailableReason = $serviceId === false ? 'product_id_not_configured'
+                : ($this->checkoutSnapshots === null ? 'checkout_snapshot_service_unavailable'
+                    : ($this->cartPaymentGuard === null ? 'cart_payment_guard_unavailable'
+                        : (!CheckoutCartLock::available() ? 'shared_cart_lock_unavailable' : null)));
+            $checkoutAvailable = $checkoutUnavailableReason === null;
+            if ($checkoutAvailable && $this->cartPaymentGuard !== null && $serviceId !== false) {
                 try {
                     $this->cartPaymentGuard->assertNoPendingMutation($cartId);
                     $checkoutAvailable = $this->orderService->purchaseProtectionAvailable($serviceId);
+                    if (!$checkoutAvailable) {
+                        $checkoutUnavailableReason = 'prestashop_product_unavailable';
+                    }
                 } catch (\Throwable $error) {
                     $checkoutAvailable = false;
+                    $checkoutUnavailableReason = 'cart_mutation_reconciliation_required';
+                    Log::warning('Purchase protection checkout readiness check failed.', [
+                        'reason' => $checkoutUnavailableReason,
+                        'exception_type' => get_class($error),
+                    ]);
                 }
+            }
+            if (!$checkoutAvailable && $checkoutUnavailableReason !== 'cart_mutation_reconciliation_required') {
+                Log::warning('Purchase protection is hidden because checkout readiness failed.', [
+                    'reason' => $checkoutUnavailableReason,
+                    'product_id' => $serviceId === false ? null : $serviceId,
+                ]);
             }
             return response([
                 'base_cents' => $quote->baseCents, 'price_cents' => $quote->priceCents,

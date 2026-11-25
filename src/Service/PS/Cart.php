@@ -294,9 +294,25 @@ class Cart extends Carrier implements PrestashopServiceInterface {
             $this->httpService->setModuleController('purchaseprotection', ['id_product' => $productId]);
             $response = $this->httpService->invoke('GET');
             $data = $response->toArray();
-            return !$response->failed() && ($data['success'] ?? false) === true
+            if ($response->failed()) {
+                Log::warning('Purchase protection readiness endpoint returned an error.', [
+                    'product_id' => $productId,
+                    'http_status' => $response->getHttpCode(),
+                ]);
+                return false;
+            }
+            $available = ($data['success'] ?? false) === true
                 && ($data['data']['available'] ?? false) === true
                 && (int) ($data['data']['product_id'] ?? 0) === $productId;
+            if (!$available) {
+                Log::warning('Purchase protection readiness endpoint returned an invalid availability response.', [
+                    'product_id' => $productId,
+                    'success' => ($data['success'] ?? false) === true,
+                    'available' => ($data['data']['available'] ?? false) === true,
+                    'returned_product_matches' => (int) ($data['data']['product_id'] ?? 0) === $productId,
+                ]);
+            }
+            return $available;
         } catch (\Throwable $error) {
             Log::warning('Purchase protection module is unavailable.', ['exception_type' => get_class($error)]);
             return false;
