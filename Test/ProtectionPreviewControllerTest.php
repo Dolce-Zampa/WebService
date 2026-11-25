@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
+use Illuminate\Support\Facades\Facade;
+use Psr\Log\NullLogger;
 use PS\Webservice\Domain\Entities\CartEntity;
 use PS\Webservice\Http\Controller\OrderController;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
@@ -11,6 +13,23 @@ use Psr\Http\Message\ServerRequestInterface;
 
 final class ProtectionPreviewControllerTest extends TestCase
 {
+    private mixed $previousFacadeApplication;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->previousFacadeApplication = Facade::getFacadeApplication();
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication(['log' => new NullLogger()]);
+    }
+
+    protected function tearDown(): void
+    {
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication($this->previousFacadeApplication);
+        parent::tearDown();
+    }
+
     public function testPreviewUsesTheOwnedServerCartInsteadOfClientAmounts(): void
     {
         $order = $this->createMock(Order::class);
