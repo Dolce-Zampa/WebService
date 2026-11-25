@@ -7,17 +7,21 @@ class webserviceapipurchaseprotectionModuleFrontController extends MlabFactoryAp
     protected function handleRequest()
     {
         $this->assertRequestMethod(array('GET', 'POST'));
-        if (!filter_var(getenv('PURCHASE_PROTECTION_MODULE_ENABLED'), FILTER_VALIDATE_BOOLEAN)) {
+        $enabled = MlabFactoryApiHelper::getPurchaseProtectionConfig(
+            'purchase_protection_module_enabled',
+            'PURCHASE_PROTECTION_MODULE_ENABLED'
+        );
+        if (!MlabFactoryApiHelper::toBool($enabled, false)) {
             throw new MlabFactoryApiException('Purchase protection is unavailable.', 503);
         }
 
         $data = $this->getJsonPayload();
         $cartId = filter_var($data['id_cart'] ?? null, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
         $productId = filter_var($data['id_product'] ?? null, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
-        $configuredProduct = getenv('PURCHASE_PROTECTION_PRODUCT_ID');
-        if ($configuredProduct === false || $configuredProduct === '') {
-            $configuredProduct = Configuration::get('PURCHASE_PROTECTION_PRODUCT_ID');
-        }
+        $configuredProduct = MlabFactoryApiHelper::getPurchaseProtectionConfig(
+            'purchase_protection_product_id',
+            'PURCHASE_PROTECTION_PRODUCT_ID'
+        );
         $configuredId = filter_var($configuredProduct, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
         if (strtoupper((string) $_SERVER['REQUEST_METHOD']) === 'GET') {
             $requestedId = filter_var(Tools::getValue('id_product'), FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
