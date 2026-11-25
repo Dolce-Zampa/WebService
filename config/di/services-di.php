@@ -233,6 +233,18 @@ $container->set(\PS\Webservice\Service\Payments\StripeConnectService::class, fun
     );
 });
 
+$container->set(\PS\Webservice\Service\Payments\StripeConnectPayoutService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Payments\StripeConnectPayoutService($capsule);
+});
+
+$container->set(\PS\Webservice\Service\Payments\StripePayoutOrderReconciliationService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Payments\StripePayoutOrderReconciliationService($capsule);
+});
+
+$container->set(\PS\Webservice\Service\Payments\StripeManualPayoutAttributionService::class, function ($c) use ($capsule) {
+    return new \PS\Webservice\Service\Payments\StripeManualPayoutAttributionService($capsule);
+});
+
 
 $container->set(\PS\Webservice\Service\OpenAIService::class, function ($c) {
     return new \PS\Webservice\Service\OpenAIService(

@@ -9,6 +9,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use DateTimeInterface;
 use PS\Webservice\Domain\Financial\FinancialMovement;
+use PS\Webservice\Domain\Financial\FinancialMovementKind;
 use stdClass;
 
 /**
@@ -192,6 +193,94 @@ final class FinancialTransactionRepository
     }
 
     /**
+     * Locate the first webhook for the current payout state, not the latest
+     * metadata update. Reconciliation observations have no transition date.
+     */
+    public function connectPayoutsForArtisanPeriod(int $artisanId, DateTimeInterface $from, DateTimeInterface $until): Collection
+    {
+        $events = $this->db->table('stripe_connect_payouts as payout')
+            ->join('stripe_connect_payout_events as event', function ($join): void {
+                $join->on('event.stripe_account_id', '=', 'payout.stripe_account_id')
+                    ->on('event.stripe_payout_id', '=', 'payout.stripe_payout_id');
+            })
+            ->where('payout.manufacturer_id', $artisanId)
+            ->whereIn('payout.status', ['paid', 'pending', 'in_transit'])
+            ->whereNotNull('event.stripe_event_id')
+            ->where('event.event_created', '<', $until->getTimestamp())
+            ->orderBy('event.event_created')->orderBy('event.id')
+            ->get(['payout.id', 'payout.amount', 'payout.currency', 'payout.status', 'event.status as event_status', 'event.event_created']);
+
+        $seen = [];
+        $result = [];
+        foreach ($events as $event) {
+            $id = (int) $event->id;
+            $matches = $event->status === 'paid' ? $event->event_status === 'paid'
+                : in_array($event->event_status, ['pending', 'in_transit'], true);
+            if (!$matches || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            if ((int) $event->event_created >= $from->getTimestamp()) {
+                $result[] = $event;
+            }
+        }
+        return new Collection($result);
+    }
+
+    /** Separate from ledger totals: bank payouts can aggregate multiple transfers. */
+    public function connectPayoutReportQuery(array $filters): Builder
+    {
+        $query = $this->db->table('stripe_connect_payouts');
+        if (isset($filters['order_id']) || isset($filters['customer_id'])
+            || (isset($filters['type']) && $filters['type'] !== 'payout')
+            || (isset($filters['provider']) && $filters['provider'] !== 'stripe')) {
+            return $query->whereRaw('1 = 0');
+        }
+        if (isset($filters['from'])) {
+            $query->where('status_event_created', '>=', (new \DateTimeImmutable($filters['from'], new \DateTimeZone('UTC')))->getTimestamp());
+        }
+        if (isset($filters['to'])) {
+            $query->where('status_event_created', '<', (new \DateTimeImmutable($filters['to'], new \DateTimeZone('UTC')))->getTimestamp());
+        }
+        if (isset($filters['artisan_id'])) {
+            $query->where('manufacturer_id', $filters['artisan_id']);
+        }
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status'] === 'cancelled' ? 'canceled' : $filters['status']);
+        }
+        return $query;
+    }
+
+    /** Verified order allocations only; failed or pending bank payouts are not paid. */
+    public function paidConnectPayoutAllocationsForOrder(int $orderId): Collection
+    {
+        $select = static function (Builder $query, bool $manual) use ($orderId): Collection {
+            $columns = ['allocation.amount', 'allocation.currency', 'allocation.manufacturer_id', 'allocation.stripe_payout_id', 'allocation.stripe_transfer_id'];
+            if ($manual) {
+                $columns[] = 'allocation.direction';
+            }
+            return $query
+            ->join('stripe_connect_payouts as payout', function ($join): void {
+                $join->on('payout.stripe_account_id', '=', 'allocation.stripe_account_id')
+                    ->on('payout.stripe_payout_id', '=', 'allocation.stripe_payout_id');
+            })
+            ->leftJoin('stripe_connect_transfers as transfer', function ($join): void {
+                $join->on('transfer.stripe_account_id', '=', 'allocation.stripe_account_id')
+                    ->on('transfer.stripe_transfer_id', '=', 'allocation.stripe_transfer_id');
+            })
+            ->where('allocation.order_id', $orderId)->where('payout.status', 'paid')
+            ->select($columns)
+            ->selectSub(static function (Builder $reversals): void {
+                $reversals->from('stripe_connect_transfer_reversals as reversal')
+                    ->selectRaw('COUNT(*)')->whereColumn('reversal.stripe_connect_transfer_id', 'transfer.id');
+            }, 'transfer_reversal_count')
+            ->get();
+        };
+        return $select($this->db->table('stripe_connect_payout_allocations as allocation'), false)
+            ->concat($select($this->db->table('stripe_connect_payout_manual_allocations as allocation'), true));
+    }
+
+    /**
      * The transaction row is immutable, therefore the effective status is the
      * latest recorded lifecycle event rather than financial_transactions.status.
      *
@@ -247,7 +336,7 @@ final class FinancialTransactionRepository
                 'financial_transaction.id', 'financial_transaction.order_id', 'financial_transaction.customer_id', 'financial_transaction.artisan_id',
                 'financial_transaction.order_reference', 'financial_transaction.artisan_reference',
                 'financial_transaction.type', 'financial_transaction.amount', 'financial_transaction.currency',
-                'financial_transaction.provider', 'financial_transaction.occurred_at',
+                'financial_transaction.provider', 'financial_transaction.source_event_type', 'financial_transaction.occurred_at',
                 'financial_transaction.available_at', 'financial_transaction.settled_at',
             ])
             ->selectSub(function (Builder $statusQuery): void {
@@ -266,17 +355,69 @@ final class FinancialTransactionRepository
         if (isset($filters['to'])) {
             $query->where('financial_transaction.occurred_at', '<', $filters['to']);
         }
-        foreach (['artisan_id', 'order_id', 'customer_id', 'provider', 'type'] as $filter) {
+        foreach (['artisan_id', 'order_id', 'customer_id', 'provider'] as $filter) {
             if (isset($filters[$filter])) {
                 $query->where('financial_transaction.' . $filter, $filters[$filter]);
             }
         }
+        if (isset($filters['type'])) {
+            $type = $filters['type'];
+            if ($type === 'transfer') {
+                $query->where(function (Builder $query): void {
+                    $query->where('financial_transaction.type', 'transfer')
+                        ->orWhere(function (Builder $legacy): void {
+                            $legacy->where('financial_transaction.type', 'payout')
+                                ->where('financial_transaction.provider', 'stripe')
+                                ->whereIn('financial_transaction.source_event_type', FinancialMovementKind::LEGACY_TRANSFER_EVENTS);
+                        });
+                });
+            } elseif ($type === 'payout') {
+                $query->where('financial_transaction.type', 'payout')
+                    ->where(function (Builder $query): void {
+                        $query->whereNull('financial_transaction.provider')
+                            ->orWhere('financial_transaction.provider', '!=', 'stripe')
+                            ->orWhereNull('financial_transaction.source_event_type')
+                            ->orWhereNotIn('financial_transaction.source_event_type', FinancialMovementKind::LEGACY_TRANSFER_EVENTS);
+                    });
+            } else {
+                $query->where('financial_transaction.type', $type);
+            }
+        }
         if (isset($filters['status'])) {
-            $query->whereExists(function (Builder $statusQuery) use ($filters): void {
+            $status = $filters['status'];
+            $query->where(function (Builder $query) use ($status): void {
+                $query->where(function (Builder $ordinary) use ($status): void {
+                    if ($status === 'paid') {
+                        $ordinary->where(function (Builder $nonLegacy): void {
+                            $nonLegacy->where('financial_transaction.type', '!=', 'payout')
+                                ->orWhereNull('financial_transaction.provider')->orWhere('financial_transaction.provider', '!=', 'stripe')
+                                ->orWhereNull('financial_transaction.source_event_type')
+                                ->orWhereNotIn('financial_transaction.source_event_type', FinancialMovementKind::LEGACY_TRANSFER_EVENTS);
+                        });
+                    }
+                    $this->whereCurrentStatus($ordinary, $status);
+                });
+                if ($status === 'available') {
+                    $query->orWhere(function (Builder $legacy): void {
+                        $legacy->where('financial_transaction.type', 'payout')
+                            ->where('financial_transaction.provider', 'stripe')
+                            ->whereIn('financial_transaction.source_event_type', FinancialMovementKind::LEGACY_TRANSFER_EVENTS);
+                        $this->whereCurrentStatus($legacy, 'paid');
+                    });
+                }
+            });
+        }
+
+        return $query;
+    }
+
+    private function whereCurrentStatus(Builder $query, string $status): void
+    {
+            $query->whereExists(function (Builder $statusQuery) use ($status): void {
                 $statusQuery->from(self::EVENTS . ' as status_event')
                     ->whereColumn('status_event.financial_transaction_id', 'financial_transaction.id')
                     ->whereIn('status_event.event_type', self::STATUS_EVENT_TYPES)
-                    ->where('status_event.status', $filters['status'])
+                    ->where('status_event.status', $status)
                     ->whereIn('status_event.id', function (Builder $latestStatusQuery): void {
                         $latestStatusQuery->from(self::EVENTS . ' as latest_status_event')
                             ->select('latest_status_event.id')
@@ -287,8 +428,5 @@ final class FinancialTransactionRepository
                             ->limit(1);
                     });
             });
-        }
-
-        return $query;
     }
 }

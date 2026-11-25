@@ -179,7 +179,7 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
         $event = $this->stripeEvent('evt_fee_1', 'payment_intent.succeeded', [
             'id' => 'pi_fee_1', 'amount' => 1000, 'currency' => 'eur',
             'metadata' => ['id_customer' => '77'],
-            'balance_transaction' => ['id' => 'txn_fee_1', 'fee' => 129],
+            'balance_transaction' => ['id' => 'txn_fee_1', 'fee' => 129, 'currency' => 'eur'],
         ]);
         $controller = $this->controller();
         $controller->ingest($event);
@@ -192,6 +192,207 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
         self::assertSame('-1.29', (string) $fee->amount);
         self::assertSame('txn_fee_1', $fee->provider_transaction_id);
         self::assertSame(77, (int) $fee->customer_id);
+    }
+
+    public function test_charge_balance_transaction_is_retrieved_and_fee_is_idempotent(): void
+    {
+        $controller = $this->controller(\Stripe\BalanceTransaction::constructFrom([
+            'id' => 'txn_retrieved', 'fee' => 129, 'currency' => 'eur',
+        ]));
+        $controller->ingest($this->stripeEvent('evt_payment_fee', 'payment_intent.succeeded', [
+            'id' => 'pi_retrieved', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        $charge = $this->stripeEvent('evt_charge_fee', 'charge.succeeded', [
+            'id' => 'ch_retrieved', 'payment_intent' => 'pi_retrieved', 'balance_transaction' => 'txn_retrieved',
+        ]);
+        $controller->ingest($charge);
+        $controller->ingest($charge);
+        $controller->ingest($this->stripeEvent('evt_charge_fee_updated', 'charge.updated', [
+            'id' => 'ch_retrieved', 'payment_intent' => 'pi_retrieved', 'balance_transaction' => 'txn_retrieved',
+        ]));
+
+        $fee = DB::table('financial_transactions')->where('type', 'provider_fee')->first();
+        self::assertSame(1, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+        self::assertSame('txn_retrieved', $fee->provider_transaction_id);
+        self::assertSame('EUR', $fee->currency);
+        self::assertSame('-1.29', (string) $fee->amount);
+    }
+
+    public function test_charge_is_retried_if_payment_has_not_been_recorded(): void
+    {
+        $controller = $this->controller(\Stripe\BalanceTransaction::constructFrom([
+            'id' => 'txn_out_of_order', 'fee' => 50, 'currency' => 'eur',
+        ]));
+        $charge = $this->stripeEvent('evt_charge_first', 'charge.succeeded', [
+            'id' => 'ch_first', 'payment_intent' => 'pi_first', 'balance_transaction' => 'txn_out_of_order',
+        ]);
+        try {
+            $controller->ingest($charge);
+            self::fail('A charge without its payment must be retried.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('payment is not yet available', $exception->getMessage());
+        }
+        $controller->ingest($this->stripeEvent('evt_payment_later', 'payment_intent.succeeded', [
+            'id' => 'pi_first', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        $controller->ingest($charge);
+        self::assertSame(1, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+    }
+
+    public function test_balance_transaction_currency_is_used_for_fee(): void
+    {
+        $controller = $this->controller(\Stripe\BalanceTransaction::constructFrom([
+            'id' => 'txn_other_currency', 'fee' => 123, 'currency' => 'usd',
+        ]));
+        $controller->ingest($this->stripeEvent('evt_payment_currency', 'payment_intent.succeeded', [
+            'id' => 'pi_currency', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        $controller->ingest($this->stripeEvent('evt_charge_currency', 'charge.updated', [
+            'id' => 'ch_currency', 'payment_intent' => 'pi_currency', 'balance_transaction' => 'txn_other_currency',
+        ]));
+        $fee = DB::table('financial_transactions')->where('type', 'provider_fee')->first();
+        self::assertSame('USD', $fee->currency);
+        self::assertSame('-1.23', (string) $fee->amount);
+    }
+
+    public function test_failed_balance_transaction_lookup_does_not_create_a_fee(): void
+    {
+        $controller = $this->controller();
+        $controller->ingest($this->stripeEvent('evt_payment_lookup', 'payment_intent.succeeded', [
+            'id' => 'pi_lookup', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        try {
+            $controller->ingest($this->stripeEvent('evt_charge_lookup', 'charge.succeeded', [
+                'id' => 'ch_lookup', 'payment_intent' => 'pi_lookup', 'balance_transaction' => 'txn_lookup',
+            ]));
+            self::fail('A failed lookup must cause webhook retry.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('Unexpected balance transaction retrieval.', $exception->getMessage());
+        }
+        self::assertSame(0, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+    }
+
+    public function test_fee_with_incomplete_balance_transaction_is_retried(): void
+    {
+        $controller = $this->controller(\Stripe\BalanceTransaction::constructFrom([
+            'id' => 'txn_incomplete', 'fee' => 50,
+        ]));
+        $controller->ingest($this->stripeEvent('evt_payment_incomplete', 'payment_intent.succeeded', [
+            'id' => 'pi_incomplete', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        try {
+            $controller->ingest($this->stripeEvent('evt_charge_incomplete', 'charge.updated', [
+                'id' => 'ch_incomplete', 'payment_intent' => 'pi_incomplete', 'balance_transaction' => 'txn_incomplete',
+            ]));
+            self::fail('A balance transaction without currency must be retried.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('no valid currency', $exception->getMessage());
+        }
+        self::assertSame(0, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+    }
+
+    public function test_fee_for_unexpected_balance_transaction_is_retried(): void
+    {
+        $controller = $this->controller(\Stripe\BalanceTransaction::constructFrom([
+            'id' => 'txn_other', 'fee' => 50, 'currency' => 'eur',
+        ]));
+        $controller->ingest($this->stripeEvent('evt_payment_other', 'payment_intent.succeeded', [
+            'id' => 'pi_other', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        try {
+            $controller->ingest($this->stripeEvent('evt_charge_other', 'charge.updated', [
+                'id' => 'ch_other', 'payment_intent' => 'pi_other', 'balance_transaction' => 'txn_expected',
+            ]));
+            self::fail('An unexpected balance transaction must be retried.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('different balance transaction', $exception->getMessage());
+        }
+        self::assertSame(0, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+    }
+
+    public function test_connected_account_is_used_to_retrieve_and_record_zero_decimal_fee(): void
+    {
+        $controller = $this->controller(\Stripe\BalanceTransaction::constructFrom([
+            'id' => 'txn_connect', 'fee' => 123, 'currency' => 'jpy',
+        ]));
+        $controller->ingest($this->stripeEvent('evt_payment_connect', 'payment_intent.succeeded', [
+            'id' => 'pi_connect', 'amount' => 1000, 'currency' => 'jpy',
+        ]));
+        $event = $this->stripeEvent('evt_charge_connect', 'charge.updated', [
+            'id' => 'ch_connect', 'payment_intent' => 'pi_connect', 'balance_transaction' => 'txn_connect',
+        ]);
+        $event->account = 'acct_test';
+        $controller->ingest($event);
+
+        self::assertSame(['txn_connect', 'acct_test'], $controller->lastRetrieval);
+        $fee = DB::table('financial_transactions')->where('type', 'provider_fee')->first();
+        self::assertSame('acct_test', $fee->provider_account_id);
+        self::assertSame('JPY', $fee->currency);
+        self::assertSame('-123', (string) $fee->amount);
+    }
+
+    public function test_missing_charge_balance_is_retrieved_or_retried(): void
+    {
+        $charge = \Stripe\Charge::constructFrom([
+            'id' => 'ch_delayed', 'payment_intent' => 'pi_delayed', 'balance_transaction' => null,
+        ]);
+        $controller = $this->controller(null, $charge);
+        $controller->ingest($this->stripeEvent('evt_payment_delayed', 'payment_intent.succeeded', [
+            'id' => 'pi_delayed', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        $event = $this->stripeEvent('evt_charge_delayed', 'charge.succeeded', [
+            'id' => 'ch_delayed', 'payment_intent' => 'pi_delayed', 'balance_transaction' => null,
+        ]);
+        try {
+            $controller->ingest($event);
+            self::fail('Unavailable balance transaction must be retried.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('not yet available', $exception->getMessage());
+        }
+        $charge->balance_transaction = ['id' => 'txn_delayed', 'fee' => 10, 'currency' => 'eur'];
+        $controller->ingest($event);
+        self::assertSame(1, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+    }
+
+    public function test_nonfinal_charge_update_does_not_attempt_balance_lookup(): void
+    {
+        $controller = $this->controller();
+        $controller->ingest($this->stripeEvent('evt_charge_pending', 'charge.updated', [
+            'id' => 'ch_pending', 'payment_intent' => 'pi_pending', 'status' => 'pending', 'balance_transaction' => null,
+        ]));
+        self::assertSame(0, DB::table('financial_transactions')->count());
+    }
+
+    public function test_fee_backfill_is_dry_run_by_default_and_does_not_invent_provider_event(): void
+    {
+        $controller = $this->controller();
+        $controller->ingest($this->stripeEvent('evt_payment_backfill', 'payment_intent.succeeded', [
+            'id' => 'pi_backfill', 'amount' => 1000, 'currency' => 'eur',
+        ]));
+        $charge = \Stripe\Charge::constructFrom([
+            'id' => 'ch_backfill', 'status' => 'succeeded', 'payment_intent' => 'pi_backfill', 'created' => 1791446400,
+            'balance_transaction' => ['id' => 'txn_backfill', 'fee' => 100, 'currency' => 'eur'],
+        ]);
+        self::assertSame('ready', $controller->reconcileStripeCharge($charge, null, true));
+        self::assertSame(0, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+        self::assertSame('recorded', $controller->reconcileStripeCharge($charge, null, false));
+        $controller->ingest($this->stripeEvent('evt_charge_backfill', 'charge.succeeded', $charge->toArray()));
+        self::assertSame(1, DB::table('financial_transactions')->where('type', 'provider_fee')->count());
+        $fee = DB::table('financial_transactions')->where('type', 'provider_fee')->first();
+        self::assertNull($fee->provider_event_id);
+        self::assertSame('stripe.reconciliation.fee', $fee->source_event_type);
+        self::assertSame('txn_backfill', $fee->source_event_id);
+    }
+
+    public function test_ugx_amounts_use_stripes_two_decimal_representation(): void
+    {
+        $controller = $this->controller();
+        $controller->ingest($this->stripeEvent('evt_ugx_payment', 'payment_intent.succeeded', [
+            'id' => 'pi_ugx', 'amount' => 100000, 'currency' => 'ugx',
+            'balance_transaction' => ['id' => 'txn_ugx', 'fee' => 500, 'currency' => 'ugx'],
+        ]));
+        self::assertSame('1000', (string) DB::table('financial_transactions')->where('type', 'payment')->value('amount'));
+        self::assertSame('-5', (string) DB::table('financial_transactions')->where('type', 'provider_fee')->value('amount'));
     }
 
     public function test_partial_and_full_refunds_are_linked_reversals_with_their_own_provider_ids(): void
@@ -317,7 +518,7 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
         self::assertSame(1, DB::table('financial_transaction_events')->count());
     }
 
-    private function controller(): StripeWebhookController
+    private function controller(?\Stripe\BalanceTransaction $balance = null, ?\Stripe\Charge $charge = null): StripeWebhookController
     {
         return new class(
             $this->createMock(Order::class),
@@ -325,10 +526,25 @@ final class StripeFinancialWebhookLedgerTest extends TestCase
             $this->createMock(PaymentGatewayInterface::class),
             $this->createMock(MailerInterface::class),
             $this->ledger,
+            $balance,
+            $charge,
         ) extends StripeWebhookController {
-            public function __construct(Order $order, MailjetService $mailjet, PaymentGatewayInterface $payment, MailerInterface $mailer, FinancialLedgerService $ledger)
+            public ?array $lastRetrieval = null;
+
+            public function __construct(Order $order, MailjetService $mailjet, PaymentGatewayInterface $payment, MailerInterface $mailer, FinancialLedgerService $ledger, private ?\Stripe\BalanceTransaction $balance, private ?\Stripe\Charge $charge)
             {
                 parent::__construct($order, $mailjet, $payment, $mailer, null, null, $ledger);
+            }
+
+            protected function retrieveStripeCharge(string $id, ?string $accountId): \Stripe\Charge
+            {
+                return $this->charge ?? throw new \RuntimeException('Unexpected charge retrieval.');
+            }
+
+            protected function retrieveStripeBalanceTransaction(string $id, ?string $accountId): \Stripe\BalanceTransaction
+            {
+                $this->lastRetrieval = [$id, $accountId];
+                return $this->balance ?? throw new \RuntimeException('Unexpected balance transaction retrieval.');
             }
 
             public function ingest(\Stripe\Event $event): void

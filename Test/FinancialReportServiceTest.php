@@ -64,6 +64,11 @@ final class FinancialReportServiceTest extends TestCase
             $table->dateTime('received_at');
             $table->dateTime('created_at');
         });
+        $schema->create('stripe_connect_payouts', function ($table): void {
+            $table->increments('id'); $table->string('stripe_payout_id'); $table->string('stripe_account_id'); $table->unsignedBigInteger('manufacturer_id')->nullable();
+            $table->string('status'); $table->integer('amount'); $table->char('currency', 3); $table->unsignedBigInteger('status_event_created');
+            $table->string('status_source'); $table->dateTime('arrival_date')->nullable(); $table->string('failure_code')->nullable();
+        });
         $this->repository = new FinancialTransactionRepository($capsule);
         $this->ledger = new FinancialLedgerService($this->repository);
         $this->report = new FinancialReportService($this->repository);
@@ -107,6 +112,45 @@ final class FinancialReportServiceTest extends TestCase
                 self::addToAssertionCount(1);
             }
         }
+    }
+
+    public function test_legacy_stripe_transfers_are_classified_and_filtered_without_rewriting_history(): void
+    {
+        $id = $this->ledger->record(FinancialMovement::fromArray([
+            'type' => 'payout', 'status' => 'paid', 'amount' => '-60.000000', 'currency' => 'EUR',
+            'occurred_at' => '2026-10-09 08:00:00', 'artisan_id' => 44, 'provider' => 'stripe', 'provider_event_id' => 'tr_old',
+            'source_event_type' => 'stripe.transfer.created', 'source_event_id' => 'tr_old',
+        ]), 'legacy-transfer')->transactionId;
+        $this->record('payout', '-4.000000', '2026-10-09 09:00:00', 102, 44, 'manual');
+
+        $transfers = $this->report->report(['type' => 'transfer']);
+        self::assertSame(1, $transfers['summary']['movement_count']);
+        self::assertSame('transfer', $transfers['data'][0]['type']);
+        self::assertSame('available', $transfers['data'][0]['status']);
+        self::assertSame('payout', $this->repository->findTransaction($id)->type);
+        self::assertSame(1, $this->report->report(['type' => 'payout'])['summary']['movement_count']);
+        self::assertSame(1, $this->report->report(['type' => 'transfer', 'status' => 'available'])['summary']['movement_count']);
+        self::assertSame(0, $this->report->report(['type' => 'transfer', 'status' => 'paid'])['summary']['movement_count']);
+        $analytics = (new FinancialAnalyticsService($this->repository))->overview([]);
+        self::assertSame('-60', $analytics['summary_by_currency'][0]['by_type']['transfer']);
+        self::assertSame('-4', $analytics['summary_by_currency'][0]['by_type']['payout']);
+    }
+
+    public function test_reports_connect_payouts_separately_without_attributing_them_to_orders_or_ledger_totals(): void
+    {
+        $this->record('payment', '10.000000', '2026-10-09 08:00:00', 101, 44, 'stripe');
+        DB::table('stripe_connect_payouts')->insert([
+            'stripe_payout_id' => 'po_1', 'stripe_account_id' => 'acct_1', 'manufacturer_id' => 44,
+            'status' => 'failed', 'amount' => 800, 'currency' => 'EUR', 'status_event_created' => strtotime('2026-10-09 09:00:00 UTC'),
+            'status_source' => 'webhook', 'arrival_date' => '2026-10-11 00:00:00', 'failure_code' => 'account_closed',
+        ]);
+        $report = $this->report->report(['artisan_id' => 44, 'status' => 'failed']);
+        self::assertSame(0, $report['summary']['movement_count']);
+        self::assertSame('po_1', $report['stripe_connect_payouts']['data'][0]['stripe_payout_id']);
+        self::assertSame('account_closed', $report['stripe_connect_payouts']['data'][0]['failure_code']);
+        self::assertSame('2026-10-11 00:00:00', $report['stripe_connect_payouts']['data'][0]['arrival_date']);
+        self::assertSame([], $this->report->report(['order_id' => 101])['stripe_connect_payouts']['data']);
+        self::assertSame([['currency' => 'EUR', 'amount' => '10']], $this->report->report([])['summary']['net_amount_by_currency']);
     }
 
     public function test_analytics_groups_exact_costs_and_internal_customer_ids(): void

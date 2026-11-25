@@ -2,6 +2,22 @@
 
 // Definizioni di Dependency Injection per i comandi Symfony Console.
 
+$container->set(\PS\Webservice\Commands\ReconcileStripeFeesCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\ReconcileStripeFeesCommand($c->get(\PS\Webservice\Http\Controller\StripeWebhookController::class));
+});
+
+$container->set(\PS\Webservice\Commands\BackfillStripeConnectPayoutsCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\BackfillStripeConnectPayoutsCommand($c->get(\PS\Webservice\Service\Payments\StripeConnectPayoutService::class));
+});
+
+$container->set(\PS\Webservice\Commands\ReconcileStripePayoutOrdersCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\ReconcileStripePayoutOrdersCommand($c->get(\PS\Webservice\Service\Payments\StripePayoutOrderReconciliationService::class));
+});
+
+$container->set(\PS\Webservice\Commands\ManualStripePayoutAttributionCommand::class, function ($c) {
+    return new \PS\Webservice\Commands\ManualStripePayoutAttributionCommand($c->get(\PS\Webservice\Service\Payments\StripeManualPayoutAttributionService::class));
+});
+
 $container->set(\PS\Webservice\Commands\SyncInpostPointsCommand::class, function ($c) {
     return new \PS\Webservice\Commands\SyncInpostPointsCommand($c->get(\PS\Webservice\Service\PickupPoints\InpostCatalog::class));
 });

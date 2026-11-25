@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
 use PS\Webservice\Domain\Financial\FinancialMovement;
+use PS\Webservice\Domain\Financial\FinancialMovementKind;
 use PS\Webservice\Repositories\FinancialTransactionRepository;
 
 /** Read-only, administrator-facing view of the immutable financial ledger. */
@@ -47,8 +48,35 @@ final class FinancialReportService
         }
         ksort($totals);
 
+        $payoutQuery = $this->repository->connectPayoutReportQuery($filters);
+        $payoutCount = (int) (clone $payoutQuery)->count();
+        $payouts = (clone $payoutQuery)->orderByDesc('status_event_created')->orderByDesc('id')
+            ->forPage($page, $perPage)->get()->map(static fn (object $payout): array => [
+                'stripe_payout_id' => (string) $payout->stripe_payout_id,
+                'stripe_account_id' => (string) $payout->stripe_account_id,
+                'artisan_id' => $payout->manufacturer_id === null ? null : (int) $payout->manufacturer_id,
+                'amount_minor' => (int) $payout->amount,
+                'currency' => (string) $payout->currency,
+                'status' => (string) $payout->status,
+                'arrival_date' => $payout->arrival_date,
+                'failure_code' => $payout->failure_code,
+                'status_event_created' => (int) $payout->status_event_created,
+                'status_source' => (string) $payout->status_source,
+            ])->all();
+
         return [
             'data' => $rows,
+            'stripe_connect_payouts' => [
+                'data' => $payouts,
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $perPage,
+                    'total_items' => $payoutCount,
+                    'total_pages' => (int) ceil($payoutCount / $perPage),
+                    'has_next_page' => $page * $perPage < $payoutCount,
+                    'has_previous_page' => $page > 1,
+                ],
+            ],
             'summary' => [
                 'movement_count' => $totalItems,
                 'net_amount_by_currency' => array_map(
@@ -98,7 +126,7 @@ final class FinancialReportService
             }
         }
         if (array_key_exists('status', $input) && $input['status'] !== '') {
-            $filters['status'] = $this->enum((string) $input['status'], FinancialMovement::STATUSES, 'status');
+            $filters['status'] = $this->enum((string) $input['status'], [...FinancialMovement::STATUSES, 'in_transit', 'canceled'], 'status');
         }
         if (array_key_exists('type', $input) && $input['type'] !== '') {
             $filters['type'] = $this->enum((string) $input['type'], FinancialMovement::TYPES, 'type');
@@ -173,8 +201,8 @@ final class FinancialReportService
             'artisan_id' => $row->artisan_id === null ? null : (int) $row->artisan_id,
             'order_reference' => $row->order_reference,
             'artisan_reference' => $row->artisan_reference,
-            'type' => (string) $row->type,
-            'status' => (string) $row->current_status,
+            'type' => FinancialMovementKind::effectiveType($row),
+            'status' => FinancialMovementKind::effectiveStatus($row, (string) $row->current_status),
             'amount' => $this->canonicalDecimal((string) $row->amount),
             'currency' => (string) $row->currency,
             'provider' => $row->provider,

@@ -21,6 +21,8 @@ final class WeeklySellerCurrencySummary
         public readonly int $pendingPayouts,
         public readonly string $pendingPayoutAmount,
         public readonly string $refunds,
+        public readonly int $completedTransfers = 0,
+        public readonly string $completedTransferAmount = '0.000000',
     ) {
     }
 }

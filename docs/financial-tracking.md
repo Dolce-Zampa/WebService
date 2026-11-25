@@ -68,7 +68,18 @@ Il webhook viene rifiutato finché il pagamento d'origine non è presente: una r
 
 Non viene calcolato né inventato alcuno storno di commissione o rettifica payout: per registrarli servono sia un importo esplicito fornito dal provider o da una policy contabile approvata, sia il movimento `commission`/`payout` originario da collegare. Analogamente il Refund Stripe non espone una ripartizione verificabile della spedizione; il pagamento Checkout resta lordo e non viene creata una componente spedizione separata senza un importo provider verificabile, per evitare duplicazioni o allocazioni presunte.
 
-Quando un evento Stripe include un `balance_transaction` espanso con la sua `fee`, il webhook registra anche un movimento negativo `provider_fee`, idempotente sul balance transaction. Non viene applicata alcuna formula stimata: se Stripe non invia il costo esatto, l'amministratore può registrarlo dopo verifica nel portale Stripe.
+Quando un evento Stripe include un `balance_transaction` con la sua `fee`, il webhook registra anche un movimento negativo `provider_fee`, idempotente sulla balance transaction. Se l'evento contiene solo l'identificativo, il webhook recupera la balance transaction da Stripe e usa la sua valuta. Abilitare gli eventi `charge.succeeded` e `charge.updated` dell'account piattaforma sull'endpoint webhook. Gli eventi di pagamento degli account collegati non alimentano il ledger della piattaforma nel flusso separate charges and transfers. Se la Charge è riuscita ma non contiene ancora una balance transaction, il webhook recupera la Charge corrente e risponde con errore se la balance transaction non è ancora disponibile. Anche l'assenza del pagamento nel ledger produce un errore per consentire a Stripe di riprovare. Non viene applicata alcuna formula stimata.
+
+Per ricevere gli eventi di account Connect tramite una destination Stripe separata, configurare il relativo signing secret in `STRIPE_CONNECT_WEBHOOK_SECRET` e mantenere il signing secret della piattaforma in `STRIPE_WEBHOOK_SECRET`. Il server verifica la firma rispetto ai secret configurati prima di esaminare l'evento; l'opzione Connect può restare vuota se non esiste una destination separata.
+
+Per individuare fee storiche o webhook non consegnati, eseguire la riconciliazione per intervalli di creazione delle Charge, con date UTC: l'inizio è incluso e la fine esclusa. Il primo comando simula la riconciliazione senza scrivere; il secondo la applica in modo idempotente:
+
+```sh
+php bin/console app:stripe:reconcile-fees --from=2026-01-01 --to=2026-02-01
+php bin/console app:stripe:reconcile-fees --from=2026-01-01 --to=2026-02-01 --apply
+```
+
+Il comando esamina l'account piattaforma; `--account=acct_...` permette una verifica mirata di un account collegato solo se i relativi pagamenti sono già presenti nel ledger. Il comando pagina tutte le Charge, ignora quelle non riuscite o senza PaymentIntent e segnala come errore le fee ancora in attesa o non riconciliabili, ad esempio perché manca il pagamento interno. Risolvere i casi segnalati e ripetere il comando: la simulazione o l'esecuzione non dimostrano la completezza dei pagamenti non presenti nel ledger. Le fee recuperate non inventano un ID di evento webhook e riportano come origine `stripe.reconciliation.fee`.
 
 ## Riconciliazione amministrativa per ordine
 
@@ -112,3 +123,45 @@ vendor/bin/phpunit Test/FinancialLedgerServiceTest.php Test/CommissionSnapshotSe
 Servono le estensioni PHP `sqlite3` e `bcmath`, oltre alle dipendenze bloccate in `composer.lock`. Il bootstrap applicativo richiede anche un `.env` valido; i test di dominio/infrastruttura non necessitano di credenziali reali Stripe.
 
 Restano coperti il rifiuto della firma Stripe non valida nel controller webhook e la whitelist di soli identificativi tecnici nel ledger. I test API verificano anche l'isolamento per artigiano e il rifiuto di identificativi d'ordine manomessi o appartenenti ad altri soggetti.
+
+## Riconciliazione dei payout Stripe Connect
+
+Il payout bancario è un fatto relativo all'intero account Connect e può aggregare più movimenti: non viene attribuito automaticamente a un ordine né registrato una seconda volta come movimento nel ledger. I webhook `payout.created`, `payout.updated`, `payout.paid`, `payout.failed` e `payout.canceled` sono conservati in un journal dedicato e aggiornano lo snapshot dell'account; un successivo fallimento può cambiare lo stato di un payout già segnalato come `paid`. Attivare questi eventi per gli account Connect nell'endpoint Stripe. Un payout della piattaforma privo di account Connect viene ignorato; un account Connect non ancora noto resta senza venditore associato finché un evento successivo, una sua ripetizione oppure la riconciliazione non conferma l'associazione.
+
+Per confrontare anche i payout esistenti con lo stato corrente Stripe, prima eseguire l'anteprima per un account già associato a un venditore; usare `--apply` solo per salvare le osservazioni:
+
+```sh
+php bin/console app:stripe-connect:backfill-payouts --account=acct_...
+php bin/console app:stripe-connect:backfill-payouts --account=acct_... --apply
+```
+
+Il comando scorre tutte le pagine dell'API Stripe e inserisce o aggiorna soltanto gli snapshot diversi da quelli locali. Per ogni modifica conserva un'osservazione `reconciliation.snapshot`, distinta dagli eventi webhook e senza inventare un identificativo webhook. L'orario della scansione indica quando è stata acquisita l'osservazione, non quando è avvenuta la transizione originaria: non è quindi utilizzabile per attribuire quel cambio a una settimana storica. Il riepilogo settimanale non conteggia queste osservazioni come eventi webhook del periodo. Un webhook ricevuto durante la scansione con data almeno pari all'inizio della scansione prevale sull'osservazione; la ripetizione del comando è idempotente e, dopo un errore, conserva quanto già acquisito. I dati storici non disponibili nell'API non possono essere ricostruiti dal comando.
+
+### Attribuzione automatica di un payout agli ordini
+
+Per un payout automatico `paid`, associato a un venditore e con riconciliazione Stripe completata, il seguente comando legge tutte le balance transaction del payout nel contesto dell'account Connect e confronta ogni pagamento con `destination_payment` del Transfer della piattaforma:
+
+```sh
+php bin/console app:stripe-connect:reconcile-payout-orders --account=acct_... --payout=po_...
+php bin/console app:stripe-connect:reconcile-payout-orders --account=acct_... --payout=po_... --apply
+```
+
+La prima esecuzione è un'anteprima. L'operazione attribuisce importi agli ordini soltanto quando l'intero payout è dimostrabile: importi e valute coincidono, ogni pagamento corrisponde a un unico Transfer locale e l'insieme non contiene fee, storni, conversioni o transazioni estranee. Gli altri casi restano non attribuiti e non producono righe parziali. I payout manuali non sono attribuibili con questa API Stripe. Le associazioni già registrate rimangono come evidenza anche se il payout diventa fallito o cancellato, ma non contano come pagamento; possono allora essere seguite da una nuova attribuzione su un payout successivo. Il comando restituisce errore in caso di payout manuale, non pronto, non disponibile o non attribuibile, e successo per anteprima, acquisizione o attribuzione già registrata.
+
+## Attribuzione manuale dei payout Connect
+
+Quando le prove disponibili non consentono l'attribuzione automatica, un operatore con accesso amministrativo al server può associare esplicitamente quote di un payout bancario pagato ai Transfer dello stesso artigiano e della stessa valuta. Prima di procedere occorre verificare l'evidenza esterna: il comando non deduce la relazione e non muove fondi. L'importo è espresso nelle unità minime Stripe. La chiave è univoca e va riutilizzata invariata per ritentare la stessa operazione; indicare sempre motivo, riferimento all'evidenza e identificativo dell'operatore, senza dati personali o credenziali. Per impostazione predefinita viene eseguita solo una simulazione:
+
+```sh
+php bin/console app:stripe-connect:attribute-payout --account=acct_EXAMPLE --payout=po_EXAMPLE --transfer=tr_EXAMPLE --amount-minor=500 --key=case-123 --reason='Riconciliazione verificata' --evidence=report-123 --operator=admin-1
+# Ripetere gli stessi argomenti aggiungendo --apply per salvare.
+```
+
+Le quote cumulate non possono superare il payout o il Transfer. Gli importi assegnati a payout successivamente falliti o annullati restano nello storico ma non impediscono di attribuire un payout sostitutivo; i Transfer con storni richiedono verifica separata. Per correggere un'attribuzione esistente, usare il suo ID e registrare uno storno totale con una nuova chiave, motivo ed evidenza; quindi, se necessario, registrare una nuova attribuzione corretta:
+
+```sh
+php bin/console app:stripe-connect:attribute-payout --reverse-id=123 --key=case-123-reversal --reason='Correzione attribuzione' --evidence=report-124 --operator=admin-1
+# Aggiungere --apply dopo aver esaminato la simulazione.
+```
+
+Il journal conserva sia l'attribuzione originaria sia lo storno; questa correzione riguarda soltanto la classificazione contabile, non il pagamento bancario.

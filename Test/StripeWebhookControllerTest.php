@@ -20,6 +20,7 @@ final class StripeWebhookControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        unset($_ENV['STRIPE_CONNECT_WEBHOOK_SECRET']);
 
         $cache = $this->getMockBuilder(\Illuminate\Cache\Repository::class)
             ->disableOriginalConstructor()
@@ -197,6 +198,52 @@ final class StripeWebhookControllerTest extends TestCase
         $this->assertSame(400, $result->getStatusCode());
         $body = json_decode((string) $result->getBody(), true);
         $this->assertArrayHasKey('error', $body['data']);
+    }
+
+    public function test_platform_and_connect_signing_secrets_are_both_verified(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_platform';
+        $_ENV['STRIPE_CONNECT_WEBHOOK_SECRET'] = 'whsec_connect';
+        $controller = $this->buildController();
+        $payload = json_encode(['id' => 'evt_test', 'type' => 'unhandled.event', 'account' => 'acct_test', 'data' => ['object' => []]], JSON_THROW_ON_ERROR);
+        $timestamp = time();
+        foreach (['whsec_platform', 'whsec_connect'] as $secret) {
+            $signature = 't=' . $timestamp . ',v1=' . hash_hmac('sha256', $timestamp . '.' . $payload, $secret);
+            self::assertSame(200, $controller->handleWebhook($this->buildRequest($payload, $signature), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+        }
+        $signature = 't=' . $timestamp . ',v1=' . hash_hmac('sha256', $timestamp . '.' . $payload, 'whsec_wrong');
+        self::assertSame(400, $controller->handleWebhook($this->buildRequest($payload, $signature), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+        $stale = $timestamp - 301;
+        $signature = 't=' . $stale . ',v1=' . hash_hmac('sha256', $stale . '.' . $payload, 'whsec_connect');
+        self::assertSame(400, $controller->handleWebhook($this->buildRequest($payload, $signature), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+    }
+
+    public function test_connect_secret_can_be_configured_independently(): void
+    {
+        unset($_ENV['STRIPE_WEBHOOK_SECRET']);
+        $_ENV['STRIPE_CONNECT_WEBHOOK_SECRET'] = 'whsec_connect';
+        $payload = json_encode(['id' => 'evt_test', 'type' => 'unhandled.event', 'data' => ['object' => []]], JSON_THROW_ON_ERROR);
+        $timestamp = time();
+        $signature = 't=' . $timestamp . ',v1=' . hash_hmac('sha256', $timestamp . '.' . $payload, 'whsec_connect');
+        self::assertSame(200, $this->buildController()->handleWebhook($this->buildRequest($payload, $signature), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+    }
+
+    public function test_connected_account_payments_do_not_enter_platform_checkout_or_ledger(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test';
+        foreach (['checkout.session.completed', 'payment_intent.succeeded', 'charge.updated', 'refund.created'] as $type) {
+            $event = \Stripe\Event::constructFrom(['id' => 'evt_connect', 'type' => $type, 'account' => 'acct_test', 'data' => ['object' => []]]);
+            $controller = $this->buildControllerWithEvent($event, null, new RuntimeException('The platform ledger must not be called.'));
+            self::assertSame(200, $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), [])->getStatusCode());
+        }
+    }
+
+    public function test_connected_payout_still_reaches_the_financial_handler(): void
+    {
+        $_ENV['STRIPE_WEBHOOK_SECRET'] = 'whsec_test';
+        $event = \Stripe\Event::constructFrom(['id' => 'evt_payout', 'type' => 'payout.paid', 'account' => 'acct_test', 'data' => ['object' => []]]);
+        $controller = $this->buildControllerWithEvent($event, null, new RuntimeException('Expected payout routing.'));
+        self::assertSame(500, $controller->handleWebhook($this->buildRequest('{}', 'sig'), $this->createMock(ResponseInterface::class), [])->getStatusCode());
     }
 
     public function test_returns_400_on_invalid_payload(): void

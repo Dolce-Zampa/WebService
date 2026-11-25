@@ -20,6 +20,7 @@ use PS\Webservice\Service\MailjetService;
 use PS\Webservice\Service\Payments\PaymentGatewayInterface;
 use PS\Webservice\Service\Payments\CheckoutSnapshotService;
 use PS\Webservice\Service\Payments\StripeConnectService;
+use PS\Webservice\Service\Payments\StripeConnectPayoutService;
 use PS\Webservice\Service\PS\Order;
 use PS\Webservice\Service\Promotions\PromotionService;
 use PS\Webservice\Traits\Order as OrderTrait;
@@ -58,6 +59,7 @@ class StripeWebhookController extends OrderController
         ?CheckoutSnapshotService $checkoutSnapshots = null,
         private readonly ?\Closure $giftCardSettlementFactory = null,
         private readonly ?\Closure $giftCardClientFactory = null,
+        private readonly ?StripeConnectPayoutService $stripeConnectPayouts = null,
     )
     {
         $this->orderService = $orderService;
@@ -95,21 +97,39 @@ class StripeWebhookController extends OrderController
 
         $payload = (string) $request->getBody();
         $sigHeader = $request->getHeaderLine('Stripe-Signature');
-        $endpointSecret = $_ENV['STRIPE_WEBHOOK_SECRET'] ?? null;
+        $endpointSecrets = array_values(array_unique(array_filter([
+            $_ENV['STRIPE_WEBHOOK_SECRET'] ?? null,
+            $_ENV['STRIPE_CONNECT_WEBHOOK_SECRET'] ?? null,
+        ], static fn ($secret): bool => is_string($secret) && $secret !== '')));
 
-        if (empty($endpointSecret)) {
-            Log::error('Stripe webhook: STRIPE_WEBHOOK_SECRET is not configured');
+        if ($endpointSecrets === []) {
+            Log::error('Stripe webhook: no webhook signing secret is configured');
             return response(['error' => 'Webhook secret not configured'], 500);
         }
 
-        try {
-            $event = $this->constructStripeEvent($payload, $sigHeader, $endpointSecret);
-        } catch (\UnexpectedValueException $e) {
-            Log::warning('Stripe webhook: invalid payload received');
-            return response(['error' => 'Invalid payload'], 400);
-        } catch (\Stripe\Exception\SignatureVerificationException $e) {
+        $event = null;
+        foreach ($endpointSecrets as $endpointSecret) {
+            try {
+                $event = $this->constructStripeEvent($payload, $sigHeader, $endpointSecret);
+                break;
+            } catch (\UnexpectedValueException $e) {
+                Log::warning('Stripe webhook: invalid payload received');
+                return response(['error' => 'Invalid payload'], 400);
+            } catch (\Stripe\Exception\SignatureVerificationException $e) {
+                // The platform and Connect destinations have independent secrets.
+            }
+        }
+        if ($event === null) {
             Log::warning('Stripe webhook: invalid signature');
             return response(['error' => 'Invalid signature'], 400);
+        }
+
+        // Connected-account payment events are not platform Checkout payments.
+        // Only the account and bank-payout lifecycles belong to this flow.
+        if (($event->account ?? null) !== null
+            && (string) $event->type !== 'account.updated'
+            && !in_array((string) $event->type, ['payout.created', 'payout.updated', 'payout.paid', 'payout.failed', 'payout.canceled'], true)) {
+            return response(['received' => true], 200);
         }
 
         if (in_array($event->type, ['checkout.session.completed', 'checkout.session.async_payment_succeeded'], true)) {
@@ -313,6 +333,40 @@ class StripeWebhookController extends OrderController
      */
     protected function recordFinancialWebhook(\Stripe\Event $event): void
     {
+        if (in_array((string) $event->type, ['payout.created', 'payout.updated', 'payout.paid', 'payout.failed', 'payout.canceled'], true)) {
+            if ($this->stripeConnectPayouts === null) {
+                throw new \RuntimeException('Stripe Connect payout reconciliation is unavailable.');
+            }
+            $this->stripeConnectPayouts->recordEvent($event);
+            return;
+        }
+        if (in_array((string) $event->type, ['charge.succeeded', 'charge.updated'], true)) {
+            if ($this->financialLedger !== null) {
+                $object = $event->data->object;
+                if (!$object instanceof \Stripe\StripeObject) {
+                    throw new \RuntimeException('Invalid Stripe charge event object.');
+                }
+                if (($object->balance_transaction ?? null) === null
+                    && ((string) $event->type === 'charge.succeeded' || ($object->paid ?? false) === true || ($object->status ?? null) === 'succeeded')) {
+                    $chargeId = $this->stripeIdentifier($object->id ?? null, 'charge');
+                    $object = $this->retrieveStripeCharge(
+                        $chargeId,
+                        $this->stripeOptionalIdentifier($event->account ?? null),
+                    );
+                    if (($object->id ?? null) !== $chargeId) {
+                        throw new \RuntimeException('Stripe returned a different charge.');
+                    }
+                    if (($object->balance_transaction ?? null) === null) {
+                        throw new \RuntimeException('Stripe charge balance transaction is not yet available.');
+                    }
+                }
+                $paymentIntentId = $this->stripeTransactionId($object, (string) $event->type, null);
+                if ($paymentIntentId !== null) {
+                    $this->recordStripeProviderFee($event, $object, $paymentIntentId);
+                }
+            }
+            return;
+        }
         if (str_starts_with((string) $event->type, 'refund.')) {
             if ($this->financialLedger !== null) {
                 $this->recordStripeRefundWebhook($event);
@@ -789,33 +843,73 @@ class StripeWebhookController extends OrderController
     }
 
     /**
-     * Stripe sometimes expands balance_transaction on a Charge/PaymentIntent
-     * event. When that exact fee is present, journal it; never estimate a fee
-     * from the gross payment.
+     * Record the exact provider fee when the balance transaction is present,
+     * retrieving it when Stripe supplies only its identifier.
      */
-    private function recordStripeProviderFee(\Stripe\Event $event, \Stripe\StripeObject $object, ?string $transactionId): void
+    private function recordStripeProviderFee(?\Stripe\Event $event, \Stripe\StripeObject $object, ?string $transactionId, bool $dryRun = false, ?string $reconciliationAccount = null, mixed $reconciliationTimestamp = null): string
     {
-        if ($this->financialLedger === null || $transactionId === null) return;
+        if ($this->financialLedger === null || $transactionId === null) return 'skipped';
+        $accountId = $event === null ? $reconciliationAccount : $this->stripeOptionalIdentifier($event->account ?? null);
         $data = $object->toArray();
         $balance = $data['balance_transaction'] ?? null;
         if ($balance instanceof \Stripe\StripeObject) $balance = $balance->toArray();
-        if (!is_array($balance) || !isset($balance['fee']) || (!is_int($balance['fee']) && !(is_string($balance['fee']) && ctype_digit($balance['fee'])))) return;
+        if ($balance === null) return 'pending';
+        if (is_string($balance) && $balance !== '') {
+            $balanceId = $balance;
+            $balance = $this->retrieveStripeBalanceTransaction($balanceId, $accountId)->toArray();
+            if (($balance['id'] ?? null) !== $balanceId) {
+                throw new \RuntimeException('Stripe returned a different balance transaction.');
+            }
+        }
+        if (!is_array($balance) || !isset($balance['fee']) || (!is_int($balance['fee']) && !(is_string($balance['fee']) && ctype_digit($balance['fee']))) || (int) $balance['fee'] < 0) {
+            throw new \RuntimeException('Stripe balance transaction has no valid fee.');
+        }
         $feeMinor = (int) $balance['fee'];
-        if ($feeMinor < 1) return;
-        $payment = $this->financialTransactionByProviderTransaction($transactionId);
-        if ($payment === null) return;
-        $balanceId = $this->stripeOptionalIdentifier($balance['id'] ?? null) ?? $this->stripeIdentifier($event->id ?? null, 'event');
-        $eventId = $this->stripeIdentifier($event->id ?? null, 'event');
+        if ($feeMinor === 0) return 'zero_fee';
+        $payment = $this->financialLedger->findPaymentByProviderTransaction('stripe', $transactionId);
+        if ($payment === null) throw new \RuntimeException('Stripe fee payment is not yet available for reconciliation.');
+        $balanceId = $this->stripeIdentifier($balance['id'] ?? null, 'balance transaction');
+        $eventId = $event === null ? null : $this->stripeIdentifier($event->id ?? null, 'event');
+        $currency = strtoupper((string) ($balance['currency'] ?? ''));
+        if (!preg_match('/^[A-Z]{3}$/', $currency)) {
+            throw new \RuntimeException('Stripe balance transaction has no valid currency.');
+        }
+        if ($dryRun) return 'ready';
         $this->financialLedger->record(FinancialMovement::fromArray([
             'type' => 'provider_fee', 'status' => 'available',
-            'amount' => '-' . $this->stripeMinorAmount($feeMinor, (string) $payment->currency),
-            'currency' => (string) $payment->currency, 'occurred_at' => $this->stripeEventTimestamp($event->created ?? null),
+            'amount' => '-' . $this->stripeMinorAmount($feeMinor, $currency),
+            'currency' => $currency, 'occurred_at' => $this->stripeEventTimestamp($event === null ? $reconciliationTimestamp : ($event->created ?? null)),
             'order_id' => $this->positiveInteger($payment->order_id), 'customer_id' => $this->positiveInteger($payment->customer_id),
             'order_reference' => $this->stripeOptionalIdentifier($payment->order_reference), 'provider' => 'stripe',
-            'provider_transaction_id' => $balanceId, 'provider_event_id' => $eventId . ':fee',
-            'source_event_type' => 'stripe.balance_transaction.fee', 'source_event_id' => $balanceId,
+            'provider_account_id' => $accountId,
+            'provider_transaction_id' => $balanceId, 'provider_event_id' => $eventId === null ? null : $eventId . ':fee',
+            'source_event_type' => $event === null ? 'stripe.reconciliation.fee' : 'stripe.balance_transaction.fee', 'source_event_id' => $balanceId,
             'metadata' => ['stripe_balance_transaction_id' => $balanceId],
         ]), 'stripe:fee:' . hash('sha256', $balanceId));
+        return 'recorded';
+    }
+
+    /** Reconcile a Stripe charge returned by the provider, without inventing a webhook. */
+    public function reconcileStripeCharge(\Stripe\StripeObject $charge, ?string $accountId, bool $dryRun): string
+    {
+        $data = $charge->toArray();
+        if (($data['status'] ?? null) !== 'succeeded' && ($data['paid'] ?? false) !== true) return 'skipped';
+        $transactionId = $this->stripeTransactionId($charge, 'charge.succeeded', null);
+        if ($transactionId === null) return 'skipped';
+        $this->stripeIdentifier($data['id'] ?? null, 'charge');
+        return $this->recordStripeProviderFee(null, $charge, $transactionId, $dryRun, $accountId, $data['created'] ?? null);
+    }
+
+    protected function retrieveStripeCharge(string $id, ?string $accountId): \Stripe\Charge
+    {
+        $stripe = new \Stripe\StripeClient((string) env('STRIPE_API_KEY', ''));
+        return $stripe->charges->retrieve($id, [], $accountId === null ? [] : ['stripe_account' => $accountId]);
+    }
+
+    protected function retrieveStripeBalanceTransaction(string $id, ?string $accountId): \Stripe\BalanceTransaction
+    {
+        $stripe = new \Stripe\StripeClient((string) env('STRIPE_API_KEY', ''));
+        return $stripe->balanceTransactions->retrieve($id, [], $accountId === null ? [] : ['stripe_account' => $accountId]);
     }
 
     private function stripeSessionId(\Stripe\StripeObject $object, string $eventType): ?string
@@ -915,7 +1009,7 @@ class StripeWebhookController extends OrderController
         }
 
         $currency = $this->stripeCurrency($object);
-        if (in_array($currency, ['BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'], true)) {
+        if (in_array($currency, ['BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'], true)) {
             return (string) $minorUnits;
         }
 
@@ -937,7 +1031,7 @@ class StripeWebhookController extends OrderController
 
     private function stripeMinorAmount(int $minorUnits, string $currency): string
     {
-        if (in_array(strtoupper($currency), ['BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'], true)) return (string) $minorUnits;
+        if (in_array(strtoupper($currency), ['BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'], true)) return (string) $minorUnits;
         return intdiv($minorUnits, 100) . '.' . str_pad((string) ($minorUnits % 100), 2, '0', STR_PAD_LEFT);
     }
 

@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
 use PS\Webservice\Domain\Financial\FinancialMovement;
+use PS\Webservice\Domain\Financial\FinancialMovementKind;
 use PS\Webservice\Repositories\FinancialTransactionRepository;
 
 /** Read-only financial aggregates. Customer identity is deliberately limited to its internal ID. */
@@ -27,7 +28,7 @@ final class FinancialAnalyticsService
 
         foreach ($rows as $row) {
             $currency = (string) $row->currency;
-            $type = (string) $row->type;
+            $type = FinancialMovementKind::effectiveType($row);
             $byCurrency[$currency] ??= $this->emptyCurrencySummary($currency);
             $byCurrency[$currency]['movement_count']++;
             $byCurrency[$currency]['net_amount'] = $this->add($byCurrency[$currency]['net_amount'], (string) $row->amount);

@@ -52,6 +52,23 @@ final class FinancialOrderReconciliationServiceTest extends TestCase
             $table->decimal('commission_amount', 26, 12); $table->decimal('artisan_amount', 26, 12); $table->string('rounding_mode'); $table->boolean('shipping_included');
             $table->dateTime('calculated_at'); $table->dateTime('created_at');
         });
+        $schema->create('stripe_connect_payouts', function ($table): void {
+            $table->increments('id'); $table->string('stripe_account_id'); $table->string('stripe_payout_id'); $table->string('status');
+        });
+        $schema->create('stripe_connect_payout_allocations', function ($table): void {
+            $table->increments('id'); $table->string('stripe_account_id'); $table->string('stripe_payout_id'); $table->string('stripe_transfer_id');
+            $table->unsignedBigInteger('order_id'); $table->unsignedBigInteger('manufacturer_id'); $table->integer('amount'); $table->string('currency');
+        });
+        $schema->create('stripe_connect_payout_manual_allocations', function ($table): void {
+            $table->increments('id'); $table->string('stripe_account_id'); $table->string('stripe_payout_id'); $table->string('stripe_transfer_id');
+            $table->unsignedBigInteger('order_id'); $table->unsignedBigInteger('manufacturer_id'); $table->integer('amount'); $table->string('currency'); $table->integer('direction');
+        });
+        $schema->create('stripe_connect_transfers', function ($table): void {
+            $table->increments('id'); $table->string('stripe_account_id'); $table->string('stripe_transfer_id');
+        });
+        $schema->create('stripe_connect_transfer_reversals', function ($table): void {
+            $table->increments('id'); $table->unsignedBigInteger('stripe_connect_transfer_id');
+        });
 
         $this->service = new FinancialOrderReconciliationService(
             new FinancialTransactionRepository($capsule),
@@ -63,7 +80,7 @@ final class FinancialOrderReconciliationServiceTest extends TestCase
     {
         $this->movement(['type' => 'payment', 'amount' => '132.50', 'provider_transaction_id' => 'pi_order_1', 'provider_event_id' => 'evt_payment']);
         $this->movement(['type' => 'refund', 'amount' => '-12.50', 'related_transaction_id' => 1, 'provider_transaction_id' => 're_order_1']);
-        $this->movement(['type' => 'payout', 'amount' => '-80', 'provider_transaction_id' => 'po_order_1']);
+        $this->movement(['type' => 'payout', 'status' => 'paid', 'amount' => '-80', 'provider_transaction_id' => 'po_order_1']);
         $this->snapshot(['commission_amount' => '20.1', 'artisan_amount' => '80.4']);
 
         $report = $this->service->forOrder(101);
@@ -93,6 +110,66 @@ final class FinancialOrderReconciliationServiceTest extends TestCase
         self::assertSame(2, $report['timeline']['page']);
         self::assertSame('payment', $report['timeline']['items'][0]['type']);
         self::assertArrayNotHasKey('metadata', $report['timeline']['items'][0]);
+    }
+
+    public function test_legacy_transfer_is_not_described_as_a_bank_payout(): void
+    {
+        $this->movement(['type' => 'payout', 'status' => 'paid', 'amount' => '-80', 'provider_transaction_id' => 'tr_old', 'source_event_type' => 'stripe.transfer.created']);
+        $this->movement(['type' => 'payout', 'status' => 'paid', 'amount' => '10', 'provider_transaction_id' => 'trr_old', 'source_event_type' => 'stripe.transfer.reversal.created']);
+        $this->snapshot(['artisan_amount' => '90']);
+        $report = $this->service->forOrder(101);
+        self::assertSame('70', $report['financials']['seller_entitlement']['transfers']);
+        self::assertSame('20', $report['financials']['seller_entitlement']['transfer_residual']);
+        self::assertSame('0', $report['financials']['seller_entitlement']['payouts']);
+        self::assertSame(['amount' => null, 'status' => 'not_attributed', 'residual_from_attributed' => null, 'provider_transaction_ids' => [], 'invalidated_allocations' => []], $report['financials']['seller_entitlement']['connect_bank_payouts']);
+        self::assertSame([], $report['identifiers']['payout_provider_transaction_ids']);
+        self::assertSame(['tr_old', 'trr_old'], $report['identifiers']['transfer_provider_transaction_ids']);
+        self::assertSame('transfer', $report['timeline']['items'][0]['type']);
+        self::assertSame('available', $report['timeline']['items'][0]['status']);
+    }
+
+    public function test_paid_payout_totals_exclude_pending_and_failed_and_apply_linked_reversal(): void
+    {
+        $this->movement(['type' => 'payout', 'status' => 'paid', 'amount' => '-60']);
+        $this->movement(['type' => 'payout', 'status' => 'pending', 'amount' => '-20']);
+        $this->movement(['type' => 'payout', 'status' => 'failed', 'amount' => '-30']);
+        $this->movement(['type' => 'payout', 'status' => 'reversed', 'amount' => '10', 'related_transaction_id' => 1]);
+        $this->snapshot(['artisan_amount' => '100']);
+        $report = $this->service->forOrder(101);
+        self::assertSame('50', $report['financials']['seller_entitlement']['payouts']);
+        self::assertSame('50', $report['financials']['seller_entitlement']['residual']);
+    }
+
+    public function test_verified_partial_connect_allocations_count_only_currently_paid_payouts(): void
+    {
+        $this->snapshot(['artisan_amount' => '100']);
+        DB::table('stripe_connect_payouts')->insert([
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_1', 'status' => 'paid'],
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_2', 'status' => 'paid'],
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_manual', 'status' => 'paid'],
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_failed', 'status' => 'failed'],
+        ]);
+        DB::table('stripe_connect_payout_allocations')->insert([
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_1', 'stripe_transfer_id' => 'tr_1', 'order_id' => 101, 'manufacturer_id' => 10, 'amount' => 3000, 'currency' => 'EUR'],
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_2', 'stripe_transfer_id' => 'tr_2', 'order_id' => 101, 'manufacturer_id' => 10, 'amount' => 2000, 'currency' => 'EUR'],
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_failed', 'stripe_transfer_id' => 'tr_f', 'order_id' => 101, 'manufacturer_id' => 10, 'amount' => 4000, 'currency' => 'EUR'],
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_1', 'stripe_transfer_id' => 'tr_other', 'order_id' => 102, 'manufacturer_id' => 10, 'amount' => 9000, 'currency' => 'EUR'],
+        ]);
+        DB::table('stripe_connect_payout_manual_allocations')->insert([
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_manual', 'stripe_transfer_id' => 'tr_manual', 'order_id' => 101, 'manufacturer_id' => 10, 'amount' => 1000, 'currency' => 'EUR', 'direction' => 1],
+            ['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_failed', 'stripe_transfer_id' => 'tr_f', 'order_id' => 101, 'manufacturer_id' => 10, 'amount' => 1000, 'currency' => 'EUR', 'direction' => 1],
+        ]);
+        $entitlement = $this->service->forOrder(101)['financials']['seller_entitlement'];
+        $bank = $entitlement['connect_bank_payouts'];
+        self::assertSame(['amount' => '60', 'status' => 'attributed_amount', 'residual_from_attributed' => '40', 'provider_transaction_ids' => ['po_1', 'po_2', 'po_manual'], 'invalidated_allocations' => []], $bank);
+        self::assertSame([['artisan_id' => 10, 'entitlement' => '100', 'attributed_payouts' => '60', 'residual_from_attributed' => '40']], $entitlement['by_artisan']);
+        DB::table('stripe_connect_payout_manual_allocations')->insert(['stripe_account_id' => 'acct_1', 'stripe_payout_id' => 'po_manual', 'stripe_transfer_id' => 'tr_manual', 'order_id' => 101, 'manufacturer_id' => 10, 'amount' => 1000, 'currency' => 'EUR', 'direction' => -1]);
+        self::assertSame('50', $this->service->forOrder(101)['financials']['seller_entitlement']['connect_bank_payouts']['amount']);
+        $transferId = DB::table('stripe_connect_transfers')->insertGetId(['stripe_account_id' => 'acct_1', 'stripe_transfer_id' => 'tr_1']);
+        DB::table('stripe_connect_transfer_reversals')->insert(['stripe_connect_transfer_id' => $transferId]);
+        $invalidated = $this->service->forOrder(101)['financials']['seller_entitlement']['connect_bank_payouts'];
+        self::assertSame('20', $invalidated['amount']);
+        self::assertSame([['stripe_payout_id' => 'po_1', 'stripe_transfer_id' => 'tr_1', 'reason' => 'transfer_reversal']], $invalidated['invalidated_allocations']);
     }
 
     /** @param array<string, mixed> $overrides */

@@ -461,7 +461,7 @@ final class StripeConnectService
             }
             $transferId = $this->stripeId($existing->stripe_transfer_id ?? null, 'transfer');
             $transfer = $this->stripe->transfers->retrieve($transferId, []);
-            $this->recordPayout($orderId, ['manufacturer_id' => $sellerId, 'amount' => $sellerCents], $account, $transfer, $paymentIntentId, $this->now(), 'EUR');
+            $this->recordTransfer($orderId, ['manufacturer_id' => $sellerId, 'amount' => $sellerCents], $account, $transfer, $paymentIntentId, $this->now(), 'EUR');
             $result['transfer_id'] = $transferId;
             return $result;
         }
@@ -1308,7 +1308,7 @@ final class StripeConnectService
         }
 
         $this->ledger->recordReversal((int) $originalPayout->id, FinancialMovement::fromArray([
-            'type' => 'payout',
+            'type' => 'transfer',
             'status' => 'reversed',
             'amount' => $this->centsToDecimal($amount),
             'currency' => (string) $originalPayout->currency,
@@ -1336,10 +1336,19 @@ final class StripeConnectService
         $values['created_at'] = $now;
         $values['updated_at'] = $now;
         try {
-            $this->db->table(self::REVERSALS)->insert($values);
-        } catch (QueryException) {
-            // A concurrent delivery of the same Stripe event owns the same
-            // idempotency key. Its existing record is the source of truth.
+            $this->db->getConnection()->transaction(function () use ($values): void {
+                $transfer = $this->db->table(self::TRANSFERS)
+                    ->where('id', $values['stripe_connect_transfer_id'])->lockForUpdate()->first();
+                if ($transfer === null) {
+                    throw new \RuntimeException('Cannot record a reversal for an unknown transfer.');
+                }
+                $this->db->table(self::REVERSALS)->insert($values);
+            }, 3);
+        } catch (QueryException $exception) {
+            // Only an existing identical idempotency key makes a duplicate safe.
+            if (!$this->db->table(self::REVERSALS)->where('idempotency_key', $values['idempotency_key'])->exists()) {
+                throw $exception;
+            }
         }
     }
 
@@ -1479,7 +1488,7 @@ final class StripeConnectService
             'status' => 'paid',
             'failure_code' => null,
         ]);
-        $this->recordPayout(
+        $this->recordTransfer(
             $orderId,
             ['manufacturer_id' => $sellerId, 'amount' => $amount],
             $account,
@@ -1531,19 +1540,18 @@ final class StripeConnectService
     }
 
     /** @param array{manufacturer_id:int,amount:int} $allocation */
-    private function recordPayout(int $orderId, array $allocation, object $account, \Stripe\StripeObject $transfer, string $paymentIntentId, DateTimeImmutable $occurredAt, string $currency): void
+    private function recordTransfer(int $orderId, array $allocation, object $account, \Stripe\StripeObject $transfer, string $paymentIntentId, DateTimeImmutable $occurredAt, string $currency): void
     {
         if ($this->ledger === null) return;
         $transferId = $this->stripeId($transfer->id ?? null, 'transfer');
         $this->ledger->record(FinancialMovement::fromArray([
-            'type' => 'payout', 'status' => 'paid', 'amount' => '-' . $this->centsToDecimal($allocation['amount']),
+            'type' => 'transfer', 'status' => 'available', 'amount' => '-' . $this->centsToDecimal($allocation['amount']),
             'currency' => $currency, 'occurred_at' => $occurredAt, 'order_id' => $orderId,
             'artisan_id' => $allocation['manufacturer_id'], 'provider' => 'stripe',
             'provider_account_id' => (string) $account->stripe_account_id,
             'provider_transaction_id' => $transferId, 'provider_event_id' => $transferId,
             'source_event_type' => 'stripe.transfer.created', 'source_event_id' => $transferId,
             'metadata' => ['stripe_payment_intent_id' => $paymentIntentId, 'stripe_transfer_id' => $transferId],
-            'settled_at' => $occurredAt,
         ]), 'stripe:transfer:' . hash('sha256', $transferId));
     }
 
