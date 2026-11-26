@@ -415,9 +415,43 @@ final class StripeConnectService
     }
 
     /** Transfer the seller share of a payment taken outside the shop checkout. */
-    public function manualInitialTransfer(int $orderId, int $sellerId, string $paymentIntentId, int $paymentCents, int $sellerCents, bool $execute): array
+    public function manualInitialTransfer(int $orderId, int $sellerId, string $paymentIntentId, int $paymentCents, ?int $sellerCents, bool $execute, ?int $confirmedCents = null): array
     {
-        return $this->manualPaymentTransfer($orderId, $sellerId, $paymentIntentId, $paymentCents, $sellerCents, $execute, true);
+        $calculation = null;
+        if ($sellerCents === null) {
+            if ($orderId < 1 || $sellerId < 1 || $paymentCents < 1) {
+                throw new \InvalidArgumentException('Dati del trasferimento non validi.');
+            }
+            $order = $this->db->table('orders')->where('id_order', $orderId)
+                ->select(['total_paid_tax_incl', 'total_shipping_tax_incl'])->first();
+            if ($order === null || $order->total_paid_tax_incl === null || $order->total_shipping_tax_incl === null
+                || $this->decimalToCents((string) $order->total_paid_tax_incl) !== $paymentCents) {
+                throw new \RuntimeException('Il totale dell’ordine deve coincidere con il pagamento Stripe.');
+            }
+            $shipping = $this->decimalToCents((string) $order->total_shipping_tax_incl);
+            $productCents = $paymentCents - $shipping;
+            if ($productCents < 1) {
+                throw new \RuntimeException('Importo prodotto non valido dopo la spedizione.');
+            }
+            $rate = $this->db->table('manufacturer_details')->where('id_manufacturer', $sellerId)->value('commission');
+            $basisPoints = $this->commissionRate((string) ($rate ?? '0'));
+            $minimum = $this->minimumCommissionCents();
+            $commission = $this->commissionForProduct($productCents, $basisPoints, $minimum);
+            $sellerCents = $productCents - $commission;
+            if ($sellerCents < 1) {
+                throw new \RuntimeException('La quota venditore calcolata è zero.');
+            }
+            $calculation = ['calculation' => 'automatic', 'shipping_cents' => $shipping,
+                'product_cents' => $productCents, 'commission_basis_points' => $basisPoints,
+                'minimum_commission_cents' => $minimum, 'commission_cents' => $commission];
+            if ($execute && $confirmedCents !== $sellerCents) {
+                throw new \RuntimeException('Confermare la quota mostrata in anteprima con --confirm-seller-cents.');
+            }
+        } elseif ($confirmedCents !== null) {
+            throw new \InvalidArgumentException('Usare --confirm-seller-cents solo con il calcolo automatico.');
+        }
+        $result = $this->manualPaymentTransfer($orderId, $sellerId, $paymentIntentId, $paymentCents, $sellerCents, $execute, true);
+        return $result + ($calculation ?? ['calculation' => 'manual']);
     }
 
     private function manualPaymentTransfer(int $orderId, int $sellerId, string $paymentIntentId, int $paymentCents, int $sellerCents, bool $execute, bool $initial): array
@@ -937,11 +971,7 @@ final class StripeConnectService
                 : intdiv($remainingProductCents * $seller['gross'], $remainingGrossCents);
             $remainingProductCents -= $sellerProductCents;
             $remainingGrossCents -= $seller['gross'];
-            $commissionCents = intdiv($sellerProductCents * $seller['commission'], 10000);
-            $commissionCents = min(
-                $sellerProductCents,
-                max($this->minimumCommissionCents(), $commissionCents),
-            );
+            $commissionCents = $this->commissionForProduct($sellerProductCents, $seller['commission'], $this->minimumCommissionCents());
             $allocations[] = [
                 'manufacturer_id' => $sellerId,
                 'amount' => $sellerProductCents - $commissionCents,
@@ -1018,11 +1048,7 @@ final class StripeConnectService
                 : intdiv($remainingProductCents * $seller['gross'], $remainingGrossCents);
             $remainingProductCents -= $sellerProductCents;
             $remainingGrossCents -= $seller['gross'];
-            $commissionCents = intdiv($sellerProductCents * $seller['commission'], 10000);
-            $commissionCents = min(
-                $sellerProductCents,
-                max($this->minimumCommissionCents(), $commissionCents),
-            );
+            $commissionCents = $this->commissionForProduct($sellerProductCents, $seller['commission'], $this->minimumCommissionCents());
             $allocations[] = [
                 'manufacturer_id' => $sellerId,
                 'amount' => $sellerProductCents - $commissionCents,
@@ -1631,6 +1657,11 @@ final class StripeConnectService
         $basisPoints = (int) bcmul($rate, '100', 0);
         if ($basisPoints < 0 || $basisPoints > 10000) throw new \RuntimeException('Invalid seller commission rate.');
         return $basisPoints;
+    }
+
+    private function commissionForProduct(int $productCents, int $basisPoints, int $minimumCents): int
+    {
+        return min($productCents, max($minimumCents, intdiv($productCents * $basisPoints, 10000)));
     }
 
     private function minimumCommissionCents(): int
