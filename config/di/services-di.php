@@ -236,7 +236,8 @@ $container->set(\PS\Webservice\Service\Payments\StripeConnectService::class, fun
 
 $container->set(\PS\Webservice\Service\OpenAIService::class, function ($c) {
     return new \PS\Webservice\Service\OpenAIService(
-        env('OPENAI_API_KEY', '')
+        env('OPENAI_API_KEY', ''),
+        imageModel: env('OPENAI_IMAGE_MODEL', \PS\Webservice\Service\OpenAIService::DEFAULT_IMAGE_MODEL)
     );
 });
 
