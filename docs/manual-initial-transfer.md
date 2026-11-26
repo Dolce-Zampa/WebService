@@ -1,6 +1,6 @@
 # Trasferimento manuale di un pagamento iniziale
 
-Bozza tecnica: richiede revisione e verifica in ambiente di prova prima del rilascio. Il comando non crea né modifica l'ordine e non registra il pagamento in PrestaShop. Supporta un solo venditore e un pagamento EUR integralmente acquisito con carta o PayPal.
+Bozza tecnica: richiede revisione e verifica in ambiente di prova prima del rilascio. Il comando non crea né modifica l'ordine e non registra il pagamento in PrestaShop. Supporta un solo venditore e un pagamento EUR integralmente acquisito con carta, PayPal o Klarna.
 
 Il calcolo automatico usa la commissione attuale di `manufacturer_details` per l'artigiano indicato e la stessa commissione minima, i valori predefiniti e l'arrotondamento del flusso Stripe Connect ordinario. La base è il totale pagato meno la spedizione registrata nell'ordine; il totale ordine deve coincidere con l'importo pagato. È adatto a un ordine di un solo artigiano con soli prodotti e spedizione: altri servizi o voci aggiuntive richiedono una quota manuale. Le impostazioni di commissione sono quelle correnti, non quelle congelate al momento del pagamento; verificare gli accordi in anteprima.
 

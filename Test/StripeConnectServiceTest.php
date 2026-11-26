@@ -637,7 +637,7 @@ final class StripeConnectServiceTest extends TestCase
                 return \Stripe\PaymentIntent::constructFrom(['id' => $id, 'status' => 'succeeded', 'currency' => 'eur',
                     'amount_received' => $paypal ? 500 : 1000, 'latest_charge' => ['id' => $paypal ? 'py_paypal' : 'ch_supplement', 'object' => 'charge',
                         'status' => 'succeeded', 'amount_captured' => $paypal ? 500 : 1000, 'amount_refunded' => $id === 'pi_refunded' ? 100 : 0,
-                        'payment_method_details' => ['type' => $paypal ? 'paypal' : ($id === 'pi_unsupported' ? 'klarna' : 'card')], 'transfer_data' => null]]);
+                        'payment_method_details' => ['type' => $paypal ? 'paypal' : ($id === 'pi_unsupported' ? 'sepa_debit' : 'card')], 'transfer_data' => null]]);
             }
         };
         $accounts = new class {
