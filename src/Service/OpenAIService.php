@@ -10,15 +10,17 @@ use PS\Webservice\Facades\S3Service;
 
 class OpenAIService
 {
+    public const DEFAULT_IMAGE_MODEL = 'gpt-image-2.5-sunburst';
+
     private Client $client;
     private string $model;
     private string $imageModel;
     private string $baseUriImage;
 
-    public function __construct(string $apiKey, string $model = 'gpt-4o', string $imageModel = 'gpt-image-1')
+    public function __construct(string $apiKey, string $model = 'gpt-4o', string $imageModel = self::DEFAULT_IMAGE_MODEL)
     {
         $this->model = $model;
-        $this->imageModel = $imageModel;
+        $this->imageModel = trim($imageModel) !== '' ? trim($imageModel) : self::DEFAULT_IMAGE_MODEL;
         $this->baseUriImage = "https://www.dolcezampa.com";
         $this->client = new Client([
             'base_uri' => 'https://api.openai.com/v1/',
@@ -156,12 +158,12 @@ PROMPT;
     }
 
     /**
-     * Generates a product image URL using DALL-E.
+     * Generates a product image and saves it to S3.
      *
      * @param string $productName  The product name to base the image on
      * @param string $customPrompt Optional custom prompt. Use {product_name} as placeholder.
      *                             When empty, the built-in default prompt is used.
-     * @return string URL of the generated image (expires after ~1 hour)
+     * @return string URL of the generated image
      * @throws \RuntimeException on API failure
      */
     public function generateProductImage(string $productName, string $customPrompt = ''): string
@@ -182,16 +184,17 @@ PROMPT;
                     'n' => 1,
                     'size' => '1024x1024',
                     'quality' => 'medium',
-                    'response_format' => 'url',
                 ],
             ]);
 
             $body = json_decode($response->getBody()->getContents(), true);
-            $imageUrl = (string) ($body['data'][0]['url'] ?? '');
+            $imageData = (string) ($body['data'][0]['b64_json'] ?? '');
 
-            if (empty($imageUrl)) {
-                throw new \RuntimeException('Empty image URL in OpenAI response');
+            if ($imageData === '') {
+                throw new \RuntimeException('Empty image data in OpenAI response');
             }
+
+            $imageUrl = $this->saveImage($imageData);
 
             Log::info('OpenAI: image generated for product "' . $productName . '"');
 
@@ -203,7 +206,7 @@ PROMPT;
     }
 
     /**
-     * Generates multiple product images (main + detail/zoom shots) using DALL-E.
+     * Generates multiple product images (main + detail/zoom shots).
      *
      * Returns an array of image URLs in this order:
      *   0 – main product photo (white background)
@@ -219,7 +222,7 @@ PROMPT;
      * @param int    $count        Number of images to generate (default 5, min 1, max 10)
      * @param string $customPrompt Optional base prompt. Use {product_name} as placeholder.
      *                             When provided it is used for ALL shots (index appended for variety).
-     * @return string[] Array of image URLs (expires after ~1 hour)
+     * @return string[] Array of image URLs
      */
     public function generateProductImages(string $sourceImageUrl, string $productName, int $count = 5, string $customPrompt = ''): array
     {
@@ -412,7 +415,7 @@ PROMPT;
         }
     }
 
-    private function fetchSourceImage(string $sourceImageUrl): array
+    protected function fetchSourceImage(string $sourceImageUrl): array
     {
         $httpClient = new Client(['timeout' => 30]);
         $response = $httpClient->get($sourceImageUrl);
