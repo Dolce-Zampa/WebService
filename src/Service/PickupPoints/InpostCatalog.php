@@ -113,8 +113,11 @@ final class InpostCatalog
             || ($lon !== null && (!is_numeric($lon) || (float) $lon < -180 || (float) $lon > 180))) {
             throw new \RuntimeException('InPost returned invalid coordinates.');
         }
+        $description = $point['location_description'] ?? null;
+        $name = is_string($description) && trim($description) !== ''
+            ? trim($description) : (string) ($point['display_name'] ?? $point['name']);
         return [
-            'point_id' => $point['name'], 'name' => (string) ($point['display_name'] ?? $point['name']),
+            'point_id' => $point['name'], 'name' => mb_substr($name, 0, 255),
             'type' => in_array('parcel_locker', $type, true) ? 'locker' : 'point',
             'address' => $line, 'city' => $city, 'province' => $details['province'] ?? null,
             'postal_code' => $postcode, 'latitude' => $lat, 'longitude' => $lon,

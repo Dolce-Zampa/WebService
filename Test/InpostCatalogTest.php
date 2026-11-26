@@ -48,6 +48,25 @@ final class InpostCatalogTest extends TestCase
         self::assertNotNull($body['data']['last_sync_at']);
     }
 
+    public function test_location_description_is_returned_as_the_display_name_with_fallbacks(): void
+    {
+        $store = $this->point('A');
+        $store['location_description'] = '  Cartoleria Rossi  ';
+        $store['display_name'] = 'Original name';
+        $empty = $this->point('B');
+        $empty['location_description'] = '  ';
+        $empty['display_name'] = 'Locker B';
+        $missing = $this->point('C');
+        $page = $this->page([$store, $empty, $missing]);
+        $this->catalog([$page, $page])->sync();
+
+        $request = (new ServerRequestFactory())->createServerRequest('GET', '/')->withQueryParams(['postal_code' => '20100']);
+        $response = (new InpostPointsController($this->db()))->index($request, new Response());
+        $items = json_decode((string) $response->getBody(), true)['data']['items'];
+        self::assertSame(['Cartoleria Rossi', 'Locker B', 'C'], array_column($items, 'name'));
+        self::assertSame(['A', 'B', 'C'], array_column($items, 'point_id'));
+    }
+
     public function test_partial_or_changing_snapshot_preserves_previous_data(): void
     {
         $page = $this->page([$this->point('A')]);
