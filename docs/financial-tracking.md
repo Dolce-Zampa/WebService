@@ -100,6 +100,14 @@ La firma richiede un valore casuale dedicato di almeno 32 caratteri in `FINANCIA
 
 Dopo un checkout firmato e finalizzato, ogni venditore riceve una sola notifica relativa esclusivamente ai propri prodotti. Il journal di consegna è idempotente e i retry non bloccano la finalizzazione dell'ordine.
 
+Per un ordine già pagato si può inviare la notifica mancante anche senza un carrello:
+
+```sh
+php bin/console app:financial:notify-seller-sale --order-id=112
+```
+
+Il comando richiede uno stato ordine pagato e un indirizzo email valido. Per un ordine con un unico trasferimento iniziale manuale completato, usa l'artigiano associato al trasferimento e include le righe dell'ordine: usare questo caso per un ordine di un solo artigiano. Se i trasferimenti non sono univoci o non sono completati, il comando si arresta. Negli altri casi individua i destinatari dai produttori associati ai prodotti. Le notifiche già registrate come inviate non sono ripetute. Il precedente argomento `cart-id` resta disponibile.
+
 ## Test e prerequisiti
 
 La suite finanziaria usa fixture SQLite in memoria e copre il journal append-only, precisione `DECIMAL(20,6)`, snapshot della commissione, retry dei webhook, stati pendenti/falliti/disponibili, payout, rimborsi parziali e privacy del metadata Stripe. Per eseguirla:

@@ -59,10 +59,10 @@ final class SellerSaleNotificationService
         }
     }
 
-    private function notifyFinalizedSalesForOrder(int $orderId): void
+    public function notifyFinalizedSalesForOrder(int $orderId, ?int $manualSellerId = null): void
     {
         try {
-            foreach ($this->sellerSalesForOrder($orderId) as $sale) {
+            foreach ($this->sellerSalesForOrder($orderId, $manualSellerId) as $sale) {
                 $this->deliver($sale);
             }
         } catch (\Throwable $e) {
@@ -85,27 +85,33 @@ final class SellerSaleNotificationService
     }
 
     /** @return array<int, array<string, mixed>> */
-    private function sellerSalesForOrder(mixed $orderId): array
+    private function sellerSalesForOrder(mixed $orderId, ?int $manualSellerId = null): array
     {
         if (!is_numeric($orderId) || (int) $orderId < 1) {
             return [];
         }
 
-        return $this->sellerSales((int) $orderId, null);
+        return $this->sellerSales((int) $orderId, null, $manualSellerId);
     }
 
     /** @return array<int, array<string, mixed>> */
-    private function sellerSales(?int $orderId, ?DateTimeInterface $finalizedAt): array
+    private function sellerSales(?int $orderId, ?DateTimeInterface $finalizedAt, ?int $manualSellerId = null): array
     {
         if ($orderId === null || $orderId < 1) {
             return [];
         }
 
-        $rows = $this->db->table('orders as orders')
-            ->join('order_detail as detail', 'detail.id_order', '=', 'orders.id_order')
-            ->join('product as product', 'product.id_product', '=', 'detail.product_id')
-            ->join('manufacturer as seller', 'seller.id_manufacturer', '=', 'product.id_manufacturer')
-            ->where('orders.id_order', $orderId)
+        $query = $this->db->table('orders as orders')
+            ->join('order_detail as detail', 'detail.id_order', '=', 'orders.id_order');
+        if ($manualSellerId !== null) {
+            $query->join('manufacturer as seller', function ($join) use ($manualSellerId): void {
+                $join->where('seller.id_manufacturer', '=', $manualSellerId);
+            });
+        } else {
+            $query->join('product as product', 'product.id_product', '=', 'detail.product_id')
+                ->join('manufacturer as seller', 'seller.id_manufacturer', '=', 'product.id_manufacturer');
+        }
+        $rows = $query->where('orders.id_order', $orderId)
             ->whereNotNull('seller.email')
             ->select([
                 'orders.id_order', 'orders.id_cart', 'orders.id_lang', 'orders.reference', 'orders.date_add',

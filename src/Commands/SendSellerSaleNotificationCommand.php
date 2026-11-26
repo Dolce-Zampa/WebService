@@ -10,10 +10,11 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-#[AsCommand(name: 'app:financial:notify-seller-sale', description: 'Invia le notifiche di vendita mancanti per un carrello pagato')]
+#[AsCommand(name: 'app:financial:notify-seller-sale', description: 'Invia le notifiche di vendita mancanti per un ordine pagato')]
 final class SendSellerSaleNotificationCommand extends Command
 {
     public function __construct(private readonly Manager $db, private readonly SellerSaleNotificationService $notifications)
@@ -23,34 +24,61 @@ final class SendSellerSaleNotificationCommand extends Command
 
     protected function configure(): void
     {
-        $this->addArgument('cart-id', InputArgument::REQUIRED, 'ID del carrello');
+        $this->addArgument('cart-id', InputArgument::OPTIONAL, 'ID del carrello')
+            ->addOption('order-id', null, InputOption::VALUE_REQUIRED, 'ID ordine PrestaShop');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $cartId = filter_var($input->getArgument('cart-id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if ($cartId === false) {
-            $io->error('Il carrello deve essere un numero intero positivo.');
+        $cartValue = $input->getArgument('cart-id');
+        $orderValue = $input->getOption('order-id');
+        if (($cartValue === null) === ($orderValue === null)) {
+            $io->error('Specificare il carrello oppure --order-id.');
             return Command::INVALID;
         }
-
+        $identifier = filter_var($orderValue ?? $cartValue, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($identifier === false) {
+            $io->error('L’ID deve essere un numero intero positivo.');
+            return Command::INVALID;
+        }
         $orders = $this->db->table('orders as o')
             ->leftJoin('order_state as s', 's.id_order_state', '=', 'o.current_state')
-            ->where('o.id_cart', $cartId)
+            ->where($orderValue === null ? 'o.id_cart' : 'o.id_order', $identifier)
             ->get(['o.id_order', 'o.reference', 's.paid']);
         if ($orders->count() !== 1 || (int) $orders[0]->paid !== 1) {
-            $io->error('Serve un solo ordine per il carrello, in uno stato pagato. Verifica ordine e pagamento prima di procedere.');
+            $io->error('Serve un solo ordine in uno stato pagato. Verifica ordine e pagamento prima di procedere.');
             return Command::FAILURE;
         }
         $order = $orders[0];
-        $sellers = $this->db->table('order_detail as d')
-            ->leftJoin('product as p', 'p.id_product', '=', 'd.product_id')
-            ->leftJoin('manufacturer as m', 'm.id_manufacturer', '=', 'p.id_manufacturer')
-            ->where('d.id_order', $order->id_order)
-            ->distinct()->get(['m.id_manufacturer', 'm.name', 'm.email']);
+        $manualSellerId = null;
+        if ($orderValue !== null) {
+            $transfers = $this->db->table('stripe_connect_transfers')->where('order_id', $order->id_order)->get();
+            $manual = $transfers->filter(static fn ($transfer): bool => str_starts_with((string) $transfer->idempotency_key, 'connect:manual-initial:'));
+            if ($manual->isNotEmpty()) {
+                if ($transfers->count() !== 1 || $manual->count() !== 1 || (string) $manual->first()->status !== 'paid') {
+                    $io->error('Trasferimenti manuali non univoci o non completati; verificare il destinatario.');
+                    return Command::FAILURE;
+                }
+                $manualSellerId = (int) $manual->first()->manufacturer_id;
+            }
+        }
+        if ($manualSellerId !== null) {
+            if (!$this->db->table('order_detail')->where('id_order', $order->id_order)->exists()) {
+                $io->error('Nessun prodotto trovato per questo ordine.');
+                return Command::FAILURE;
+            }
+            $sellers = $this->db->table('manufacturer as m')->where('m.id_manufacturer', $manualSellerId)
+                ->get(['m.id_manufacturer', 'm.name', 'm.email']);
+        } else {
+            $sellers = $this->db->table('order_detail as d')
+                ->leftJoin('product as p', 'p.id_product', '=', 'd.product_id')
+                ->leftJoin('manufacturer as m', 'm.id_manufacturer', '=', 'p.id_manufacturer')
+                ->where('d.id_order', $order->id_order)
+                ->distinct()->get(['m.id_manufacturer', 'm.name', 'm.email']);
+        }
         if ($sellers->isEmpty()) {
-            $io->error('Nessun prodotto trovato per questo ordine.');
+            $io->error('Nessun prodotto o artigiano trovato per questo ordine.');
             return Command::FAILURE;
         }
         foreach ($sellers as $seller) {
@@ -62,7 +90,11 @@ final class SendSellerSaleNotificationCommand extends Command
 
         $before = $this->db->table('seller_sale_notification_logs')->where('id_order', $order->id_order)
             ->pluck('status', 'id_manufacturer')->all();
-        $this->notifications->notifyFinalizedSalesForCart($cartId);
+        if ($orderValue !== null) {
+            $this->notifications->notifyFinalizedSalesForOrder((int) $order->id_order, $manualSellerId);
+        } else {
+            $this->notifications->notifyFinalizedSalesForCart($identifier);
+        }
         $after = $this->db->table('seller_sale_notification_logs')->where('id_order', $order->id_order)
             ->pluck('status', 'id_manufacturer')->all();
 
