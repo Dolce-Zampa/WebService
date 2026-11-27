@@ -18,7 +18,7 @@ use InvalidArgumentException;
 final class FinancialMovement
 {
     public const TYPES = [
-        'payment', 'refund', 'commission', 'payout', 'provider_fee', 'shipping', 'chargeback', 'adjustment',
+        'payment', 'refund', 'commission', 'transfer', 'payout', 'provider_fee', 'shipping', 'chargeback', 'adjustment',
     ];
 
     public const STATUSES = ['pending', 'available', 'paid', 'reversed', 'failed', 'cancelled'];
@@ -60,8 +60,8 @@ final class FinancialMovement
         if (!preg_match('/^[A-Z]{3}$/', $currency)) {
             throw new InvalidArgumentException('Currency must be an ISO 4217 uppercase three-letter code.');
         }
-        if (($provider === null) !== ($providerEventId === null)) {
-            throw new InvalidArgumentException('Provider and provider event ID must be supplied together.');
+        if ($provider === null && $providerEventId !== null) {
+            throw new InvalidArgumentException('Provider event ID requires a provider.');
         }
         if (($sourceEventType === null) !== ($sourceEventId === null)) {
             throw new InvalidArgumentException('Source event type and source event ID must be supplied together.');

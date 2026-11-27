@@ -224,6 +224,12 @@ final class FinancialLedgerServiceTest extends TestCase
         ]);
     }
 
+    public function test_provider_event_id_still_requires_a_provider(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->movement(['provider' => null, 'provider_event_id' => 'evt_orphan']);
+    }
+
     /** @param array<string, mixed> $overrides */
     private function movement(array $overrides = []): FinancialMovement
     {

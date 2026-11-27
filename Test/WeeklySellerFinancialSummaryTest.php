@@ -37,6 +37,15 @@ final class WeeklySellerFinancialSummaryTest extends TestCase
             $table->increments('id'); $table->unsignedBigInteger('financial_transaction_id'); $table->string('event_type'); $table->string('status'); $table->string('idempotency_key')->unique();
             $table->string('source_event_type')->nullable(); $table->string('source_event_id')->nullable(); $table->json('metadata')->nullable(); $table->dateTime('occurred_at'); $table->dateTime('received_at'); $table->dateTime('created_at');
         });
+        $schema->create('stripe_connect_payouts', function ($table): void {
+            $table->increments('id'); $table->unsignedBigInteger('manufacturer_id')->nullable(); $table->string('status');
+            $table->integer('amount'); $table->char('currency', 3); $table->unsignedBigInteger('status_event_created'); $table->string('status_source')->default('webhook');
+            $table->string('stripe_account_id'); $table->string('stripe_payout_id');
+        });
+        $schema->create('stripe_connect_payout_events', function ($table): void {
+            $table->increments('id'); $table->string('stripe_account_id'); $table->string('stripe_payout_id');
+            $table->string('stripe_event_id')->nullable(); $table->string('status'); $table->unsignedBigInteger('event_created');
+        });
         $schema->create('financial_weekly_summary_deliveries', function ($table): void {
             $table->increments('id'); $table->unsignedBigInteger('artisan_id'); $table->dateTime('period_start'); $table->dateTime('period_end'); $table->string('timezone', 64); $table->string('status', 16); $table->unsignedInteger('attempts'); $table->string('failure_code', 80)->nullable(); $table->dateTime('locked_until')->nullable(); $table->dateTime('sent_at')->nullable(); $table->timestamps();
             $table->unique(['artisan_id', 'period_start', 'timezone']);
@@ -84,6 +93,62 @@ final class WeeklySellerFinancialSummaryTest extends TestCase
         self::assertSame('Europe/Rome', $period->timezone->getName());
         self::assertSame([], $summary->currencies);
         self::assertFalse($summary->hasActivity());
+    }
+
+    public function test_distinguishes_legacy_transfers_from_bank_payout_snapshots(): void
+    {
+        $period = new FinancialWeekPeriod(new DateTimeImmutable('2026-10-05 00:00:00 UTC'), new DateTimeImmutable('2026-10-12 00:00:00 UTC'), new DateTimeZone('UTC'));
+        $this->ledger->record(FinancialMovement::fromArray([
+            'type' => 'payout', 'status' => 'paid', 'amount' => '-60.000000', 'currency' => 'EUR', 'occurred_at' => '2026-10-08 09:00:00',
+            'artisan_id' => 10, 'provider' => 'stripe', 'provider_transaction_id' => 'tr_old', 'provider_event_id' => 'tr_old', 'source_event_type' => 'stripe.transfer.created', 'source_event_id' => 'tr_old',
+        ]), 'old-transfer');
+        DB::table('stripe_connect_payouts')->insert([
+            ['stripe_account_id' => 'acct_10', 'stripe_payout_id' => 'po_1', 'manufacturer_id' => 10, 'status' => 'paid', 'amount' => 6000, 'currency' => 'EUR', 'status_event_created' => strtotime('2026-10-09 09:00:00 UTC')],
+            ['stripe_account_id' => 'acct_10', 'stripe_payout_id' => 'po_2', 'manufacturer_id' => 10, 'status' => 'in_transit', 'amount' => 1500, 'currency' => 'EUR', 'status_event_created' => strtotime('2026-10-10 09:00:00 UTC')],
+            ['stripe_account_id' => 'acct_10', 'stripe_payout_id' => 'po_3', 'manufacturer_id' => 10, 'status' => 'paid', 'amount' => 500, 'currency' => 'JPY', 'status_event_created' => strtotime('2026-10-10 09:00:00 UTC')],
+            ['stripe_account_id' => 'acct_11', 'stripe_payout_id' => 'po_4', 'manufacturer_id' => 11, 'status' => 'paid', 'amount' => 9000, 'currency' => 'EUR', 'status_event_created' => strtotime('2026-10-09 09:00:00 UTC')],
+        ]);
+        DB::table('stripe_connect_payouts')->insert(['stripe_account_id' => 'acct_10', 'stripe_payout_id' => 'po_backfill', 'manufacturer_id' => 10, 'status' => 'paid', 'amount' => 9900, 'currency' => 'EUR', 'status_event_created' => strtotime('2026-10-09 09:00:00 UTC'), 'status_source' => 'reconciliation']);
+        foreach ([['acct_10', 'po_1', 'paid'], ['acct_10', 'po_2', 'pending'], ['acct_10', 'po_3', 'paid'], ['acct_11', 'po_4', 'paid']] as [$account, $payout, $status]) {
+            DB::table('stripe_connect_payout_events')->insert(['stripe_account_id' => $account, 'stripe_payout_id' => $payout, 'stripe_event_id' => 'evt_' . $payout, 'status' => $status, 'event_created' => strtotime('2026-10-09 09:00:00 UTC')]);
+        }
+
+        $rows = $this->summaries->summarize(10, $period)->currencies;
+        self::assertSame(1, $rows[0]->completedTransfers);
+        self::assertSame('60.000000', $rows[0]->completedTransferAmount);
+        self::assertSame(1, $rows[0]->completedPayouts);
+        self::assertSame('60.000000', $rows[0]->completedPayoutAmount);
+        self::assertSame(1, $rows[0]->pendingPayouts);
+        self::assertSame('15.000000', $rows[0]->pendingPayoutAmount);
+        self::assertSame('JPY', $rows[1]->currency);
+        self::assertSame('500.000000', $rows[1]->completedPayoutAmount);
+    }
+
+    public function test_payout_updates_do_not_shift_its_paid_week_and_failed_payout_is_not_paid(): void
+    {
+        $period = new FinancialWeekPeriod(new DateTimeImmutable('2026-10-05 UTC'), new DateTimeImmutable('2026-10-12 UTC'), new DateTimeZone('UTC'));
+        DB::table('stripe_connect_payouts')->insert(['stripe_account_id' => 'acct_10', 'stripe_payout_id' => 'po_1', 'manufacturer_id' => 10, 'status' => 'paid', 'amount' => 6000, 'currency' => 'EUR', 'status_event_created' => strtotime('2026-10-15 UTC')]);
+        foreach (['2026-10-09 UTC', '2026-10-15 UTC'] as $index => $date) {
+            DB::table('stripe_connect_payout_events')->insert(['stripe_account_id' => 'acct_10', 'stripe_payout_id' => 'po_1', 'stripe_event_id' => 'evt_' . $index, 'status' => 'paid', 'event_created' => strtotime($date)]);
+        }
+        self::assertSame(1, $this->summaries->summarize(10, $period)->currencies[0]->completedPayouts);
+        DB::table('stripe_connect_payouts')->where('stripe_payout_id', 'po_1')->update(['status' => 'failed']);
+        self::assertSame([], $this->summaries->summarize(10, $period)->currencies);
+    }
+
+    public function test_reversed_transfer_keeps_original_and_reversal_amounts_in_weekly_totals(): void
+    {
+        $period = new FinancialWeekPeriod(new DateTimeImmutable('2026-10-05 UTC'), new DateTimeImmutable('2026-10-12 UTC'), new DateTimeZone('UTC'));
+        foreach ([['tr_old', '-60', 'stripe.transfer.created'], ['trr_old', '10', 'stripe.transfer.reversal.created']] as [$id, $amount, $event]) {
+            $this->ledger->record(FinancialMovement::fromArray([
+                'type' => 'payout', 'status' => 'reversed', 'amount' => $amount, 'currency' => 'EUR', 'occurred_at' => '2026-10-08 09:00:00',
+                'artisan_id' => 10, 'provider' => 'stripe', 'provider_event_id' => $id, 'source_event_type' => $event, 'source_event_id' => $id,
+            ]), $id);
+        }
+        $row = $this->summaries->summarize(10, $period)->currencies[0];
+        self::assertSame(1, $row->completedTransfers);
+        self::assertSame('50.000000', $row->completedTransferAmount);
+        self::assertSame(0, $row->completedPayouts);
     }
 
     public function test_delivery_is_idempotent_and_failed_attempts_are_traceable_without_recipient_data(): void

@@ -22,11 +22,13 @@ final class WeeklySellerFinancialSummary
                 $summary->completedSales > 0
                 || $summary->completedPayouts > 0
                 || $summary->pendingPayouts > 0
+                || $summary->completedTransfers > 0
                 || $summary->grossSales !== '0.000000'
                 || $summary->commissions !== '0.000000'
                 || $summary->sellerDue !== '0.000000'
                 || $summary->completedPayoutAmount !== '0.000000'
                 || $summary->pendingPayoutAmount !== '0.000000'
+                || $summary->completedTransferAmount !== '0.000000'
                 || $summary->refunds !== '0.000000'
             ) {
                 return true;

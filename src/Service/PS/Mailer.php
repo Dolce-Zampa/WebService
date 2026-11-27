@@ -329,6 +329,7 @@ class Mailer extends PrestashopService implements PrestashopServiceInterface, Ma
                 . '<tr><td style="padding:8px 12px">Vendite finalizzate</td><td align="right" style="padding:8px 12px">' . $currency->completedSales . ' · ' . $amount($currency->grossSales) . '</td></tr>'
                 . '<tr><td style="padding:8px 12px">Commissioni</td><td align="right" style="padding:8px 12px">' . $amount($currency->commissions) . '</td></tr>'
                 . '<tr><td style="padding:8px 12px;font-weight:bold">La tua spettanza</td><td align="right" style="padding:8px 12px;font-weight:bold">' . $amount($currency->sellerDue) . '</td></tr>'
+                . '<tr><td style="padding:8px 12px">Trasferimenti al conto Stripe</td><td align="right" style="padding:8px 12px">' . $currency->completedTransfers . ' · ' . $amount($currency->completedTransferAmount) . '</td></tr>'
                 . '<tr><td style="padding:8px 12px">Payout completati</td><td align="right" style="padding:8px 12px">' . $currency->completedPayouts . ' · ' . $amount($currency->completedPayoutAmount) . '</td></tr>'
                 . '<tr><td style="padding:8px 12px">Payout in attesa</td><td align="right" style="padding:8px 12px">' . $currency->pendingPayouts . ' · ' . $amount($currency->pendingPayoutAmount) . '</td></tr>'
                 . '<tr><td style="padding:8px 12px">Rimborsi</td><td align="right" style="padding:8px 12px">' . $amount($currency->refunds) . '</td></tr>';
