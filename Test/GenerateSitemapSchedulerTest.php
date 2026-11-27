@@ -30,7 +30,8 @@ final class GenerateSitemapSchedulerTest extends TestCase
         Facade::setFacadeApplication(['log' => $logger]);
 
         $previous = $_ENV['SITEMAP_CRON_URL'] ?? null;
-        $_ENV['SITEMAP_CRON_URL'] = 'https://example.test/cron?token=test';
+        $previousServer = $_SERVER['SITEMAP_CRON_URL'] ?? null;
+        $_ENV['SITEMAP_CRON_URL'] = $_SERVER['SITEMAP_CRON_URL'] = 'https://example.test/cron?token=test';
         try {
             $container = new Container();
             require __DIR__ . '/../config/di/commands-di.php';
@@ -42,6 +43,11 @@ final class GenerateSitemapSchedulerTest extends TestCase
                 unset($_ENV['SITEMAP_CRON_URL']);
             } else {
                 $_ENV['SITEMAP_CRON_URL'] = $previous;
+            }
+            if ($previousServer === null) {
+                unset($_SERVER['SITEMAP_CRON_URL']);
+            } else {
+                $_SERVER['SITEMAP_CRON_URL'] = $previousServer;
             }
         }
 
