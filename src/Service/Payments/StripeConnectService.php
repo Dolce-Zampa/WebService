@@ -498,9 +498,8 @@ final class StripeConnectService
             || ($charge->status ?? null) !== 'succeeded' || (int) ($charge->amount_refunded ?? 0) !== 0
             || ($charge->disputed ?? false)
             || (int) ($charge->amount_captured ?? 0) !== $paymentCents
-            || !in_array($charge->payment_method_details->type ?? null, ['card', 'paypal', 'klarna'], true)
             || ($charge->transfer_data ?? null) !== null) {
-            throw new \RuntimeException('Il pagamento deve essere un incasso carta, PayPal o Klarna EUR riuscito, non rimborsato e senza trasferimento automatico.');
+            throw new \RuntimeException('Il pagamento deve essere un incasso EUR riuscito, non rimborsato e senza trasferimento automatico.');
         }
         $chargeId = $this->stripeId($charge->id ?? null, 'charge');
         if ($initial && ((string) ($intent->metadata->stripe_connect ?? '') === 'true' || (string) ($intent->metadata->cart_id ?? '') !== '')) {

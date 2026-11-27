@@ -637,7 +637,10 @@ final class StripeConnectServiceTest extends TestCase
                 return \Stripe\PaymentIntent::constructFrom(['id' => $id, 'status' => 'succeeded', 'currency' => 'eur',
                     'amount_received' => $paypal ? 500 : 1000, 'latest_charge' => ['id' => $paypal ? 'py_paypal' : 'ch_supplement', 'object' => 'charge',
                         'status' => 'succeeded', 'amount_captured' => $paypal ? 500 : 1000, 'amount_refunded' => $id === 'pi_refunded' ? 100 : 0,
-                        'payment_method_details' => ['type' => $paypal ? 'paypal' : ($id === 'pi_unsupported' ? 'sepa_debit' : 'card')], 'transfer_data' => null]]);
+                        'payment_method_details' => ['type' => match ($id) {
+                            'pi_paypal' => 'paypal', 'pi_scalapay' => 'scalapay', 'pi_klarna' => 'klarna',
+                            'pi_sepa' => 'sepa_debit', default => 'card',
+                        }], 'transfer_data' => null]]);
             }
         };
         $accounts = new class {
@@ -696,13 +699,12 @@ final class StripeConnectServiceTest extends TestCase
         self::assertSame('py_paypal', $transfers->calls[1][0]['source_transaction']);
         self::assertSame(400, $transfers->calls[1][0]['amount']);
         self::assertSame('paid', $service->manualSupplementTransfer(42, 7, 'pi_paypal', 500, 400, true)['status']);
-        try {
-            $service->manualSupplementTransfer(42, 7, 'pi_unsupported', 1000, 800, true);
-            self::fail('An unsupported payment method must be rejected.');
-        } catch (\RuntimeException $exception) {
-            self::assertStringContainsString('pagamento', $exception->getMessage());
+        foreach (['pi_scalapay', 'pi_klarna', 'pi_sepa'] as $paymentIntent) {
+            self::assertSame('preview', $service->manualSupplementTransfer(42, 7, $paymentIntent, 1000, 800, false)['status']);
         }
-        self::assertCount(2, $transfers->calls);
+        self::assertSame('tr_paypal', $service->manualSupplementTransfer(42, 7, 'pi_scalapay', 1000, 800, true)['transfer_id']);
+        self::assertSame('ch_supplement', $transfers->calls[2][0]['source_transaction']);
+        self::assertCount(3, $transfers->calls);
         $transfers->fail = true;
         try {
             $service->manualSupplementTransfer(42, 7, 'pi_timeout', 1000, 800, true);
@@ -717,7 +719,7 @@ final class StripeConnectServiceTest extends TestCase
         } catch (\RuntimeException $exception) {
             self::assertStringContainsString('manual_review', $exception->getMessage());
         }
-        self::assertCount(3, $transfers->calls);
+        self::assertCount(4, $transfers->calls);
     }
 
     private function createTransferTables(Manager $db): void
