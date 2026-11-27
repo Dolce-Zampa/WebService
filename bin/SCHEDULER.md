@@ -53,6 +53,9 @@ sequenceDiagram
 |---|---|---|
 | `app:orders:send-review-request` | `0 0 * * *` (ogni giorno a mezzanotte, Europe/Rome) | Invia mail di richiesta recensione per gli ordini consegnati, evitando invii duplicati. |
 | Manutenzione gift card | `* * * * *` (ogni minuto) | Elabora le email in coda e libera le prenotazioni scadute tramite l'API del modulo. |
+| Sitemap | `10 * * * *` (ogni ora) | Richiama il cron gsitemap configurato. |
+
+Il job sitemap richiede `SITEMAP_CRON_URL` nell'ambiente dello scheduler: l'URL del cron gsitemap deve includere il token e va trattato come segreto. Senza URL il comando segnala un errore e non invia richieste. Configurarlo solo dopo aver coordinato la destinazione e la pubblicazione con DZ-188: il cron elimina le sitemap precedenti prima di rigenerarle. Il comando considera errore anche una risposta non vuota o un header `Refresh`, che può indicare una generazione da continuare. Una risposta HTTP 200 vuota non dimostra da sola che i file siano stati aggiornati: verificare separatamente timestamp, contenuto e copertura della sitemap pubblica, oltre ai log `Scheduler: sitemap:generate failed`.
 
 Per attivare il job gift card, configurare `GIFT_CARD_API_URL` (URL HTTPS del controller senza `action`) e `GIFT_CARD_MAINTENANCE_KEY` con una chiave dotata del permesso `maintenance`. Se la chiave dedicata è vuota, viene usata `GIFT_CARD_API_KEY`. La chiave viene inviata nel body JSON. Il processo scheduler deve essere in esecuzione e avere accesso alle stesse variabili; gli errori vengono ritentati al minuto successivo.
 

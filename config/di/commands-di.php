@@ -2,6 +2,13 @@
 
 // Definizioni di Dependency Injection per i comandi Symfony Console.
 
+$container->set('sitemap.http', function () { return new \GuzzleHttp\Client(); });
+$container->set(\PS\Webservice\Commands\GenerateSitemap::class, function ($c) {
+    return new \PS\Webservice\Commands\GenerateSitemap(
+        $c->get('sitemap.http'), (string) env('SITEMAP_CRON_URL', '')
+    );
+});
+
 $container->set(\PS\Webservice\Commands\SyncInpostPointsCommand::class, function ($c) {
     return new \PS\Webservice\Commands\SyncInpostPointsCommand($c->get(\PS\Webservice\Service\PickupPoints\InpostCatalog::class));
 });
