@@ -22,9 +22,14 @@ final class GenerateSitemapHandler
         $output = new BufferedOutput();
         $exitCode = $this->command->run(new ArrayInput([]), $output);
 
-        Log::info('Scheduler: eseguito sitemap:generate', [
+        $context = [
             'exitCode' => $exitCode,
             'output' => $output->fetch(),
-        ]);
+        ];
+        if ($exitCode !== 0) {
+            Log::error('Scheduler: sitemap:generate failed', $context);
+            return;
+        }
+        Log::info('Scheduler: eseguito sitemap:generate', $context);
     }
 }
